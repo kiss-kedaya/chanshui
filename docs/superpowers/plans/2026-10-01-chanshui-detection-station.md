@@ -52,19 +52,20 @@ chanzhushui/
 └── docs/superpowers/plans/…   # 本计划
 ```
 
-**worktree 分工（多模块并行）：**
+**worktree 分工（多模块并行，全部收在仓库文件夹 F:\GO\chanzhushui\ 下）：**
 
-| worktree | 分支 | 模块 | 无共享文件冲突 |
+| worktree（仓库内相对路径） | 分支 | 模块 | 无共享文件冲突 |
 |---|---|---|---|
-| main | main | 仓库骨架、路由、embed、CI | — |
-| wt-inject | wt-inject | inject 包 + gateway 包 | 只碰 internal/inject、internal/gateway |
-| wt-fingerprint | wt-fingerprint | fingerprint 包 + bank 转换 | 只碰 internal/fingerprint、data/ |
-| wt-thinking | wt-thinking | thinking 包 | 只碰 internal/thinking |
-| wt-iq | wt-iq | iq 包（题库+判分+评分） | 只碰 internal/iq |
-| wt-web | wt-web | 前端三件 + api handlers 骨架 | 只碰 web/、internal/api |
-| wt-history | wt-history | history 包 | 只碰 internal/history |
+| （主检出） | main | 仓库骨架、路由、embed、CI | — |
+| dev | feature/core | 收口：路由注册、embed、e2e | 收口阶段用 |
+| dev-inject | wt-inject | inject 包 + gateway 包 | 只碰 internal/inject、internal/gateway |
+| dev-fingerprint | wt-fingerprint | fingerprint 包 + bank 转换 | 只碰 internal/fingerprint、data/ |
+| dev-thinking | wt-thinking | thinking 包 | 只碰 internal/thinking |
+| dev-iq | wt-iq | iq 包（题库+判分+评分） | 只碰 internal/iq |
+| dev-web | wt-web | 前端三件 + api handlers 骨架 | 只碰 web/、internal/api |
+| dev-history | wt-history | history 包 | 只碰 internal/history |
 
-各 worktree 完成即 commit + push，main 上逐个 merge（文件不重叠，无冲突）。收口（main）：路由注册全模块 + embed + 端到端验证 + tag v0.1.0。
+各 worktree 完成即 commit + push，main 上逐个 merge（文件不重叠，无冲突）。收口（dev → main）：路由注册全模块 + embed + 端到端验证 + tag v0.1.0。
 
 ---
 
