@@ -189,7 +189,7 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 	return 0, false, nil
 }
 
-var pillPassRe = regexp.MustCompile(`不叫醒|不喂|暂缓给药|持药观察|无需服药|不给药|不给·药|已经睡着|暂不给药`)
+var pillPassRe = regexp.MustCompile(`不叫醒|不喂|暂缓给药|持药观察|无需服药|不给药|已经睡着|暂不给药`)
 var pillWakeRe = regexp.MustCompile(`叫醒|唤醒`)
 var pillNegWakeRe = regexp.MustCompile(`(?:不|别|勿|未|莫|无法|不用|无需|不能|不可|不要|暂不|千万别|切莫)(?:叫醒|唤醒)`)
 
