@@ -1,5 +1,3 @@
-*.exe
-*.db
-web/node_modules/
-web/.next/
-web/out/
+dev/
+dev/
+dev-*/
