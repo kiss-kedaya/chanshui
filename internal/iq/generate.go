@@ -178,9 +178,17 @@ func GenCandyClassic(r *rand.Rand) Question {
 
 func GenCandyVariant(r *rand.Rand) Question {
 	var circ, star [3]int
-	for i := range circ {
-		circ[i] = 4 + r.Intn(7)
-		star[i] = 4 + r.Intn(7)
+	for {
+		for i := range circ {
+			circ[i] = 4 + r.Intn(7)
+			star[i] = 4 + r.Intn(7)
+		}
+		// avoid degenerate collisions with the classic bookkeeping: solver
+		// answer must not equal 21 (the classic answer) so that the
+		// 疑似套用 rule stays distinguishable from a genuine solve.
+		if SolveCandy(circ, star) != 21 {
+			break
+		}
 	}
 	ans := SolveCandy(circ, star)
 	return Question{
@@ -190,8 +198,30 @@ func GenCandyVariant(r *rand.Rand) Question {
 		MaxScore: 16,
 		LimitSec: 120,
 		Answer:   strconv.Itoa(ans),
-		Tags:     []string{"最坏情况保证", "参数化"},
+		Tags: []string{"最坏情况保证", "参数化",
+			fmt.Sprintf("库存:%d,%d,%d:%d,%d,%d", circ[0], circ[1], circ[2], star[0], star[1], star[2])},
 	}
+}
+
+// blindCandyAnswer is the naive no-shape-strategy answer: 1 + the largest
+// stock-constrained draw set that still avoids both cross pairs. For the
+// classic stock this is 29.
+func blindCandyAnswer(circ, star [3]int) int {
+	ca, ct, cm := circ[0], circ[1], circ[2]
+	sa, st, sm := star[0], star[1], star[2]
+	cTotal, sTotal := ca+ct+cm, sa+st+sm
+	best := 0
+	for _, need := range []int{
+		cm + sTotal + 1,           // circles all melon
+		cTotal + sm + 1,           // stars all melon
+		(ct + cm) + (st + sm) + 1, // no apples
+		(ca + cm) + (sa + sm) + 1, // no peaches
+	} {
+		if need > best {
+			best = need
+		}
+	}
+	return best
 }
 
 // ---------------------------------------------------------------------------
