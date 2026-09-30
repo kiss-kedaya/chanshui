@@ -289,3 +289,35 @@ func judgeSocks(q Question, text, tail string) (int, bool, []string) {
 	}
 	return 0, false, nil
 }
+
+func variantStockOf(q Question) (circ, star [3]int) {
+	// stored in q.Tags as "库存:ca,ct,cm:sa,st,sm"
+	for _, tg := range q.Tags {
+		if !strings.HasPrefix(tg, "库存:") {
+			continue
+		}
+		body := strings.TrimPrefix(tg, "库存:")
+		segs := strings.Split(body, ":")
+		if len(segs) != 2 {
+			continue
+		}
+		read := func(s string, out *[3]int) bool {
+			parts := strings.Split(s, ",")
+			if len(parts) != 3 {
+				return false
+			}
+			for i, p := range parts {
+				v, e := strconv.Atoi(p)
+				if e != nil {
+					return false
+				}
+				out[i] = v
+			}
+			return true
+		}
+		if read(segs[0], &circ) && read(segs[1], &star) {
+			return circ, star
+		}
+	}
+	return [3]int{}, [3]int{}
+}

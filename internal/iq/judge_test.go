@@ -292,37 +292,6 @@ func mustNum(s string) float64 {
 	return v
 }
 
-func variantStockOf(q Question) (circ, star [3]int) {
-	// stored in q.Tags as "库存:ca,ct,cm:sa,st,sm"
-	for _, tg := range q.Tags {
-		if !strings.HasPrefix(tg, "库存:") {
-			continue
-		}
-		body := strings.TrimPrefix(tg, "库存:")
-		segs := strings.Split(body, ":")
-		if len(segs) != 2 {
-			continue
-		}
-		read := func(s string, out *[3]int) bool {
-			parts := strings.Split(s, ",")
-			if len(parts) != 3 {
-				return false
-			}
-			for i, p := range parts {
-				v, e := strconvAtoi(p)
-				if e != nil {
-					return false
-				}
-				out[i] = v
-			}
-			return true
-		}
-		if read(segs[0], &circ) && read(segs[1], &star) {
-			return circ, star
-		}
-	}
-	return [3]int{}, [3]int{}
-}
 
 func strconvI(v int) string { return fmt.Sprintf("%d", v) }
 func strconvAtoi(s string) (int, error) {
