@@ -837,6 +837,72 @@ code {
   margin-top: 14px;
   animation: appear 0.28s var(--ease-out);
 }
+
+.error-fold {
+  padding: 0;
+}
+.error-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.7;
+  text-align: left;
+  cursor: pointer;
+}
+.error-summary {
+  flex: 1;
+}
+.error-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: none;
+  animation: error-bob 1.5s ease-in-out infinite;
+}
+.error-mark .error-ring {
+  transform-origin: 12px 12px;
+  animation: error-blink 1.5s ease-in-out infinite;
+}
+.error-chevron {
+  margin-top: 3px;
+  flex: none;
+  transition: transform 0.22s var(--ease-out);
+}
+.error-fold.is-open .error-chevron {
+  transform: rotate(180deg);
+}
+.error-detail {
+  margin: 0 14px 12px 42px;
+  padding-top: 8px;
+  border-top: 1px dashed #f0d7c9;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.7;
+  animation: appear 0.22s var(--ease-out);
+}
+.error-compact {
+  margin-top: 8px;
+  width: 100%;
+}
+.error-compact .error-toggle {
+  padding: 8px 10px;
+}
+@keyframes error-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+@keyframes error-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
 .bank-strip {
   display: flex;
   align-items: center;
@@ -2423,6 +2489,9 @@ html[data-mode="dark"] .error-box {
   background: #38251b;
   border-color: #634734;
   color: #e0b698;
+}
+html[data-mode="dark"] .error-detail {
+  border-top-color: #634734;
 }
 html[data-mode="dark"] .btn-secondary:hover:not(:disabled),
 html[data-mode="dark"] .icon-button:hover,

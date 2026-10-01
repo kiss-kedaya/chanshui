@@ -1,6 +1,7 @@
 "use client";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import ResultSkeleton from "@/components/ResultSkeleton";
+import ErrorFold from "@/components/ErrorFold";
 import Hint from "@/components/Hint";
 import { fingerprintDiluted, probabilityVisible } from "@/lib/report-view";
 import { DetectVerdict } from "@/lib/api";
@@ -118,7 +119,7 @@ export default function ResultCards({
         ) : (
           <>
             {f.error ? (
-              <div className="error-box">{f.error}</div>
+              <ErrorFold text={f.error} />
             ) : (
               <>
                 {diluted && (
@@ -179,7 +180,7 @@ export default function ResultCards({
         {!a ? (
           <ResultSkeleton label={loading ? "采样中…" : "暂无结果"} />
         ) : a.error ? (
-          <div className="error-box">{a.error}</div>
+          <ErrorFold text={a.error} />
         ) : (
           <>
             <div className="metric-line">
@@ -292,7 +293,7 @@ export default function ResultCards({
           {!t ? (
             <ResultSkeleton label={loading ? "等待思维链…" : "暂无结果"} />
           ) : t.error || t.err ? (
-            <div className="error-box">{t.error || t.err}</div>
+            <ErrorFold text={t.error || t.err || ""} />
           ) : (
             <>
               <div className="metric-line">
@@ -323,7 +324,7 @@ export default function ResultCards({
         {!knowledge ? (
           <ResultSkeleton label={loading ? "知识截止探针中…" : "暂无结果"} />
         ) : knowledge.error ? (
-          <div className="error-box">{knowledge.error}</div>
+          <ErrorFold text={knowledge.error} />
         ) : (
           <>
             <div className="metric-line">
@@ -388,7 +389,7 @@ export default function ResultCards({
                         : x.earned + " / " + x.max + (x.half ? "（半分）" : "")}
                     </b>
                   </summary>
-                  {x.error && <p className="error-box">{x.error}</p>}
+                  {x.error && <ErrorFold text={x.error} />}
                   <h4>题目</h4>
                   <pre>{x.prompt}</pre>
                   <h4>标准结论</h4>
@@ -431,7 +432,7 @@ export default function ResultCards({
         {!v.cache ? (
           <ResultSkeleton label={loading ? "缓存验证中…" : "暂无结果"} />
         ) : v.cache.error ? (
-          <div className="error-box">{v.cache.error}</div>
+          <ErrorFold text={v.cache.error} />
         ) : (
           <>
             <div className="metric-line">
@@ -537,7 +538,7 @@ export default function ResultCards({
           {!result ? (
             <ResultSkeleton label={loading ? "检测中…" : "暂无结果"} />
           ) : result.error ? (
-            <div className="error-box">{result.error}</div>
+            <ErrorFold text={result.error} />
           ) : (
             <>
               <div className="metric-line">

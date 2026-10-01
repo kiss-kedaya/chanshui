@@ -23,6 +23,7 @@ import AuditHero from "@/components/AuditHero";
 import Hint from "@/components/Hint";
 import ProbeTimeline from "@/components/ProbeTimeline";
 import Icon from "@/components/Icon";
+import ErrorFold from "@/components/ErrorFold";
 import Select from "@/components/Select";
 import Link from "next/link";
 import ReportShare from "@/components/ReportShare";
@@ -419,11 +420,7 @@ export default function DetectPage() {
               </button>
             </div>
           </div>
-          {error && (
-            <div role="alert" className="error-box">
-              {error}
-            </div>
-          )}
+          {error && <ErrorFold text={error} />}
         </form>
       </section>
       <div className="bank-strip">
@@ -579,7 +576,7 @@ export default function DetectPage() {
         >
           {asking ? "正在回答…" : "发送问题"}
         </button>
-        {askError && <p className="error-box">{askError}</p>}
+        {askError && <ErrorFold text={askError} />}
         {answer && (
           <div className="answer-panel">
             <pre>{answer.Answer || "未返回正文"}</pre>

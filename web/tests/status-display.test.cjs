@@ -33,6 +33,7 @@ test("thinking card does not render delivery status summaries", () => {
     "@/components/AnimatedNumber": { default: ({ value }) => value },
     "@/components/ResultSkeleton": { default: () => null },
     "@/components/Hint": { default: () => null },
+  "@/components/ErrorFold": loadModule("../components/ErrorFold.tsx"),
     "@/lib/report-view": loadModule("../lib/report-view.ts"),
   }).default;
   const html = renderToStaticMarkup(React.createElement(ResultCards, {

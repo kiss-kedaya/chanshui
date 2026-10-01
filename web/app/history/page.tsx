@@ -8,6 +8,7 @@ import { getJobControl, reconcileJobControl } from "@/lib/job-controls";
 import { watchResource } from "@/lib/polling";
 import ResultCards from "@/components/ResultCards";
 import ProbeTimeline from "@/components/ProbeTimeline";
+import ErrorFold from "@/components/ErrorFold";
 import ReportShare from "@/components/ReportShare";
 function HistoryDetailInner() {
   const search = useSearchParams(),
@@ -105,11 +106,7 @@ function HistoryDetailInner() {
             查看报告
           </button>
         </form>
-        {entryError && (
-          <p className="error-box" role="alert">
-            {entryError}
-          </p>
-        )}
+        {entryError && <ErrorFold text={entryError} />}
         <h1 className="hero-title">
           {data
             ? data.model
@@ -143,11 +140,7 @@ function HistoryDetailInner() {
         {!data && !error && !loading && (
           <p className="muted">粘贴 Job ID，或从左侧历史选择报告。</p>
         )}
-        {error && (
-          <div className="error-box" role="alert">
-            {error}
-          </div>
-        )}
+        {error && <ErrorFold text={error} />}
       </section>
       {data && (
         <ProbeTimeline

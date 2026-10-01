@@ -2,6 +2,7 @@
 import { ReactNode } from "react";
 import { Probe } from "@/lib/api";
 import Icon from "@/components/Icon";
+import ErrorFold from "@/components/ErrorFold";
 import ElapsedTime, { DetectionTiming } from "@/components/ElapsedTime";
 export default function ProbeTimeline({
   probes,
@@ -94,7 +95,7 @@ export default function ProbeTimeline({
                       ? "已停止"
                       : "请求失败"}
             </small>
-            {p.error && <p>{p.error}</p>}
+            {p.error && <ErrorFold text={p.error} compact />}
           </div>
         ))}
       </div>

@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -147,8 +148,28 @@ func FriendlyError(status int, reason string, attempts int) string {
 	if status > 0 {
 		suffix = fmt.Sprintf("（HTTP %d）", status)
 	}
-	if status == 400 || status == 422 {
-		return message + suffix
+	summary := message + suffix
+	if status != 400 && status != 422 {
+		summary = fmt.Sprintf("%s%s；已尝试 %d 次", message, suffix, attempts)
 	}
-	return fmt.Sprintf("%s%s；已尝试 %d 次", message, suffix, attempts)
+	detail := safeDetail(reason)
+	if detail == "" || detail == summary {
+		return summary
+	}
+	return summary + "\n" + detail
+}
+
+var secretDetail = regexp.MustCompile(`(?i)sk-[A-Za-z0-9_-]{8,}|bearer\s+\S+|api[_-]?key["'\s:=]+\S+`)
+
+func safeDetail(reason string) string {
+	text := strings.Join(strings.Fields(strings.TrimSpace(reason)), " ")
+	if text == "" {
+		return ""
+	}
+	text = secretDetail.ReplaceAllString(text, "[已隐藏]")
+	runes := []rune(text)
+	if len(runes) > 280 {
+		text = string(runes[:280]) + "…"
+	}
+	return text
 }

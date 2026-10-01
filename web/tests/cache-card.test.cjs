@@ -24,6 +24,7 @@ const ResultCards = loadModule("../components/ResultCards.tsx", {
   "@/components/AnimatedNumber": { default: ({ value }) => value },
   "@/components/ResultSkeleton": { default: () => null },
   "@/components/Hint": { default: () => null },
+  "@/components/ErrorFold": loadModule("../components/ErrorFold.tsx"),
   "@/lib/report-view": loadModule("../lib/report-view.ts"),
 }).default;
 
