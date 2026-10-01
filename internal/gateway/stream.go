@@ -93,8 +93,18 @@ func parseStream(body io.Reader, m *Metrics) error {
 		if e.Error != nil {
 			return fmt.Errorf("upstream SSE error: %s", e.Error.Type)
 		}
+		skipCacheReset := false
+		if raw, ok := e.Usage["cache_read_input_tokens"]; ok && string(raw) != "null" && m.CacheRead > 0 {
+			var next int
+			if json.Unmarshal(raw, &next) == nil && next == 0 {
+				skipCacheReset = true
+			}
+		}
 		for k, v := range e.Usage {
 			if string(v) == "null" {
+				continue
+			}
+			if skipCacheReset && (k == "cache_read_input_tokens" || k == "cache_creation" || k == "cache_creation_input_tokens") {
 				continue
 			}
 			switch k {

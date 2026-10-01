@@ -465,16 +465,16 @@ export default function ResultCards({
                   </div>
                 </div>
                 <p className="muted">
-                  {cacheKnown
-                    ? `${cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ ${cacheToken(thirdTotal, thirdCache?.read_reported)} × 100%`
+                  {cacheKnown && previousCacheTotal != null
+                    ? `${cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ ${cacheToken(previousCacheTotal)} × 100%`
                     : "—"}
                   <Hint
                     label="末轮缓存率说明"
-                    text="末轮读取 ÷ 末轮总输入。通过要求上一轮读加写与末轮读相差不超过 64 token。缺字段或请求失败时不计算。"
+                    text="上一条缓存读 + 写 = 下一条缓存读，就是 100%。末轮缓存率 = 末轮读取 ÷ 上一轮读加写。缺字段或请求失败时不计算。"
                   />
                 </p>
                 {v.cache.third_read_ratio != null && v.cache.third_read_ratio > 100 && (
-                  <p className="muted">上游读取超过上一轮已报缓存量，保留原始比例。</p>
+                  <p className="muted">末轮读取超过上一轮读加写，保留原始比例。</p>
                 )}
                 <div className="table-wrap">
                   <table className="cache-table">

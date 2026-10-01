@@ -136,7 +136,7 @@ func TestRetryCannotChangeTargetOrForwardJobKey(t *testing.T) {
 	if finished.BaseURL != up.URL || finished.Model != "claude-opus-5" || finished.Verdict.Protocol != "anthropic" {
 		t.Fatal("retry replaced the original target")
 	}
-	if foreignCalls.Load() != 0 || calls.Load()-before != 2 {
+	if foreignCalls.Load() != 0 || calls.Load()-before != 1 {
 		t.Fatal("retry reached a substituted target or repeated successful probes")
 	}
 }

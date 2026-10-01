@@ -308,36 +308,43 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			if e != nil {
 				v.Error = redact(e.Error(), q.Key)
 			} else {
-				grade, ge := g.CallMessages(ctx, gateway.CallRequest{
-					Model: q.Model,
-					History: []gateway.ConversationMessage{
-						{Role: "user", Content: item.Prompt},
-						{Role: "assistant", Content: text},
-					},
-					Prompt:         fmt.Sprintf("标准答案：%s\n本题满分 %d。对照你上一轮的回答给自己打分。完全符合给 %d，部分符合给中间的整数，完全不对给 0。只返回一个 0 到 %d 的整数，不要输出其他字符。", item.Answer, item.MaxScore, item.MaxScore, item.MaxScore),
-					System:         []gateway.SystemBlock{{Text: "你正在给自己的上一轮回答打分。只返回一个整数。"}},
-					MaxTokens:      32,
-					Stream:         true,
-					TimeoutSeconds: q.Timeout,
-				})
-				if ge != nil || grade.Err != "" {
-					msg := grade.Err
-					if ge != nil {
-						msg = ge.Error()
+				earned, half, tags := iq.Judge(item, text)
+				if earned == 0 {
+					grade, ge := g.CallMessages(ctx, gateway.CallRequest{
+						Model: q.Model,
+						History: []gateway.ConversationMessage{
+							{Role: "user", Content: item.Prompt},
+							{Role: "assistant", Content: text},
+						},
+						Prompt:         fmt.Sprintf("评分开始。标准答案是：%s。本题满分 %d。对照你上一轮的回答，完全符合只返回 %d，部分符合返回中间的整数，完全不对返回最低分。返回的是本题得分，不要把标准答案再写一遍。只返回一个整数。", item.Answer, item.MaxScore, item.MaxScore),
+						System:         []gateway.SystemBlock{{Text: "沿用上一轮对话。现在只给自己的上一轮回答打分，只返回一个整数。"}},
+						Thinking:       &gateway.ThinkingConfig{Type: "disabled"},
+						MaxTokens:      256,
+						Stream:         true,
+						TimeoutSeconds: q.Timeout,
+					})
+					if ge == nil && grade.Err == "" {
+						scored, ok := iq.ParseSelfScore(grade.Answer, item.MaxScore)
+						if !ok && gateway.IsClaude(q.Model) {
+							scored, ok = iq.ParseSelfScore(grade.ThinkingText, item.MaxScore)
+						}
+						if ok {
+							earned = scored
+							half = false
+							if scored > 0 {
+								tags = []string{"自评"}
+							} else {
+								tags = nil
+							}
+						}
 					}
-					v.Error = redact(msg, q.Key)
-				} else {
-					scored, ok := iq.ParseSelfScore(grade.Answer, item.MaxScore)
-					if !ok && gateway.IsClaude(q.Model) {
-						scored, ok = iq.ParseSelfScore(grade.ThinkingText, item.MaxScore)
-					}
-					if !ok {
-						scored = 0
-					}
-					v.Earned = scored
-					v.Half = false
-					v.Tags = []string{}
 				}
+				v.Earned = earned
+				v.Half = half
+				if tags == nil {
+					tags = []string{}
+				}
+				v.Tags = tags
 			}
 			raw, _ := json.Marshal(sanitize(v, q.Key))
 			_ = json.Unmarshal(raw, &v)

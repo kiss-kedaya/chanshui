@@ -149,7 +149,7 @@ func TestRetryAfterMemoryEvictionKeepsJobID(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	result := waitTask(t, s, id)
-	if result.ID != id || calls.Load()-before != 2 {
+	if result.ID != id || calls.Load()-before != 1 {
 		t.Fatal("rehydrated job changed ID or repeated successful probes")
 	}
 }

@@ -30,21 +30,24 @@ func TestCacheEquation(t *testing.T) {
 		status  string
 		ratio   string
 	}{
-		{"growing", []gateway.Metrics{cacheMetric(0, 4600, 8, 1), cacheMetric(4600, 2100, 8, 1), cacheMetric(6700, 1100, 8, 1)}, "pass", "85.81"},
-		{"partial", []gateway.Metrics{cacheMetric(0, 4600, 8, 1), cacheMetric(4500, 2200, 8, 1), cacheMetric(5360, 2400, 8, 1)}, "mismatch", "69.00"},
-		{"overread-visible", []gateway.Metrics{cacheMetric(0, 1000, 8, 1), cacheMetric(1000, 0, 8, 1), cacheMetric(1010, 20, 8, 1)}, "pass", "97.30"},
-		{"zero", []gateway.Metrics{cacheMetric(0, 0, 8, 1), cacheMetric(0, 0, 8, 1), cacheMetric(0, 0, 8, 1)}, "unknown", "0.00"},
-		{"slack-20", []gateway.Metrics{cacheMetric(0, 10000, 8, 1), cacheMetric(10000, 1380, 8, 1), cacheMetric(11400, 92, 8, 1)}, "pass", "99.13"},
-		{"warm", []gateway.Metrics{cacheMetric(3635, 0, 12, 4), cacheMetric(3904, 0, 3, 4), cacheMetric(3905, 0, 3, 4)}, "pass", "99.92"},
-		{"flat", []gateway.Metrics{cacheMetric(4739, 0, 7, 16), cacheMetric(4739, 0, 816, 16), cacheMetric(4739, 0, 826, 16)}, "mismatch", "85.16"},
+		{"growing", []gateway.Metrics{cacheMetric(0, 4600, 8, 1), cacheMetric(4600, 2100, 8, 1), cacheMetric(6700, 1100, 8, 1)}, "pass", "100.00"},
+		{"partial", []gateway.Metrics{cacheMetric(0, 4600, 8, 1), cacheMetric(4500, 2200, 8, 1), cacheMetric(5360, 2400, 8, 1)}, "mismatch", "80.00"},
+		{"overread-visible", []gateway.Metrics{cacheMetric(0, 1000, 8, 1), cacheMetric(1000, 0, 8, 1), cacheMetric(1010, 20, 8, 1)}, "pass", "101.00"},
+		{"zero", []gateway.Metrics{cacheMetric(0, 0, 8, 1), cacheMetric(0, 0, 8, 1), cacheMetric(0, 0, 8, 1)}, "unknown", ""},
+		{"slack-20", []gateway.Metrics{cacheMetric(0, 10000, 8, 1), cacheMetric(10000, 1380, 8, 1), cacheMetric(11400, 92, 8, 1)}, "pass", "100.18"},
+		{"warm", []gateway.Metrics{cacheMetric(3635, 0, 12, 4), cacheMetric(3904, 0, 3, 4), cacheMetric(3905, 0, 3, 4)}, "pass", "100.03"},
+		{"flat", []gateway.Metrics{cacheMetric(4739, 0, 7, 16), cacheMetric(4739, 0, 816, 16), cacheMetric(4739, 0, 826, 16)}, "mismatch", "100.00"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := FromMetrics(tc.metrics, "prefix", "messages", false)
 			if r.Status != tc.status || ratioText(r.ThirdReadRatio) != tc.ratio {
 				t.Fatalf("status %s ratio %s, want %s %s", r.Status, ratioText(r.ThirdReadRatio), tc.status, tc.ratio)
 			}
-			if r.Samples[1].HitRate == nil {
+			if tc.name != "zero" && r.Samples[1].HitRate == nil {
 				t.Fatal("per-request hit rate missing")
+			}
+			if tc.name == "zero" && r.Samples[1].HitRate != nil {
+				t.Fatal("zero baseline invented a hit rate")
 			}
 			if r.Pass != nil && *r.Pass && r.Expected == 0 {
 				t.Fatal("zero cannot pass")
@@ -63,18 +66,15 @@ func TestMissingCacheWriteDoesNotBecomeZero(t *testing.T) {
 	m := []gateway.Metrics{cacheMetric(0, 1000, 8, 1), cacheMetric(1000, 0, 8, 1), cacheMetric(1000, 0, 8, 1)}
 	m[1].CacheWriteReported = false
 	r := FromMetrics(m, "prefix", "messages", false)
-	if r.Pass != nil || r.Samples[1].HitRate != nil {
+	if r.Pass != nil || r.ThirdReadRatio != nil || r.Samples[2].HitRate != nil || ratioText(r.Samples[1].HitRate) != "100.00" {
 		t.Fatalf("missing usage became zero: %+v", r)
-	}
-	if ratioText(r.ThirdReadRatio) != "99.21" {
-		t.Fatalf("third rate = %s, want 99.21", ratioText(r.ThirdReadRatio))
 	}
 	for i := range m {
 		m[i].Protocol = "chat"
 	}
 	r = FromMetrics(m, "prefix", "chat", false)
-	if r.Samples[1].HitRate == nil || ratioText(r.ThirdReadRatio) != "99.21" || r.Pass != nil {
-		t.Fatalf("compatible read rate should remain visible: %+v", r)
+	if r.Pass != nil || r.ThirdReadRatio != nil || r.Samples[2].HitRate != nil || ratioText(r.Samples[1].HitRate) != "100.00" {
+		t.Fatalf("missing write must not invent the next rate: %+v", r)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestCollectKeepsStablePrefixBreakpoints(t *testing.T) {
 			if err != nil || len(bodies) != cacheTurns || r.Pass == nil || !*r.Pass {
 				t.Fatalf("%+v %v bodies=%d", r, err, len(bodies))
 			}
-			if ratioText(r.ThirdReadRatio) != "98.72" {
+			if ratioText(r.ThirdReadRatio) != "100.00" {
 				t.Fatal(ratioText(r.ThirdReadRatio), r)
 			}
 			if r.Samples[cacheTurns-2].RequestHash == r.Samples[cacheTurns-1].RequestHash {
@@ -287,5 +287,23 @@ func assertAnthropicBreakpoints(t *testing.T, bodies []map[string]any) {
 		if markedUsers != want {
 			t.Fatalf("turn %d marked users %d want %d", i+1, markedUsers, want)
 		}
+	}
+}
+
+func TestReportedJobChainIsOneHundredOnTheLastLink(t *testing.T) {
+	rounds := [][2]int{{0, 3968}, {3968, 54}, {0, 4060}, {4060, 38}, {4098, 38}, {4136, 38}}
+	m := make([]gateway.Metrics, len(rounds))
+	for i, pair := range rounds {
+		m[i] = cacheMetric(pair[0], pair[1], 4, 6)
+	}
+	r := FromMetrics(m, "prefix", "messages", false)
+	if r.Status != "pass" || ratioText(r.ThirdReadRatio) != "100.00" || r.Delta != 0 {
+		t.Fatalf("last link = status %s ratio %s delta %d", r.Status, ratioText(r.ThirdReadRatio), r.Delta)
+	}
+	if ratioText(r.Samples[2].HitRate) != "0.00" || ratioText(r.Samples[5].HitRate) != "100.00" || r.Samples[0].HitRate != nil {
+		t.Fatalf("row rates = %s %s %v", ratioText(r.Samples[2].HitRate), ratioText(r.Samples[5].HitRate), r.Samples[0].HitRate)
+	}
+	if r.Transitions[1].Pass == nil || *r.Transitions[1].Pass {
+		t.Fatal("round 3 must stay a miss")
 	}
 }

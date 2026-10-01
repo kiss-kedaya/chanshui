@@ -177,21 +177,71 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 	}
 	switch q.ID {
 	case "Q1":
-		return judgePill(text)
+		earned, half, tags = judgePill(text)
 	case "Q2":
-		return judgeCarWash(text)
+		earned, half, tags = judgeCarWash(text)
 	case "Q3":
-		return judgeBatBall(text)
+		earned, half, tags = judgeBatBall(text)
 	case "Q4":
-		return judgeColorBlind(text)
+		earned, half, tags = judgeColorBlind(text)
 	case "Q5":
-		return judgeAnchor(text, tail)
+		earned, half, tags = judgeAnchor(text, tail)
 	case "Q6", "Q8":
-		return judgeCandy(q, text, tail)
+		earned, half, tags = judgeCandy(q, text, tail)
 	case "Q7":
-		return judgeSocks(q, text, tail)
+		earned, half, tags = judgeSocks(q, text, tail)
+	default:
+		return 0, false, nil
 	}
-	return 0, false, nil
+	if earned == 0 {
+		if n, ok := fullForExpectedNumber(q, fullText, slot, tail); ok {
+			return n, false, nil
+		}
+	}
+	return earned, half, tags
+}
+
+// fullForExpectedNumber gives full marks when the published standard answer is
+// a number and the model ended on that number. Earlier reasoning numbers do
+// not count, and a wrong final slot is left at zero for the self-score round.
+func fullForExpectedNumber(q Question, full, slot, tail string) (int, bool) {
+	want, err := strconv.ParseFloat(strings.TrimSpace(q.Answer), 64)
+	if err != nil || q.MaxScore <= 0 {
+		return 0, false
+	}
+	if slot != "" {
+		if v, e := parseNum(slot); e == nil && numEq(v, want) {
+			return q.MaxScore, true
+		}
+		return 0, false
+	}
+	lines := strings.Split(stripMarkdown(full), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if v, e := lastNum(line); e == nil && numEq(v, want) {
+			return q.MaxScore, true
+		}
+		return 0, false
+	}
+	if v, e := lastNum(tail); e == nil && numEq(v, want) {
+		return q.MaxScore, true
+	}
+	return 0, false
+}
+
+func lastNum(s string) (float64, error) {
+	s = regexp.MustCompile(`(?:不是|并非|不等于|不应为|而非)\s*-?\d+(?:\.\d+)?`).ReplaceAllString(s, "")
+	cleaned := strings.NewReplacer(",", "", "，", "", " ", "", "\t", "").Replace(stripMarkdown(s))
+	if m := numRe.FindAllString(cleaned, -1); len(m) > 0 {
+		return strconv.ParseFloat(m[len(m)-1], 64)
+	}
+	if v, ok := parseCNNum(cleaned); ok {
+		return v, nil
+	}
+	return 0, errNoNumber
 }
 
 var carWashPassRe = regexp.MustCompile(`开车|驾车|驾驶|自驾|开过去`)

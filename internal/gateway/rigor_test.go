@@ -54,3 +54,16 @@ func TestNullUsageNotValidInput(t *testing.T) {
 	}
 	_ = json.Valid
 }
+
+func TestStreamLaterZeroDoesNotEraseCacheRead(t *testing.T) {
+	body := "data: {\"type\":\"message_start\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":38,\"cache_read_input_tokens\":4022}}}\n\n" +
+		"data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":6,\"input_tokens\":4,\"cache_creation_input_tokens\":4060,\"cache_read_input_tokens\":0}}\n\n" +
+		"data: {\"type\":\"message_stop\"}\n\n"
+	var m Metrics
+	if e := parseStream(strings.NewReader(body), &m); e != nil {
+		t.Fatal(e)
+	}
+	if m.CacheRead != 4022 || m.CacheCreation5m != 38 || m.OutputTokens != 6 {
+		t.Fatalf("read=%d write=%d output=%d", m.CacheRead, m.CacheCreation5m, m.OutputTokens)
+	}
+}

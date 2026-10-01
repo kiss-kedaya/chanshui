@@ -325,3 +325,17 @@ func strconvAtoi(s string) (int, error) {
 	v, err := strconv.Atoi(strings.TrimSpace(s))
 	return v, err
 }
+
+func TestSocksAnswerSixWithoutSlot(t *testing.T) {
+	q := GenSocks(newRand(42))
+	q.Answer = "6"
+	q.Tags = []string{"plain"}
+	earned, half, _ := Judge(q, "count the socks\nso the number is 6")
+	if earned != 16 || half {
+		t.Fatalf("essay 6 -> %d half=%v", earned, half)
+	}
+	earned, _, _ = Judge(q, "mentions 6\n"+"\u6700\u7ec8\u7b54\u6848: 11")
+	if earned != 0 {
+		t.Fatalf("wrong slot rescued to %d", earned)
+	}
+}

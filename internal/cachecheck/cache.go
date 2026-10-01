@@ -61,20 +61,17 @@ type Result struct {
 	RetriesObserved   bool         `json:"retries_observed"`
 }
 
-func rate(read, total int) *float64 {
-	if total <= 0 || read < 0 {
+func chainRate(read, baseline int) *float64 {
+	if baseline <= 0 || read < 0 {
 		return nil
 	}
-	v := math.Round(float64(read)/float64(total)*10000) / 100
+	v := math.Round(float64(read)/float64(baseline)*10000) / 100
 	return &v
 }
 func sample(m gateway.Metrics, index int) Sample {
 	total := m.InputTokens + m.CacheRead + m.CacheCreation5m + m.CacheCreation1h
 	s := Sample{Index: index, Read: m.CacheRead, Write: m.CacheCreation5m + m.CacheCreation1h, Input: m.InputTokens, Output: m.OutputTokens, Total: total, ReadReported: m.CacheReadReported, WriteReported: m.CacheWriteReported, InputReported: m.UsagePresent, Attempts: m.Attempts}
 	s.OutputReported = m.OutputReported
-	if m.UsagePresent && m.CacheReadReported && (m.Protocol != "messages" || m.CacheWriteReported) {
-		s.HitRate = rate(s.Read, s.Total)
-	}
 	return s
 }
 
@@ -87,7 +84,8 @@ func absInt(n int) int {
 
 // FromMetrics checks a serial conversation. The pass condition is the last
 // round's cache read versus the previous round's read+write, within 64 tokens.
-// third_read_ratio is that last round's read divided by its total input.
+// third_read_ratio is that last read divided by the previous read+write.
+// Equal values are 100%. It is not read divided by total input.
 func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retriesObserved bool) Result {
 	r := Result{Status: "unknown", Protocol: protocol, PrefixHash: prefixHash, RetriesObserved: retriesObserved, Samples: []Sample{}, Transitions: []Transition{}}
 	for i, m := range metrics {
@@ -100,6 +98,13 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	if len(r.Samples) == 0 {
 		r.Reason = "没有完成缓存请求。"
 		return r
+	}
+	for i := 1; i < len(r.Samples); i++ {
+		prev := r.Samples[i-1]
+		if prev.Error != "" || r.Samples[i].Error != "" || !prev.ReadReported || !prev.WriteReported || !r.Samples[i].ReadReported {
+			continue
+		}
+		r.Samples[i].HitRate = chainRate(r.Samples[i].Read, prev.Read+prev.Write)
 	}
 	r.First = &r.Samples[0]
 	if len(r.Samples) > 1 {
@@ -121,8 +126,8 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	if prev.ReadReported && prev.WriteReported {
 		r.ThirdReadBaseline = prev.Read + prev.Write
 	}
-	if last.Error == "" && last.ReadReported {
-		r.ThirdReadRatio = rate(last.Read, last.Total)
+	if last.Error == "" && last.ReadReported && prev.ReadReported && prev.WriteReported {
+		r.ThirdReadRatio = chainRate(last.Read, prev.Read+prev.Write)
 	}
 	var link *Transition
 	for i := 0; i+1 < len(r.Samples); i++ {
@@ -159,10 +164,10 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	}
 	r.Pass = link.Pass
 	r.Status = "mismatch"
-	r.Reason = "上一轮读加写与末轮读相差超过 64 token。末轮缓存率仍按该轮读取除以该轮总输入。"
+	r.Reason = "上一轮读加写与末轮读相差超过 64 token。末轮缓存率是末轮读取除以上一轮读加写。"
 	if *link.Pass {
 		r.Status = "pass"
-		r.Reason = "上一轮读加写与末轮读相差不超过 64 token。末轮缓存率是该轮读取除以该轮总输入。"
+		r.Reason = "上一轮读加写与末轮读相差不超过 64 token。末轮缓存率是末轮读取除以上一轮读加写，相等为 100%。"
 	}
 	if r.RetriesObserved {
 		r.Reason += " 本组发生重试，首次成功样本可能不是冷缓存；重试用量未计入样本命中率。"
