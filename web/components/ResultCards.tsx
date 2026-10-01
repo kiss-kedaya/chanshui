@@ -300,7 +300,6 @@ export default function ResultCards({
                   {(t.score ?? ((t.think_len > 0 ? 5 : 0) + (t.sig_len > 0 ? 5 : 0)))} / 10
                 </strong>
               </div>
-              <p className="muted">{t.reason}</p>
               <div className="mini-stats">
                 <span>
                   思维摘要 <b>{t.summary_score ?? (t.think_len > 0 ? 5 : 0)} / 5</b>

@@ -1282,19 +1282,21 @@ code {
 .candidate > div:first-child {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
   align-items: baseline;
-  font-size: 12px;
+  font-size: 20px;
 }
 .candidate span {
   overflow-wrap: anywhere;
-  color: #77705d;
+  color: #2f2b22;
+  font-weight: 650;
 }
 .candidate b {
   font:
-    12px Consolas,
+    600 22px Consolas,
     monospace;
-  color: #7e765d;
+  color: #2a261c;
+  font-variant-numeric: tabular-nums;
 }
 .prob-bar {
   height: 5px;
