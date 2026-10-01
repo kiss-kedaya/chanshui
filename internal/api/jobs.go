@@ -104,6 +104,9 @@ func (s *Server) persist(t *Task) {
 	t.persistMu.Lock()
 	defer t.persistMu.Unlock()
 	t.mu.Lock()
+	if t.Status == "done" {
+		t.controlHash = ""
+	}
 	r := history.Record{ReportID: t.ID, Status: t.Status, Model: t.Model, BaseURL: t.BaseURL, CreatedAt: t.CreatedAt}
 	raw, e := json.Marshal(t.Verdict)
 	if e != nil {

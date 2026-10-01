@@ -10,12 +10,12 @@
 4. 停止旧服务，切换 `/opt/chanshui-current` 到新版本目录，启动新服务；新服务默认会把异常中断的残留 Job 标为 `interrupted`，但不会碰已排空任务。
 5. 依次验证本机 `/api/health`、nginx/Cloudflare `/api/ready`、首页和 `/history`，确认健康后恢复入口。
 
-`TimeoutStopSec=1300` 覆盖最长 20 分钟 Job 上下文。不要直接 `systemctl restart` 代替排空流程。
+`TimeoutStopSec=1300` 是 systemd 停止服务时的保护窗口，不替代任务级总耗时预算。默认每个上游请求超时360秒、每个请求独立最多重试3次；任务总耗时由探针波次、并发等待和4次尝试预算共同决定。不要直接 `systemctl restart` 代替排空流程。
 
 ## 操作密钥边界
 
-创建 Job 的 `202` 响应一次性返回随机 128 bit `control_token`。服务端只保存 SHA-256 摘要；报告、历史、分享 URL、日志和普通 GET 响应都不包含明文 token。
+创建 Job 的 `202` 响应一次性返回随机 128 bit `control_token`。服务端只保存 SHA-256 摘要；报告、历史、分享 URL、日志和普通 GET 响应都不包含明文 token。浏览器按 `job_id` 将该操作key持久化到本地，刷新页面仍可恢复；Job 全部探针完成或24小时到期后删除对应记录。
 
-停止或失败项重试必须使用 `X-Job-Token` 请求头，比较采用常量时间；公开 Job ID 只有只读权限。重试仍要求重新提交 API Key，服务端不会把 API Key 写入数据库或 URL。前端只将操作 token 放在当前页面内存，不写 `localStorage`。
+失败项重试必须使用对应Job的 `X-Job-Token` 请求头，比较采用常量时间；操作key不能用于其他Job、停止接口或读取权限，公开 Job ID 只有只读权限。重试仍要求重新提交 API Key，服务端不会把 API Key 写入数据库、浏览器或 URL；操作key本身也不进URL、分享链接、报告和日志。
 
-生产入口应保持 HTTPS、`/api/*` `no-store`，Cloudflare 对 API 路径绕过缓存；不要把 `X-Job-Token` 放进查询参数或分享链接。
+生产入口应保持 HTTPS、`/api/*` `no-store`，Cloudflare 对 API 路径绕过缓存；公开读取接口用 ETag 返回 304 降低重复包体；不要把 `X-Job-Token` 放进查询参数或分享链接。

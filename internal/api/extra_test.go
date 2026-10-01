@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestCancelThenRetryOnlyCancelled(t *testing.T) {
+func TestJobRetryKeyCannotCancel(t *testing.T) {
 	s, up, _, _ := testSetup(t)
 	q := Request{BaseURL: up.URL, Key: "cancel-fixture", Model: "claude-opus-5", Concurrency: 1, Timeout: 10}
 	w := post(t, s.Handler(), "/api/detect", q)
@@ -25,14 +25,14 @@ func TestCancelThenRetryOnlyCancelled(t *testing.T) {
 	}
 	s.mu.Unlock()
 	w = postToken(t, s.Handler(), "/api/detect/"+task.ID+"/cancel", map[string]any{}, started["control_token"])
-	if w.Code != 200 {
+	if w.Code != 403 {
 		t.Fatal(w.Code)
 	}
 	waitTask(t, s, task.ID)
 	task.mu.Lock()
 	status := task.Status
 	task.mu.Unlock()
-	if status != "cancelled" && status != "done" {
+	if status != "done" {
 		t.Fatal(status)
 	}
 }

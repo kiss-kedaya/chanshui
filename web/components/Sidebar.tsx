@@ -5,20 +5,29 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { reportHost, reportPath } from "@/lib/report-view";
-import { getHistory, getBankStats, HistorySummary, BankStats } from "@/lib/api";
+import { getHistory, HistorySummary } from "@/lib/api";
+
+const HISTORY_REFRESH_MS = 45000;
+
 export default function Sidebar() {
   const [items, setItems] = useState<HistorySummary[]>([]),
-    [stats, setStats] = useState<BankStats | null>(null),
     [error, setError] = useState("");
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false),
     [hasMore, setHasMore] = useState(false),
     [loadingMore, setLoadingMore] = useState(false);
   const alive = useRef(true),
-    busy = useRef(false);
-  const refresh = useCallback(async () => {
-    if (busy.current) return;
+    busy = useRef(false),
+    lastRefresh = useRef(0);
+  const refresh = useCallback(async (force = false) => {
+    if (
+      busy.current ||
+      document.visibilityState === "hidden" ||
+      navigator.onLine === false ||
+      (!force && Date.now() - lastRefresh.current < HISTORY_REFRESH_MS)
+    ) return;
     busy.current = true;
+    lastRefresh.current = Date.now();
     try {
       const page = await getHistory(50);
       if (!alive.current) return;
@@ -27,7 +36,8 @@ export default function Sidebar() {
           page.length === 50
             ? prev.filter((x) => x.id < page[page.length - 1].id)
             : [];
-        return [...page, ...older];
+        const next = [...page, ...older];
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
       setHasMore(page.length === 50);
       setError("");
@@ -60,23 +70,19 @@ export default function Sidebar() {
   useEffect(() => {
     alive.current = true;
     void refresh();
-    getBankStats()
-      .then((x) => {
-        if (alive.current) setStats(x);
-      })
-      .catch(() => {});
-    const load = () => {
-      if (document.visibilityState === "visible") void refresh();
-    };
-    const timer = window.setInterval(load, 15000);
-    window.addEventListener("history-updated", load);
+    const load = () => { void refresh(); };
+    const updated = () => { void refresh(true); };
+    const timer = window.setInterval(load, HISTORY_REFRESH_MS);
+    window.addEventListener("history-updated", updated);
     window.addEventListener("focus", load);
+    window.addEventListener("online", load);
     document.addEventListener("visibilitychange", load);
     return () => {
       alive.current = false;
       window.clearInterval(timer);
-      window.removeEventListener("history-updated", load);
+      window.removeEventListener("history-updated", updated);
       window.removeEventListener("focus", load);
+      window.removeEventListener("online", load);
       document.removeEventListener("visibilitychange", load);
     };
   }, [refresh]);
@@ -129,6 +135,7 @@ export default function Sidebar() {
               className="hist-item"
               key={x.id}
               href={reportPath(x.report_id)}
+              prefetch={false}
             >
               <div className="history-model">{x.model}</div>
               <div className="history-meta">

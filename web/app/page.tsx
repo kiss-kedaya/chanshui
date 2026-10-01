@@ -4,7 +4,6 @@ import {
   startDetect,
   getDetect,
   retryDetect,
-  cancelDetect,
   getBankStats,
   getModels,
   ask,
@@ -12,6 +11,14 @@ import {
   BankStats,
   Metrics,
 } from "@/lib/api";
+import {
+  forgetJobControl,
+  getJobControl,
+  getLastControlledJob,
+  reconcileJobControl,
+  saveJobControl,
+} from "@/lib/job-controls";
+import { watchResource } from "@/lib/polling";
 import AuditHero from "@/components/AuditHero";
 import Hint from "@/components/Hint";
 import ProbeTimeline from "@/components/ProbeTimeline";
@@ -35,8 +42,8 @@ export default function DetectPage() {
   const [error, setError] = useState("");
   const [modelBusy, setModelBusy] = useState(false);
   const [concurrency, setConcurrency] = useState(0);
-  const [timeout, setTimeoutValue] = useState(180);
-  const controlToken = useRef("");
+  const [timeout, setTimeoutValue] = useState(360);
+  const [hasRetryKey, setHasRetryKey] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("summary");
   const [budget, setBudget] = useState(2048);
@@ -45,7 +52,7 @@ export default function DetectPage() {
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState("");
   const alive = useRef(true);
-  const session = useRef(0);
+  const stopPolling = useRef<(() => void) | null>(null);
   useEffect(() => {
     alive.current = true;
     getBankStats()
@@ -70,9 +77,15 @@ export default function DetectPage() {
         );
       }
     } catch {}
+    const requestedID = new URLSearchParams(window.location.search).get("job");
+    const saved = getLastControlledJob();
+    const resumeID = requestedID && /^[a-f0-9]{32}$/.test(requestedID)
+      ? requestedID
+      : saved?.jobId;
+    if (resumeID) poll(resumeID, true);
     return () => {
       alive.current = false;
-      session.current++;
+      stopPolling.current?.();
     };
   }, []);
   const settings = () => ({
@@ -83,42 +96,67 @@ export default function DetectPage() {
     concurrency,
     timeout,
   });
-  const poll = async (id: string) => {
-    const token = ++session.current;
-    try {
-      for (;;) {
-        const t = await getDetect(id);
-        if (!alive.current || token !== session.current) return;
+  const poll = (id: string, restore = false) => {
+    stopPolling.current?.();
+    setBusy(true);
+    let first = true;
+    stopPolling.current = watchResource<DetectTask>({
+      load: (signal) => getDetect(id, signal),
+      onValue: (t) => {
+        if (!alive.current) return;
+        reconcileJobControl(t);
+        setHasRetryKey(!!getJobControl(t.id));
         setTask(t);
-        if (!["running", "queued"].includes(t.status)) {
-          window.dispatchEvent(new Event("history-updated"));
-          break;
+        if (restore && first) {
+          setBaseUrl(t.base_url);
+          setModel(t.model);
+          const selected = t.verdict.protocol;
+          if (["auto", "chat", "anthropic", "openai"].includes(selected || ""))
+            setProtocol(selected as typeof protocol);
         }
-        await new Promise((r) => window.setTimeout(r, 900));
-      }
-    } catch (e) {
-      if (alive.current) setError((e as Error).message);
-    } finally {
-      if (alive.current) setBusy(false);
-    }
+        first = false;
+        const running = ["running", "queued"].includes(t.status);
+        setBusy(running);
+        if (!running) window.dispatchEvent(new Event("history-updated"));
+      },
+      isActive: (t) => ["running", "queued"].includes(t.status),
+      onError: (e) => {
+        if (!alive.current) return;
+        if (/已过期|超过24小时|不存在/.test(e.message)) {
+          forgetJobControl(id);
+          setHasRetryKey(false);
+        }
+        setError(e.message);
+        setBusy(false);
+      },
+    });
   };
   const run = async (retry = false) => {
     setError("");
     setBusy(true);
     if (!retry) setTask(null);
     try {
-      localStorage.setItem(
-        "chanshui-settings",
-        JSON.stringify({ base_url: baseUrl.trim(), model, protocol }),
-      );
-      const d =
-        retry && task
-          ? await retryDetect(task.id, settings(), controlToken.current)
-          : await startDetect(settings());
-      if ("control_token" in d)
-        controlToken.current = d.control_token as string;
-      setTask(await getDetect(d.task_id));
-      await poll(d.task_id);
+      try {
+        localStorage.setItem(
+          "chanshui-settings",
+          JSON.stringify({ base_url: baseUrl.trim(), model, protocol }),
+        );
+      } catch {}
+      let id: string;
+      if (retry && task) {
+        const control = getJobControl(task.id);
+        if (!control) throw Error("此任务的操作 key 已过期或已清理，不能重试");
+        id = (await retryDetect(task.id, settings(), control.token)).task_id;
+      } else {
+        const d = await startDetect(settings());
+        id = d.task_id;
+        if (!saveJobControl({ jobId: id, token: d.control_token, expiresAt: d.expires_at }))
+          setError("浏览器未允许保存操作 key，刷新后将无法重试此任务");
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set("job", id);
+      window.history.replaceState(null, "", url);
+      poll(id);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -346,23 +384,10 @@ export default function DetectPage() {
               <span className="usage-note">会产生接口用量</span>
               <Hint
                 label="检测用量说明"
-                text="一般请求约 15～18 次。缓存用三个小输出请求：Claude 约 5 千 token 前缀，其他模型约 2 千；以实际返回用量为准。失败最多重试 3 次。报告全站可见，有效期 24 小时。"
+                text="注入和缓存共用三个小输出请求：首轮约 4.6 千 token，之后追加约 2 千、1 千，以实际返回用量为准。每个请求首次失败后独立最多重试 3 次。报告全站可见，有效期 24 小时。"
               />
             </p>
             <div className="actions">
-              {busy && task && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() =>
-                    cancelDetect(task.id, controlToken.current).catch((e) =>
-                      setError(e.message),
-                    )
-                  }
-                >
-                  停止检测
-                </button>
-              )}
               <button
                 className="btn-primary detect-button"
                 type="submit"
@@ -396,15 +421,16 @@ export default function DetectPage() {
         />
       </div>
       {task && (
-        <ProbeTimeline probes={task.probes} status={task.status}>
+        <ProbeTimeline probes={task.probes} status={task.status} timing={task.verdict.timing}>
           {!busy && (
             <div className="report-actions">
               <span className="muted">{task.warning || ""}</span>
-              {failed > 0 && (
+              {failed > 0 && hasRetryKey && (
                 <button
                   className="btn-secondary"
                   onClick={() => run(true)}
-                  disabled={!key}
+                  disabled={!key.trim()}
+                  title={!key.trim() ? "重新填写上游 API Key 后，只重试这个任务的失败项" : "只重试这个任务的失败项"}
                 >
                   重跑失败项（{failed}）
                 </button>

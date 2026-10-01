@@ -67,7 +67,7 @@ func TestSavedReportShareIndependentFromTask(t *testing.T) {
 		t.Fatal("global history missing newest report")
 	}
 	// Public IDs do not allow someone to cancel or retry the private task.
-	if r := post(t, restarted.Handler(), "/api/detect/"+oldID+"/cancel", map[string]any{}); r.Code != 404 {
+	if r := post(t, restarted.Handler(), "/api/detect/"+oldID+"/cancel", map[string]any{}); r.Code != 403 {
 		t.Fatal("public ID permitted mutation")
 	}
 }

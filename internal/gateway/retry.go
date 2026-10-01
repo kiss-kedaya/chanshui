@@ -45,6 +45,11 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 			m, err = c.callCompatibleOnce(ctx, q)
 		}
 		m.Attempts = attempt + 1
+		if err == nil && m.Err == "" && q.Validate != nil {
+			if validationErr := q.Validate(m); validationErr != nil {
+				m.Err = validationErr.Error()
+			}
+		}
 		if (c.Mode == "" || c.Mode == "auto") && q.protocolOverride == "" {
 			baseProtocol := c.ProtocolFor(q.Model)
 			unsupportedPath := m.Status == 404 || m.Status == 405
@@ -112,6 +117,10 @@ func FriendlyError(status int, reason string, attempts int) string {
 		message = "上游服务暂时异常"
 	case strings.Contains(lower, "deadline") || strings.Contains(lower, "timeout"):
 		message = "上游响应超时"
+	case strings.Contains(lower, "empty response"):
+		message = "上游返回空响应"
+	case strings.Contains(lower, "max_tokens"):
+		message = "上游输出被长度限制截断"
 	case strings.Contains(lower, "json") || strings.Contains(lower, "stream"):
 		message = "上游响应格式异常或流式响应中断"
 	}

@@ -62,7 +62,7 @@ func (s *Store) CreateJob(ctx context.Context, r Record, progress json.RawMessag
 	return res.LastInsertId()
 }
 func (s *Store) UpdateJob(ctx context.Context, r Record, progress json.RawMessage) error {
-	res, e := s.db.ExecContext(ctx, "UPDATE detections SET status=?,progress_json=?,verdict_json=?,iq_score=?,thinking_pass=?,family=? WHERE report_id=? AND expires_at>?", r.Status, string(progress), string(r.Verdict), nullableInt(r.IQScore), nullableBool(r.ThinkingPass), r.Family, r.ReportID, time.Now().Unix())
+	res, e := s.db.ExecContext(ctx, "UPDATE detections SET status=?,progress_json=?,verdict_json=?,iq_score=?,thinking_pass=?,family=?,control_hash=CASE WHEN ?='done' THEN '' ELSE control_hash END WHERE report_id=? AND expires_at>?", r.Status, string(progress), string(r.Verdict), nullableInt(r.IQScore), nullableBool(r.ThinkingPass), r.Family, r.Status, r.ReportID, time.Now().Unix())
 	if e != nil {
 		return e
 	}

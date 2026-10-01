@@ -2,14 +2,17 @@
 import { ReactNode } from "react";
 import { Probe } from "@/lib/api";
 import Icon from "@/components/Icon";
+import ElapsedTime, { DetectionTiming } from "@/components/ElapsedTime";
 export default function ProbeTimeline({
   probes,
   status,
   children,
+  timing,
 }: {
   probes: Probe[];
   status: string;
   children?: ReactNode;
+  timing?: DetectionTiming;
 }) {
   const questionProbes = probes.filter((p) => /^Q\d+$/.test(p.id));
   const finished = probes.filter(
@@ -46,7 +49,7 @@ export default function ProbeTimeline({
           <div>
             <h2>{title}</h2>
             <p className="timeline-caption">
-              {active ? "Job 已创建，可以分享。" : ""}
+              {timing ? <ElapsedTime timing={timing} active={active} /> : active ? "Job 已创建，可以分享。" : ""}
             </p>
           </div>
         </div>

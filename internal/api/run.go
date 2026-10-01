@@ -114,6 +114,14 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 }
 func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[string]bool) {
 	defer t.cancel()
+	started := time.Now()
+	t.mu.Lock()
+	previousMs, runs := int64(0), 0
+	if t.Verdict.Timing != nil {
+		previousMs, runs = t.Verdict.Timing.TotalMs, t.Verdict.Timing.Runs
+	}
+	t.Verdict.Timing = &Timing{StartedAt: started.UTC().Format(time.RFC3339Nano), TotalMs: previousMs, Runs: runs + 1}
+	t.mu.Unlock()
 
 	g, clientErr := s.client(q)
 	var wg sync.WaitGroup
@@ -185,11 +193,12 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		}()
 	}
 	job("injection", func() (any, error) {
-		v, e := inject.Measure(ctx, g, q.Model)
+		v, e := inject.Measure(ctx, g, q.Model, q.Timeout)
 		if v.Cache != nil {
 			t.mu.Lock()
-			t.Verdict.Cache = v.Cache
+			t.Verdict.Cache = sanitize(v.Cache, q.Key)
 			t.mu.Unlock()
+			v.Cache = nil
 		}
 		if e != nil {
 			return map[string]any{"error": e.Error(), "points": v.Points}, e
@@ -218,7 +227,15 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	for _, question := range t.questions {
 		item := question
 		job(item.ID, func() (any, error) {
-			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, System: []gateway.SystemBlock{{Text: "禁止使用任何工具。请认真推导并核验；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout})
+			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, System: []gateway.SystemBlock{{Text: "禁止使用任何工具。请认真推导并核验；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
+				if m.StopReason == "max_tokens" || m.StopReason == "length" {
+					return fmt.Errorf("max_tokens: response truncated")
+				}
+				if strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
+					return fmt.Errorf("empty response")
+				}
+				return nil
+			}})
 			if e == nil && m.Err != "" {
 				e = fmt.Errorf("%s", m.Err)
 			}
@@ -241,6 +258,8 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			}
 			m.SSEFrames = nil
 			v := QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Prompt: item.Prompt, Expected: item.Answer, Answer: m.Answer, ThinkingText: m.ThinkingText, Signature: m.Signature, Ms: m.Ms, Tags: []string{}, Metrics: m}
+			// Text evidence already lives on the question, not twice in metrics.
+			v.Metrics.Answer, v.Metrics.ThinkingText, v.Metrics.Signature = "", "", ""
 			if e != nil {
 				v.Error = redact(e.Error(), q.Key)
 			} else {
@@ -290,6 +309,9 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		}
 	}
 	t.finished = time.Now()
+	t.Verdict.Timing.FinishedAt = t.finished.UTC().Format(time.RFC3339Nano)
+	t.Verdict.Timing.LastRunMs = time.Since(started).Milliseconds()
+	t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
 	t.mu.Unlock()
 	s.persist(t)
 }

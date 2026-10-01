@@ -65,17 +65,18 @@ type Probe struct {
 	Error  string `json:"error,omitempty"`
 }
 type Verdict struct {
-	Protocol       string `json:"protocol,omitempty"`
-	Tools          any    `json:"tools"`
-	Web            any    `json:"web"`
-	ScoringVersion string `json:"scoring_version"`
-	Injection      any    `json:"injection"`
-	Fingerprint    any    `json:"fingerprint"`
-	Thinking       any    `json:"thinking"`
-	Cache          any    `json:"cache"`
-	Knowledge      any    `json:"knowledge"`
-	Integrity      any    `json:"integrity"`
-	IQ             any    `json:"iq"`
+	Timing         *Timing `json:"timing,omitempty"`
+	Protocol       string  `json:"protocol,omitempty"`
+	Tools          any     `json:"tools"`
+	Web            any     `json:"web"`
+	ScoringVersion string  `json:"scoring_version"`
+	Injection      any     `json:"injection"`
+	Fingerprint    any     `json:"fingerprint"`
+	Thinking       any     `json:"thinking"`
+	Cache          any     `json:"cache"`
+	Knowledge      any     `json:"knowledge"`
+	Integrity      any     `json:"integrity"`
+	IQ             any     `json:"iq"`
 }
 type Task struct {
 	ID          string  `json:"id"`
@@ -233,7 +234,7 @@ func (s *Server) validate(q *Request, model bool) error {
 		return fmt.Errorf("请从可测模型清单选择模型")
 	}
 	if q.Timeout == 0 {
-		q.Timeout = 180
+		q.Timeout = 360
 	}
 	if q.Timeout < 10 || q.Timeout > 600 {
 		return fmt.Errorf("单请求超时应在 10～600 秒")
@@ -322,7 +323,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	for _, item := range t.questions {
 		t.Probes = append(t.Probes, Probe{ID: item.ID, Name: item.Title, Status: "queued"})
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 20*time.Minute)
+	ctx, cancel := s.executionContext(q, t.ExpiresAt)
 	t.cancel = cancel
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -370,30 +371,10 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		reply(w, 410, map[string]string{"error": "检测报告已超过24小时有效期"})
 		return
 	}
-	reply(w, 200, t)
+	replyConditional(w, r, t)
 }
 func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
-	t := s.find(r.PathValue("id"))
-	if t == nil {
-		reply(w, 404, map[string]string{"error": "任务不存在"})
-		return
-	}
-	t.mu.Lock()
-	if t.ExpiresAt <= time.Now().Unix() {
-		t.mu.Unlock()
-		reply(w, 410, map[string]string{"error": "任务已超过24小时有效期"})
-		return
-	}
-	if !s.authorize(r, t) {
-		t.mu.Unlock()
-		reply(w, 403, map[string]string{"error": "只有任务创建者可停止检测"})
-		return
-	}
-	if t.cancel != nil {
-		t.cancel()
-	}
-	t.mu.Unlock()
-	reply(w, 200, map[string]bool{"ok": true})
+	reply(w, 403, map[string]string{"error": "操作 key 仅可重试对应任务的失败项，不支持停止任务"})
 }
 func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
@@ -429,6 +410,11 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t.mu.Lock()
+	if t.ExpiresAt <= time.Now().Unix() {
+		t.mu.Unlock()
+		reply(w, 410, map[string]string{"error": "任务已超过24小时有效期"})
+		return
+	}
 	if !s.authorize(r, t) {
 		t.mu.Unlock()
 		reply(w, 403, map[string]string{"error": "只有任务创建者可重跑检测"})
@@ -462,7 +448,7 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 	}
 	t.Status = "queued"
 	t.Warning = ""
-	ctx, cancel := context.WithTimeout(s.ctx, 20*time.Minute)
+	ctx, cancel := s.executionContext(q, t.ExpiresAt)
 	t.cancel = cancel
 	t.mu.Unlock()
 	s.mu.Lock()
@@ -513,7 +499,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []history.Summary{}
 	}
-	reply(w, 200, items)
+	replyConditional(w, r, items)
 }
 func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 	id, e := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -526,7 +512,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"error": "历史记录不存在"})
 		return
 	}
-	reply(w, 200, map[string]any{"id": rec.ID, "report_id": rec.ReportID, "host": displayHost(rec.BaseURL), "status": rec.Status, "expires_at": rec.ExpiresAt, "probes": rec.Progress, "base_url": rec.BaseURL, "model": rec.Model, "created_at": rec.CreatedAt, "verdict_json": rec.Verdict})
+	replyConditional(w, r, map[string]any{"id": rec.ID, "report_id": rec.ReportID, "host": displayHost(rec.BaseURL), "status": rec.Status, "expires_at": rec.ExpiresAt, "probes": rec.Progress, "base_url": rec.BaseURL, "model": rec.Model, "created_at": rec.CreatedAt, "verdict_json": rec.Verdict})
 }
 
 func displayHost(base string) string {
@@ -549,7 +535,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 			reply(w, 410, map[string]string{"error": "报告已过期"})
 			return
 		}
-		reply(w, 200, map[string]any{"id": t.HistoryID, "report_id": t.ID, "job_id": t.ID, "host": displayHost(t.BaseURL), "base_url": t.BaseURL, "model": t.Model, "created_at": t.CreatedAt, "status": t.Status, "expires_at": t.ExpiresAt, "probes": t.Probes, "verdict_json": t.Verdict})
+		replyConditional(w, r, map[string]any{"id": t.HistoryID, "report_id": t.ID, "job_id": t.ID, "host": displayHost(t.BaseURL), "base_url": t.BaseURL, "model": t.Model, "created_at": t.CreatedAt, "status": t.Status, "expires_at": t.ExpiresAt, "probes": t.Probes, "verdict_json": t.Verdict})
 		return
 	}
 	rec, e := s.store.GetByReportID(id)
@@ -557,5 +543,5 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"error": "报告不存在或已过期（有效期24小时）"})
 		return
 	}
-	reply(w, 200, map[string]any{"id": rec.ID, "report_id": rec.ReportID, "host": displayHost(rec.BaseURL), "status": rec.Status, "expires_at": rec.ExpiresAt, "probes": rec.Progress, "base_url": rec.BaseURL, "model": rec.Model, "created_at": rec.CreatedAt, "verdict_json": rec.Verdict})
+	replyConditional(w, r, map[string]any{"id": rec.ID, "report_id": rec.ReportID, "host": displayHost(rec.BaseURL), "status": rec.Status, "expires_at": rec.ExpiresAt, "probes": rec.Progress, "base_url": rec.BaseURL, "model": rec.Model, "created_at": rec.CreatedAt, "verdict_json": rec.Verdict})
 }

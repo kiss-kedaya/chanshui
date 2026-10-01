@@ -1,8 +1,11 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { getDetection, getReport, SavedReport } from "@/lib/api";
 import { parseReportID, reportHost, reportPath } from "@/lib/report-view";
+import { getJobControl, reconcileJobControl } from "@/lib/job-controls";
+import { watchResource } from "@/lib/polling";
 import ResultCards from "@/components/ResultCards";
 import ProbeTimeline from "@/components/ProbeTimeline";
 import ReportShare from "@/components/ReportShare";
@@ -14,13 +17,14 @@ function HistoryDetailInner() {
     [error, setError] = useState(""),
     [entry, setEntry] = useState(id),
     [loading, setLoading] = useState(false),
-    [entryError, setEntryError] = useState("");
+    [entryError, setEntryError] = useState(""),
+    [canRetry, setCanRetry] = useState(false);
   useEffect(() => {
-    let active = true;
     setData(null);
     setError("");
     setEntry(id);
     setEntryError("");
+    setCanRetry(false);
     if (!id) {
       setLoading(false);
       return;
@@ -33,29 +37,31 @@ function HistoryDetailInner() {
       return;
     }
     setLoading(true);
-    let timer: ReturnType<typeof setTimeout>;
-    async function load() {
-      try {
-        const d = await (publicID
-          ? getReport(publicID)
-          : getDetection(Number(id)));
-        if (!active) return;
+    return watchResource<SavedReport>({
+      load: (signal) => publicID
+        ? getReport(publicID, signal)
+        : getDetection(Number(id), signal),
+      onValue: (d) => {
+        reconcileJobControl({
+          id: d.report_id,
+          status: d.status,
+          expires_at: d.expires_at,
+          probes: d.probes,
+        });
         setData(d);
         setLoading(false);
-        if (["queued", "running"].includes(d.status))
-          timer = setTimeout(load, 1800);
-      } catch (e) {
-        if (active) {
-          setError((e as Error).message);
-          setLoading(false);
-        }
-      }
-    }
-    void load();
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
+        setCanRetry(
+          !!getJobControl(d.report_id) &&
+          !["queued", "running"].includes(d.status) &&
+          (d.probes || []).some((p) => p.status === "error" || p.status === "cancelled"),
+        );
+      },
+      isActive: (d) => ["queued", "running"].includes(d.status),
+      onError: (e) => {
+        setError(e.message);
+        setLoading(false);
+      },
+    });
   }, [id]);
   return (
     <div className="page-shell history-page">
@@ -121,6 +127,15 @@ function HistoryDetailInner() {
             expiresAt={data.expires_at}
           />
         )}
+        {data && canRetry && (
+          <Link
+            className="btn-secondary"
+            href={"/?job=" + encodeURIComponent(data.report_id)}
+            prefetch={false}
+          >
+            重试失败项
+          </Link>
+        )}
         {!data && !error && !loading && (
           <p className="muted">粘贴 Job ID，或从左侧历史选择报告。</p>
         )}
@@ -130,8 +145,12 @@ function HistoryDetailInner() {
           </div>
         )}
       </section>
-      {data && ["running", "queued"].includes(data.status) && (
-        <ProbeTimeline probes={data.probes || []} status={data.status} />
+      {data && (
+        <ProbeTimeline
+          probes={data.probes || []}
+          status={data.status}
+          timing={data.verdict_json.timing}
+        />
       )}
       {data && (
         <ResultCards

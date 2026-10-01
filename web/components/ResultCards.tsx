@@ -32,6 +32,16 @@ export default function ResultCards({
   const knowledge = v.knowledge;
   const integrity = v.integrity;
   const claude = (model || "").toLowerCase().startsWith("claude-");
+  const cache = v.cache;
+  const previousCache = cache?.samples?.find((sample) => sample.index === 2);
+  const thirdCache = cache?.samples?.find((sample) => sample.index === 3);
+  const previousCacheTotal = previousCache &&
+    previousCache.read_reported !== false && previousCache.write_reported !== false
+    ? cache?.third_read_baseline ?? previousCache.read + previousCache.write : null;
+  const cacheToken = (value?: number | null, reported?: boolean) =>
+    reported === false || value == null || !Number.isFinite(value) ? "—" : value;
+  const cacheRate = (value?: number | null) =>
+    value == null || !Number.isFinite(value) ? "—" : value.toFixed(2) + "%";
   return (
     <div
       className={"results " + (loading ? "results-loading" : "results-settled")}
@@ -64,10 +74,7 @@ export default function ResultCards({
                 斜率 <b>{a.slope.toFixed(3)}</b>
               </span>
               <span>
-                {a.points.length === 2 ? "采样次数" : "R²"}{" "}
-                <b>
-                  {a.points.length === 2 ? "2 次" : (a.r2?.toFixed(4) ?? "—")}
-                </b>
+                复用采样 <b>{a.points.length} 次</b>
               </span>
               {a.points.length > 2 && a.max_residual != null && (
                 <span>
@@ -81,17 +88,25 @@ export default function ResultCards({
                 <table>
                   <thead>
                     <tr>
-                      <th>字符数</th>
+                      <th>轮次</th>
+                      <th>累计字符</th>
                       <th>输入</th>
                       <th>缓存写</th>
                       <th>缓存读</th>
                       <th>合计</th>
+                      <th>前轮输出</th>
+                      <th>校正合计</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {a.points.map((p) => (
-                      <tr key={p.n}>
-                        {[p.n, p.input, p.cc, p.cr, p.total].map((n, i) => (
+                    {a.points.map((p, index) => (
+                      <tr key={p.round || p.n}>
+                        {[
+                          p.round || index + 1, p.n, p.input,
+                          cacheToken(p.cc, cache?.samples?.[index]?.write_reported),
+                          cacheToken(p.cr, cache?.samples?.[index]?.read_reported),
+                          p.total, p.output_before ?? "—", p.adjusted_total ?? "—",
+                        ].map((n, i) => (
                           <td key={i} title={JSON.stringify(p)}>
                             {n}
                           </td>
@@ -101,6 +116,9 @@ export default function ResultCards({
                   </tbody>
                 </table>
               </div>
+              {a.round_overhead != null && (
+                <p className="muted">每轮新增包装修正 {a.round_overhead.toFixed(2)} token</p>
+              )}
               <p className="muted">
                 &lt;50：10分 · 50～1000：8分 · 1001～3000：6分 · 3001～6000：4分
                 · 6001～10000：2分 · &gt;10000：0分
@@ -356,30 +374,28 @@ export default function ResultCards({
               <>
                 <div className="cache-rates">
                   <div>
-                    <span>本次缓存读取</span>
-                    <strong>
-                      {v.cache.total_read == null
-                        ? "—"
-                        : v.cache.total_read}
-                    </strong>
+                    <span>第三轮缓存率</span>
+                    <strong>{cacheRate(v.cache.third_read_ratio)}</strong>
                   </div>
                   <div>
-                    <span>本次输出</span>
-                    <strong>
-                      {v.cache.total_output == null
-                        ? "—"
-                        : v.cache.total_output}
-                    </strong>
+                    <span>第三轮读取</span>
+                    <strong>{cacheToken(thirdCache?.read, thirdCache?.read_reported)}</strong>
                   </div>
                   <div>
-                    <span>第三轮读取比例</span>
-                    <strong>
-                      {v.cache.third_read_ratio == null
-                        ? "—"
-                        : v.cache.third_read_ratio.toFixed(2) + "%"}
-                    </strong>
+                    <span>第二轮读 ＋ 写</span>
+                    <strong>{cacheToken(previousCacheTotal)}</strong>
                   </div>
                 </div>
+                <p className="muted">
+                  {cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ {cacheToken(previousCacheTotal)} × 100%
+                  <Hint
+                    label="第三轮缓存率说明"
+                    text="仅用第三轮缓存读取除以第二轮缓存读取与写入之和。缺字段或分母为零时不计算；每轮命中率另按该轮总输入计算。"
+                  />
+                </p>
+                {v.cache.third_read_ratio != null && v.cache.third_read_ratio > 100 && (
+                  <p className="muted">上游读取超过上一轮已报缓存量，保留原始比例。</p>
+                )}
                 <div className="table-wrap">
                   <table className="cache-table">
                     <thead>
@@ -389,16 +405,18 @@ export default function ResultCards({
                         <th>写</th>
                         <th>输入</th>
                         <th>输出</th>
+                        <th>命中率</th>
                       </tr>
                     </thead>
                     <tbody>
                       {v.cache.samples.map((row) => (
                         <tr key={row.index}>
                           <td>#{row.index}</td>
-                          <td>{row.read}</td>
-                          <td>{row.write}</td>
-                          <td>{row.input}</td>
-                          <td>{row.output}</td>
+                          <td>{cacheToken(row.read, row.read_reported)}</td>
+                          <td>{cacheToken(row.write, row.write_reported)}</td>
+                          <td>{cacheToken(row.input, row.input_reported)}</td>
+                          <td>{cacheToken(row.output, row.output_reported)}</td>
+                          <td>{cacheRate(row.hit_rate)}</td>
                         </tr>
                       ))}
                     </tbody>

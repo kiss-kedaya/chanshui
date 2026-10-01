@@ -56,6 +56,13 @@ export interface CacheSample {
   total: number;
   hit_rate: number | null;
   attempts: number;
+  read_reported?: boolean;
+  write_reported?: boolean;
+  input_reported?: boolean;
+  output_reported?: boolean;
+  prompt_chars?: number;
+  messages?: number;
+  request_sha256?: string;
   error?: string;
 }
 export interface KnowledgeVerdict {
@@ -78,6 +85,7 @@ export interface IntegrityVerdict {
   signals: { key: string; label: string; weight: number; applicable: boolean; known: boolean; points?: number; max_points: number; reason: string }[];
 }
 export interface DetectVerdict {
+  timing?: { started_at: string; finished_at?: string; total_ms: number; last_run_ms: number; runs: number };
   protocol?: string;
   tools?: CapabilityResult | null;
   web?: CapabilityResult | null;
@@ -94,6 +102,7 @@ export interface DetectVerdict {
       pass: boolean | null;
     }[];
     third_read_ratio?: number | null;
+    third_read_baseline?: number;
     total_read?: number;
     total_output?: number;
     prefix_sha256?: string;
@@ -112,6 +121,7 @@ export interface DetectVerdict {
   injection: {
     inj: number;
     slope: number;
+    round_overhead?: number;
     r2: number | null;
     max_residual: number | null;
     reliable: boolean;
@@ -119,6 +129,9 @@ export interface DetectVerdict {
     max_score: number;
     note: string;
     points: {
+      round?: number;
+      output_before?: number;
+      adjusted_total?: number;
       n: number;
       input: number;
       cc: number;
@@ -215,31 +228,47 @@ export interface HistorySummary {
   family: string | null;
   thinking_pass: boolean | null;
 }
+const readSnapshots = new Map<string, { etag: string; data: unknown }>();
 async function request<T>(
   path: string,
   body?: unknown,
   token?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
+  const publicRead = body === undefined && /^\/api\/(detect\/|reports\/|history(?:\?|\/))/.test(path);
+  const snapshot = publicRead ? readSnapshots.get(path) : undefined;
   const res = await fetch(
     API_BASE + path,
     body === undefined
-      ? { cache: "no-store" }
+      ? { cache: "no-store", signal, headers: snapshot ? { "If-None-Match": snapshot.etag } : undefined }
       : {
           method: "POST",
+          redirect: "error",
           headers: {
             "content-type": "application/json",
             ...(token ? { "X-Job-Token": token } : {}),
           },
           body: JSON.stringify(body),
+          signal,
         },
   );
+  if (res.status === 304 && snapshot) return snapshot.data as T;
   let data;
   try {
     data = await res.json();
   } catch {
     throw Error("服务返回了非 JSON 响应，请检查本地服务");
   }
-  if (!res.ok) throw Error(data.error || "请求失败 HTTP " + res.status);
+  if (!res.ok) {
+    if (publicRead) readSnapshots.delete(path);
+    throw Error(data.error || "请求失败 HTTP " + res.status);
+  }
+  const etag = res.headers.get("ETag");
+  if (publicRead && etag) {
+    readSnapshots.delete(path);
+    readSnapshots.set(path, { etag, data });
+    if (readSnapshots.size > 8) readSnapshots.delete(readSnapshots.keys().next().value!);
+  }
   return data as T;
 }
 export const startDetect = (q: DetectRequest) =>
@@ -249,12 +278,10 @@ export const startDetect = (q: DetectRequest) =>
     control_token: string;
     expires_at: number;
   }>("/api/detect", q);
-export const getDetect = (id: string) =>
-  request<DetectTask>("/api/detect/" + id);
+export const getDetect = (id: string, signal?: AbortSignal) =>
+  request<DetectTask>("/api/detect/" + encodeURIComponent(id), undefined, undefined, signal);
 export const retryDetect = (id: string, q: DetectRequest, token: string) =>
-  request<{ task_id: string }>("/api/detect/" + id + "/retry", q, token);
-export const cancelDetect = (id: string, token: string) =>
-  request("/api/detect/" + id + "/cancel", {}, token);
+  request<{ task_id: string }>("/api/detect/" + encodeURIComponent(id) + "/retry", q, token);
 export const getBankStats = () => request<BankStats>("/api/bank/stats");
 export const getHistory = (limit = 50, before?: number) =>
   request<HistorySummary[]>(
@@ -272,10 +299,10 @@ export interface SavedReport {
   model: string;
   verdict_json: DetectVerdict;
 }
-export const getDetection = (id: number) =>
-  request<SavedReport>("/api/history/" + id);
-export const getReport = (id: string) =>
-  request<SavedReport>("/api/reports/" + encodeURIComponent(id));
+export const getDetection = (id: number, signal?: AbortSignal) =>
+  request<SavedReport>("/api/history/" + id, undefined, undefined, signal);
+export const getReport = (id: string, signal?: AbortSignal) =>
+  request<SavedReport>("/api/reports/" + encodeURIComponent(id), undefined, undefined, signal);
 export const getModels = (q: DetectRequest) =>
   request<{ models: string[]; upstream_count: number }>("/api/models", q);
 export const ask = (
