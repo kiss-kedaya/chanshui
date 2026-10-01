@@ -193,6 +193,7 @@ export interface DetectVerdict {
     behavioral_top3?: { modelId: string; similarity: number }[];
     behavior_note?: string;
     used_outputs: number;
+    requests?: number;
     low_confidence: boolean;
     note: string;
     evidence: {

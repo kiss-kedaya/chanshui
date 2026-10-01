@@ -42,6 +42,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
+        <meta httpEquiv="Content-Type" content="text/html; charset=utf-8" />
         <script
           dangerouslySetInnerHTML={{
             __html:

@@ -1245,9 +1245,10 @@ code {
   padding: 3px 7px;
 }
 .result-note {
-  position: absolute;
-  right: 44px;
-  top: 20px;
+  position: static;
+  display: flex;
+  align-items: center;
+  margin: 0 0 8px;
 }
 .mini-stats {
   display: flex;

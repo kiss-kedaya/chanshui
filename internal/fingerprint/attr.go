@@ -119,10 +119,10 @@ func Attribute(outputs []Output, bank *Bank) Attribution {
 	minValid := bank.Numeric.MinimumValidNumbers
 	var fused [][]float64
 	for _, o := range outputs {
-		nums := ParseNumbers(o.Text)
-		if len(nums) < maxInt(minValid, int(math.Ceil(float64(o.ExpectedCount)*0.55))) {
+		if !Usable(o.Text, o.ExpectedCount, minValid) {
 			continue
 		}
+		nums := ParseNumbers(o.Text)
 		if s := RobustScoreNumbers(nums, bank); s != nil {
 			fused = append(fused, s)
 		}
@@ -148,10 +148,11 @@ func Attribute(outputs []Output, bank *Bank) Attribution {
 	// Aggregate query counts across valid outputs for js_similarity.
 	queryCounts := make([]int, NumDim)
 	for _, o := range outputs {
-		if nums := ParseNumbers(o.Text); len(nums) >= maxInt(minValid, int(math.Ceil(float64(o.ExpectedCount)*0.55))) {
-			for _, v := range nums {
-				queryCounts[v-NumMinValue]++
-			}
+		if !Usable(o.Text, o.ExpectedCount, minValid) {
+			continue
+		}
+		for _, v := range ParseNumbers(o.Text) {
+			queryCounts[v-NumMinValue]++
 		}
 	}
 
@@ -199,6 +200,13 @@ func Attribute(outputs []Output, bank *Bank) Attribution {
 		UsedOutputs:   len(fused),
 		LowConfidence: top.Prob < 0.6,
 	}
+}
+
+// Usable reports whether one probe has enough in-range integers to count
+// as a fingerprint sample. The threshold matches Attribute.
+func Usable(text string, expected, minValid int) bool {
+	need := maxInt(minValid, int(math.Ceil(float64(expected)*0.55)))
+	return len(ParseNumbers(text)) >= need
 }
 
 func softmax(beta float64, score []float64) []float64 {

@@ -46,7 +46,7 @@ func TestSavedReportShareIndependentFromTask(t *testing.T) {
 	before := calls.Load()
 	postToken(t, s.Handler(), "/api/detect/"+task.ID+"/retry", q, started["control_token"])
 	waitTask(t, s, task.ID)
-	if task.ReportID != oldID || calls.Load()-before != 1 {
+	if task.ReportID != oldID || calls.Load()-before != 2 {
 		t.Fatal("retry replaced shared snapshot or repeated successful probes")
 	}
 	if getJSON(t, s.Handler(), "/api/reports/"+oldID).Code != 200 {

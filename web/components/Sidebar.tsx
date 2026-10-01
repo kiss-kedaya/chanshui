@@ -171,9 +171,6 @@ export default function Sidebar() {
       </div>
       <div className="sidebar-bottom">
         <Feedback />
-        <Link className="sidebar-admin" href="/admin">
-          反馈记录
-        </Link>
         <span className="sidebar-retention">
           <Icon name="clock" width="14" height="14" />
           报告保留 24 小时

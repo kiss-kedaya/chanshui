@@ -150,8 +150,8 @@ export default function ResultCards({
                     </div>
                   ))}
                 <p className="muted">
-                  有效样本 {f.used_outputs} / 3 ·{" "}
-                  {f.low_confidence ? "低置信，请复测" : "仅在当前候选库内比较"}
+                  有效样本 {f.used_outputs} / 3
+                  {typeof f.requests === "number" ? " · 请求 " + f.requests + " / 10" : ""}
                 </p>
                 {f.behavioral_top3 && (
                   <Details

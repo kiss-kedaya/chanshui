@@ -146,7 +146,7 @@ func TestDetectHistoryIsolationRetry(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	waitTask(t, s, task.ID)
-	if calls.Load()-before != 1 {
+	if calls.Load()-before != 2 {
 		t.Fatalf("retry repeated successful probes: %d", calls.Load()-before)
 	}
 	if task.Status != "done" {

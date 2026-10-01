@@ -70,49 +70,90 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 		if e != nil {
 			return nil, e
 		}
-		return map[string]any{"family": "unknown", "family_name": "未建立数字基线", "family_prob": 0, "top_model": "", "top_prob": 0, "results": []any{}, "behavioral_top3": b.Top3, "used_outputs": 0, "low_confidence": true, "note": "当前数字库仅覆盖GPT/Claude，本模型只给出探索性行为参考，不强制归因为库内模型。", "evidence": []any{}}, nil
+		return map[string]any{"family": "unknown", "family_name": "未建立数字基线", "family_prob": 0, "top_model": "", "top_prob": 0, "results": []any{}, "behavioral_top3": b.Top3, "used_outputs": 0, "requests": 0, "low_confidence": true, "note": "当前数字库只覆盖 GPT 和 Claude。没有有效数字样本，这项记 0 分。", "evidence": []any{}}, nil
 	}
-	chs := fingerprint.GenerateChallenges(3, rand.New(rand.NewSource(time.Now().UnixNano())))
-	outs := make([]fingerprint.Output, 3)
-	evidence := make([]any, 3)
-	var wg sync.WaitGroup
-	for i, ch := range chs {
-		wg.Add(1)
-		go func(i int, ch fingerprint.Challenge) {
-			defer wg.Done()
-			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: 4096, Stream: true, TimeoutSeconds: q.Timeout})
-			errText := m.Err
-			if e != nil {
-				errText = e.Error()
+	const wantSamples = 3
+	const maxRequests = 10
+	minValid := bank.Numeric.MinimumValidNumbers
+	challenges := fingerprint.GenerateChallenges(maxRequests, rand.New(rand.NewSource(time.Now().UnixNano())))
+	outs := make([]fingerprint.Output, 0, wantSamples)
+	evidence := make([]any, 0, maxRequests)
+	requests := 0
+	for len(outs) < wantSamples && requests < len(challenges) {
+		if ctx.Err() != nil {
+			break
+		}
+		batch := wantSamples - len(outs)
+		if room := len(challenges) - requests; batch > room {
+			batch = room
+		}
+		type slot struct {
+			out fingerprint.Output
+			ev  any
+			ok  bool
+		}
+		slots := make([]slot, batch)
+		var batchWG sync.WaitGroup
+		for i := 0; i < batch; i++ {
+			ch := challenges[requests+i]
+			batchWG.Add(1)
+			go func(i int, ch fingerprint.Challenge) {
+				defer batchWG.Done()
+				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: 4096, Stream: true, TimeoutSeconds: q.Timeout})
+				errText := m.Err
+				if e != nil {
+					errText = e.Error()
+				}
+				ok := errText == "" && fingerprint.Usable(m.Answer, ch.ExpectedCount, minValid)
+				answer := m.Answer
+				if !ok {
+					answer = ""
+				}
+				slots[i] = slot{
+					out: fingerprint.Output{Text: answer, ExpectedCount: ch.ExpectedCount},
+					ev:  map[string]any{"id": ch.ID, "expected_count": ch.ExpectedCount, "parsed_count": len(fingerprint.ParseNumbers(m.Answer)), "answer": m.Answer, "error": errText, "ms": m.Ms, "usable": ok},
+					ok:  ok,
+				}
+			}(i, ch)
+		}
+		batchWG.Wait()
+		requests += batch
+		for _, sl := range slots {
+			evidence = append(evidence, sl.ev)
+			if sl.ok && len(outs) < wantSamples {
+				outs = append(outs, sl.out)
 			}
-			outs[i] = fingerprint.Output{Text: m.Answer, ExpectedCount: ch.ExpectedCount}
-			evidence[i] = map[string]any{"id": ch.ID, "expected_count": ch.ExpectedCount, "parsed_count": len(fingerprint.ParseNumbers(m.Answer)), "answer": m.Answer, "error": errText, "ms": m.Ms}
-			if errText != "" {
-				outs[i].Text = ""
-			}
-		}(i, ch)
+		}
 	}
-	wg.Wait()
 	a := fingerprint.Attribute(outs, bank)
-	if a.UsedOutputs == 0 {
-		return map[string]any{"error": "没有可用的数字序列，查看探针证据", "evidence": evidence}, fmt.Errorf("没有可用数字序列")
-	}
 	res := []map[string]any{}
 	for _, v := range a.Results {
+		if v.Prob <= 0 {
+			continue
+		}
 		res = append(res, map[string]any{"model": v.ModelID, "probability": v.Prob, "similarity": v.JSSimilarity})
 	}
-	out := map[string]any{"family": a.Family, "family_name": a.FamilyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "low_confidence": a.LowConfidence, "evidence": evidence, "note": "概率仅相对于数字库内候选；不是身份证明，库外模型也可能高置信命中。"}
-	if a.LowConfidence {
+	note := "概率只在数字库内的候选之间比较。凑满 3 个有效样本且归因和所选模型一致，这项才记满分。"
+	family, familyName := a.Family, a.FamilyName
+	if a.UsedOutputs == 0 {
+		family, familyName = "unknown", "没有有效样本"
+		note = "10 次里没有拿到有效数字样本，这项记 0 分。"
+	} else if a.UsedOutputs < wantSamples {
+		note = "有效样本不足 3 个，这项记 0 分。"
+	}
+	out := map[string]any{"family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < wantSamples, "evidence": evidence, "note": note}
+	if a.UsedOutputs > 0 && a.LowConfidence {
 		b, e := fingerprint.CompareBehavior(ctx, behaviorAdapter{g, q.Timeout}, q.Model, bank, a)
 		if e != nil {
 			out["behavior_note"] = "行为探针失败：" + e.Error()
 		} else {
 			out["behavioral_top3"] = b.Top3
-			out["behavior_note"] = "轻量行为探针与原基线并非等价实验，仅作探索参考，不参与概率或评分。"
+			out["behavior_note"] = "轻量行为探针只作参考，不参与这一项的分数。"
 		}
 	}
 	return out, nil
 }
+
 func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[string]bool) {
 	defer t.cancel()
 	started := time.Now()
@@ -267,8 +308,34 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			if e != nil {
 				v.Error = redact(e.Error(), q.Key)
 			} else {
-				v.Earned, v.Half, v.Tags = iq.Judge(item, text)
-				if v.Tags == nil {
+				grade, ge := g.CallMessages(ctx, gateway.CallRequest{
+					Model: q.Model,
+					History: []gateway.ConversationMessage{
+						{Role: "user", Content: item.Prompt},
+						{Role: "assistant", Content: text},
+					},
+					Prompt:         fmt.Sprintf("标准答案：%s\n本题满分 %d。对照你上一轮的回答给自己打分。完全符合给 %d，部分符合给中间的整数，完全不对给 0。只返回一个 0 到 %d 的整数，不要输出其他字符。", item.Answer, item.MaxScore, item.MaxScore, item.MaxScore),
+					System:         []gateway.SystemBlock{{Text: "你正在给自己的上一轮回答打分。只返回一个整数。"}},
+					MaxTokens:      32,
+					Stream:         true,
+					TimeoutSeconds: q.Timeout,
+				})
+				if ge != nil || grade.Err != "" {
+					msg := grade.Err
+					if ge != nil {
+						msg = ge.Error()
+					}
+					v.Error = redact(msg, q.Key)
+				} else {
+					scored, ok := iq.ParseSelfScore(grade.Answer, item.MaxScore)
+					if !ok && gateway.IsClaude(q.Model) {
+						scored, ok = iq.ParseSelfScore(grade.ThinkingText, item.MaxScore)
+					}
+					if !ok {
+						scored = 0
+					}
+					v.Earned = scored
+					v.Half = false
 					v.Tags = []string{}
 				}
 			}
@@ -396,7 +463,9 @@ func buildTotal(v Verdict, model string) integrity.Total {
 			fpKnown = true
 			family, _ := m["family"].(string)
 			top, _ := m["top_model"].(string)
-			if !integrity.Diluted(model, family, top) {
+			used, _ := asInt(m["used_outputs"])
+			got := integrity.FingerprintFamily(family)
+			if used >= 3 && got != "" && got != "unknown" && !integrity.Diluted(model, family, top) {
 				fpPoints = 10
 			}
 		}
