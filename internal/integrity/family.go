@@ -55,9 +55,24 @@ func lineName(value string) string {
 	return ""
 }
 
-// Diluted is true only when attribution contradicts the requested model.
-// Missing baselines stay false: unknown is not treated as a routed model.
+func CanonModel(model string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(model)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// Diluted is true when the attributed model is not the model that was requested.
+// A different product in the same family still counts. Missing baselines stay false.
 func Diluted(requested, family, topModel string) bool {
+	claimed := CanonModel(requested)
+	actual := CanonModel(topModel)
+	if claimed != "" && actual != "" && claimed != actual {
+		return true
+	}
 	want := ModelFamily(requested)
 	got := FingerprintFamily(family)
 	if want == "" || got == "" || got == "unknown" {

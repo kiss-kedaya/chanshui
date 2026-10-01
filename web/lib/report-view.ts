@@ -44,7 +44,14 @@ export function fingerprintFamily(family: string): string {
   if (f === "google") return "gemini";
   return f;
 }
+export function canonModel(model: string): string {
+  return model.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 export function fingerprintDiluted(requested: string, family: string, topModel = ""): boolean {
+  const claimed = canonModel(requested);
+  const actual = canonModel(topModel);
+  if (claimed && actual && claimed !== actual) return true;
   const want = modelFamily(requested);
   const got = fingerprintFamily(family);
   if (!want || !got || got === "unknown") return false;
@@ -53,4 +60,18 @@ export function fingerprintDiluted(requested: string, family: string, topModel =
   const wantLine = line(requested);
   const gotLine = line(topModel);
   return Boolean(wantLine && gotLine && wantLine !== gotLine);
+}
+
+export function presentedTotal<T extends { key: string; contribution: number; applicable?: boolean }>(
+  score: number,
+  parts: T[] | undefined,
+  diluted: boolean,
+): { score: number; parts: T[] } {
+  const rows = parts ? parts.map((item) => ({ ...item })) : [];
+  if (!diluted) return { score, parts: rows };
+  const fingerprint = rows.find((item) => item.key === "fingerprint");
+  if (!fingerprint || fingerprint.contribution <= 0) return { score, parts: rows };
+  const next = Math.max(0, score - fingerprint.contribution);
+  fingerprint.contribution = 0;
+  return { score: next, parts: rows };
 }

@@ -3,15 +3,23 @@ import AnimatedNumber from "@/components/AnimatedNumber";
 import ResultSkeleton from "@/components/ResultSkeleton";
 import ErrorFold from "@/components/ErrorFold";
 import Hint from "@/components/Hint";
-import { fingerprintDiluted, probabilityVisible } from "@/lib/report-view";
+import { fingerprintDiluted, presentedTotal, probabilityVisible } from "@/lib/report-view";
 import { DetectVerdict } from "@/lib/api";
 function ScoreShare({ verdict, part }: { verdict: DetectVerdict; part: string }) {
   const row = verdict.total?.parts?.find((item) => item.key === part && item.applicable);
   if (!row) return null;
   return (
-    <b className="score-chip" title="计入总分 / 系数">
+    <b className={"score-chip" + (row.contribution === 0 ? " is-zero" : "")} title="计入总分 / 系数">
       {row.contribution}/{row.coefficient}
     </b>
+  );
+}
+function CardTitle({ title, label, text }: { title: string; label?: string; text?: string }) {
+  return (
+    <div className="rc-title">
+      <h3>{title}</h3>
+      {text ? <Hint label={label || title} text={text} /> : null}
+    </div>
   );
 }
 function Details({ label, value }: { label: string; value: unknown }) {
@@ -78,24 +86,33 @@ export default function ResultCards({
   const cacheRate = (value?: number | null) =>
     value == null || !Number.isFinite(value) ? "—" : value.toFixed(2) + "%";
   const diluted = Boolean(f && !f.error && fingerprintDiluted(model || "", f.family, f.top_model));
+  const scored: DetectVerdict = v.total
+    ? {
+        ...v,
+        total: {
+          ...v.total,
+          ...presentedTotal(v.total.score, v.total.parts, diluted),
+        },
+      }
+    : v;
   return (
     <div
       className={"results " + (loading ? "results-loading" : "results-settled")}
     >
-      {v.total && (
+      {scored.total && (
         <section className="result-card total-card">
           <div className="rc-head">
             <h3>总分</h3>
-            <b className="score-chip">{v.total.score} / 100</b>
+            <b className="score-chip">{scored.total.score} / 100</b>
           </div>
           <div className="metric-line">
-            <strong className={v.total.score === 100 ? "good" : "warn"}>
-              <AnimatedNumber value={v.total.score} />
+            <strong className={scored.total.score === 100 ? "good" : "warn"}>
+              <AnimatedNumber value={scored.total.score} />
             </strong>
             <span>/ 100</span>
           </div>
           <div className="integrity-signals">
-            {v.total.parts.filter((item) => item.applicable).map((item) => (
+            {scored.total.parts.filter((item) => item.applicable).map((item) => (
               <div className="integrity-signal" key={item.key}>
                 <span>{item.label}</span>
                 <b className={item.contribution === item.coefficient ? "good" : "bad"}>
@@ -108,12 +125,17 @@ export default function ResultCards({
       )}
       <section className={"result-card" + (diluted ? " fingerprint-bad" : "")}>
         <div className="rc-head">
-          <h3>模型指纹归因</h3>
+          <CardTitle title="模型指纹归因" label="指纹归因说明" text={f?.note} />
           <span className="rc-score">
-            <ScoreShare verdict={v} part="fingerprint" />
+            <ScoreShare verdict={scored} part="fingerprint" />
             <span className="card-number">01</span>
           </span>
         </div>
+        {diluted && (
+          <div className="fake-seal" aria-hidden="true">
+            <span>假</span>
+          </div>
+        )}
         {!f ? (
           <ResultSkeleton label={loading ? "指纹检测中…" : "暂无结果"} />
         ) : (
@@ -122,17 +144,21 @@ export default function ResultCards({
               <ErrorFold text={f.error} />
             ) : (
               <>
-                {diluted && (
-                  <p className="fingerprint-alert">归因和所选模型对不上。这是被路由到别的模型，掺水。</p>
-                )}
+                <div className="model-claim">
+                  <p>
+                    <span>声称</span>
+                    <b>{model || "未填写"}</b>
+                  </p>
+                  <p>
+                    <span>实际</span>
+                    <b className={diluted ? "bad" : ""}>{f.top_model || f.family_name || "未归因"}</b>
+                  </p>
+                </div>
                 <div className="metric-line">
                   <strong className={diluted ? "bad family-title" : "family-title"}>
                     {f.family_name || f.family}
                   </strong>
                   <span>家族概率 {(f.family_prob * 100).toFixed(1)}%</span>
-                </div>
-                <div className="result-note">
-                  <Hint label="指纹归因说明" text={f.note} />
                 </div>
                 {f.results
                   ?.filter((r) => probabilityVisible(r.probability))
@@ -171,9 +197,9 @@ export default function ResultCards({
       </section>
       <section className="result-card">
         <div className="rc-head">
-          <h3>注入大小</h3>
+          <CardTitle title="注入大小" label="注入估计说明" text={a?.note} />
           <span className="rc-score">
-            <ScoreShare verdict={v} part="injection" />
+            <ScoreShare verdict={scored} part="injection" />
             <span className="card-number">02</span>
           </span>
         </div>
@@ -191,9 +217,6 @@ export default function ResultCards({
               <b className="score-chip">
                 {a.score == null ? "待定" : a.score + " / 10"}
               </b>
-            </div>
-            <div className="result-note">
-              <Hint label="注入估计说明" text={a.note} />
             </div>
             <div className="mini-stats">
               <span>
@@ -257,7 +280,7 @@ export default function ResultCards({
       {!v.total && integrity && (
         <section className="result-card integrity-card">
           <div className="rc-head">
-            <h3>接口完整性</h3>
+            <CardTitle title="接口完整性" label="接口完整性说明" text="只评价协议和证据链，不代表模型智力。未支持或缺字段会降低覆盖率，不会伪判为失败。" />
             <span className="card-number">API</span>
           </div>
           <div className="metric-line">
@@ -267,7 +290,6 @@ export default function ResultCards({
             <span>/ 100</span>
             <b className="score-chip">覆盖 {integrity.coverage.toFixed(0)}%</b>
           </div>
-          <div className="result-note"><Hint label="接口完整性说明" text="只评价协议和证据链，不代表模型智力；未支持或缺字段项目会降低覆盖率，不会伪判为失败。" /></div>
           <p className="muted">{integrity.reason}</p>
           <div className="integrity-signals">
             {integrity.signals.filter(s => s.applicable).map(signal => (
@@ -286,7 +308,7 @@ export default function ResultCards({
           <div className="rc-head">
             <h3>思维链回传</h3>
             <span className="rc-score">
-              <ScoreShare verdict={v} part="thinking" />
+              <ScoreShare verdict={scored} part="thinking" />
               <span className="card-number">03</span>
             </span>
           </div>
@@ -352,8 +374,8 @@ export default function ResultCards({
       </section>
       <section className="result-card">
         <div className="rc-head">
-          <h3>推理表现</h3>
-          <ScoreShare verdict={v} part="iq" />
+          <CardTitle title="推理表现" label="评分说明" text={q?.note} />
+          <ScoreShare verdict={scored} part="iq" />
           <span className="card-number">04</span>
         </div>
         {!q ? (
@@ -368,9 +390,6 @@ export default function ResultCards({
               <b className="score-chip">
                 {q.complete ? "本次测评" : "尚未完成"}
               </b>
-            </div>
-            <div className="result-note">
-              <Hint label="评分说明" text={q.note} />
             </div>
             <div className="question-list">
               {q.per_question.map((x, index) => (
@@ -426,7 +445,7 @@ export default function ResultCards({
       {(showCache || cache) && <section className="result-card cache-card">
         <div className="rc-head">
           <h3>缓存读写验证</h3>
-          <ScoreShare verdict={v} part="cache" />
+          <ScoreShare verdict={scored} part="cache" />
           <span className="card-number">CACHE</span>
         </div>
         {!v.cache ? (
@@ -533,7 +552,7 @@ export default function ResultCards({
         <section className="result-card" key={title}>
           <div className="rc-head">
             <h3>{title}</h3>
-            <ScoreShare verdict={v} part={title === "工具调用检测" ? "tools" : "web"} />
+            <ScoreShare verdict={scored} part={title === "工具调用检测" ? "tools" : "web"} />
           </div>
           {!result ? (
             <ResultSkeleton label={loading ? "检测中…" : "暂无结果"} />

@@ -1271,6 +1271,109 @@ code {
   font-weight: 600;
   margin: 0;
 }
+
+.rc-title {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+.rc-title h3 {
+  margin: 0;
+}
+.rc-title .hint-button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 3px;
+}
+.model-claim {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 16px;
+  max-width: calc(100% - 108px);
+}
+.model-claim p {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+}
+.model-claim span {
+  flex: none;
+  width: 2.4em;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: #8a8574;
+}
+.model-claim b {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+.model-claim b.bad {
+  color: #c4472e;
+}
+.model-claim + .metric-line > .family-title {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.fake-seal {
+  position: absolute;
+  right: 18px;
+  bottom: 22px;
+  z-index: 2;
+  width: 112px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: rgba(176, 38, 24, 0.78);
+  border: 3px solid currentColor;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 38%, rgba(196, 71, 46, 0.1), transparent 64%);
+  opacity: 0.82;
+  transform: rotate(-16deg);
+  animation: seal-press 0.62s cubic-bezier(0.16, 0.84, 0.24, 1) both;
+}
+.fake-seal::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border: 1px dashed currentColor;
+  border-radius: 50%;
+}
+.fake-seal span {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+}
+.score-chip.is-zero {
+  background: #fff1ec;
+  color: #9d2f1c;
+  border-color: #f0c8bc;
+}
+@keyframes seal-press {
+  0% { transform: rotate(-32deg) scale(1.55); opacity: 0; }
+  58% { transform: rotate(-12deg) scale(0.92); opacity: 0.9; }
+  100% { transform: rotate(-16deg) scale(1); opacity: 0.82; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fake-seal { animation: none; }
+}
+@media (max-width: 760px) {
+  .fake-seal {
+    width: 76px;
+    height: 76px;
+    right: 8px;
+    bottom: 12px;
+  }
+  .fake-seal span { font-size: 32px; }
+  .model-claim { max-width: calc(100% - 72px); }
+  .model-claim b { font-size: 16px; }
+}
 .card-number {
   font:
     10px Consolas,
@@ -2668,4 +2771,18 @@ html[data-mode="dark"] .fingerprint-alert {
 }
 html[data-mode="dark"] .result-card.fingerprint-bad {
   border-color: #e07058;
+}
+html[data-mode="dark"] .fake-seal {
+  color: rgba(255, 166, 146, 0.82);
+}
+html[data-mode="dark"] .model-claim span {
+  color: var(--muted);
+}
+html[data-mode="dark"] .model-claim b.bad {
+  color: #ffb4a2;
+}
+html[data-mode="dark"] .score-chip.is-zero {
+  background: #3a201b;
+  color: #ffc7b8;
+  border-color: #6a3a30;
 }

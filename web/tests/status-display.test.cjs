@@ -55,3 +55,48 @@ test("thinking card does not render delivery status summaries", () => {
   assert.match(html, /signature/);
   assert.doesNotMatch(html, /已回传|未回传|思考待定|摘要已回传|摘要未回传/);
 });
+
+test("mismatched fingerprint scores zero and stamps the card", () => {
+  const ResultCards = loadModule("../components/ResultCards.tsx", {
+    "@/components/AnimatedNumber": { default: ({ value }) => value },
+    "@/components/ResultSkeleton": { default: () => null },
+    "@/components/Hint": { default: ({ label }) => React.createElement("button", { "aria-label": label }) },
+    "@/components/ErrorFold": { default: () => null },
+    "@/lib/report-view": loadModule("../lib/report-view.ts"),
+  }).default;
+  const html = renderToStaticMarkup(React.createElement(ResultCards, {
+    model: "gpt-6-astra",
+    verdict: {
+      total: {
+        score: 85,
+        max: 100,
+        reason: "",
+        parts: [
+          { key: "fingerprint", label: "模型指纹归因", applicable: true, known: true, points: 10, max_points: 10, weight: 30, coefficient: 32, contribution: 32 },
+          { key: "iq", label: "推理表现", applicable: true, known: true, points: 100, max_points: 100, weight: 25, coefficient: 27, contribution: 27 },
+        ],
+      },
+      fingerprint: {
+        family: "gpt",
+        family_name: "GPT",
+        family_prob: 0.99,
+        top_model: "gpt-5.6-luna",
+        top_prob: 0.99,
+        used_outputs: 3,
+        note: "说明",
+        results: [],
+      },
+      injection: { inj: 12, score: 10, slope: 1, points: [], note: "注入说明" },
+    },
+  }));
+  assert.match(html, /声称/);
+  assert.match(html, /gpt-6-astra/);
+  assert.match(html, /实际/);
+  assert.match(html, /gpt-5\.6-luna/);
+  assert.match(html, /fake-seal/);
+  assert.match(html, /0\/32/);
+  assert.match(html, />53</);
+  assert.match(html, /aria-label="注入估计说明"/);
+  const head = html.slice(html.indexOf("注入大小") - 80, html.indexOf("注入大小") + 220);
+  assert.match(head, /rc-title[\s\S]*注入大小[\s\S]*注入估计说明/);
+});
