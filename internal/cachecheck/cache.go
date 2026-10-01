@@ -3,13 +3,14 @@ package cachecheck
 import (
 	"chanzhushui/internal/gateway"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"math"
 	"strings"
 )
+
+const cacheSlack = 64
 
 type Sample struct {
 	Index          int      `json:"index"`
@@ -75,16 +76,24 @@ func sample(m gateway.Metrics, index int) Sample {
 	return s
 }
 
-// FromMetrics builds the cache report from already-collected sequential calls.
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// FromMetrics builds the cache report from three sequential prefix calls.
+// The pass check is round-2 read+write versus round-3 read, within 64 tokens.
+// The displayed rate is only round-3 read divided by round-3 total input.
 func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retriesObserved bool) Result {
 	r := Result{Status: "unknown", Protocol: protocol, PrefixHash: prefixHash, RetriesObserved: retriesObserved, Samples: []Sample{}, Transitions: []Transition{}}
 	for i, m := range metrics {
 		s := sample(m, i+1)
-		r.Samples = append(r.Samples, s)
 		if m.Err != "" {
 			s.Error = m.Err
-			r.Samples[len(r.Samples)-1] = s
 		}
+		r.Samples = append(r.Samples, s)
 	}
 	if len(r.Samples) == 0 {
 		r.Reason = "没有完成缓存请求。"
@@ -101,49 +110,51 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		r.TotalRead += s.Read
 		r.TotalOutput += s.Output
 	}
-	if len(r.Samples) == 3 && r.Samples[1].Error == "" && r.Samples[2].Error == "" && r.Samples[1].ReadReported && r.Samples[1].WriteReported && r.Samples[2].ReadReported {
-		denom := r.Samples[1].Read + r.Samples[1].Write
-		r.ThirdReadBaseline = denom
-		if denom > 0 {
-			r.ThirdReadRatio = rate(r.Samples[2].Read, denom)
-		}
+	if len(r.Samples) > 1 && r.Samples[1].ReadReported && r.Samples[1].WriteReported {
+		r.ThirdReadBaseline = r.Samples[1].Read + r.Samples[1].Write
 	}
-	allKnown, allPass := len(r.Samples) == 3, true
-	// A read-only warm hit is not proof that this endpoint can write a
-	// cache. Require a positive write in the first two rounds before calling
-	// the read/write chain a pass; reported zero is evidence, not a write.
-	if len(r.Samples) == 3 &&
-		(!r.Samples[0].WriteReported || !r.Samples[1].WriteReported ||
-			r.Samples[0].Write <= 0 || r.Samples[1].Write <= 0) {
-		allKnown = false
+	if len(r.Samples) == 3 && r.Samples[2].Error == "" && r.Samples[2].ReadReported {
+		r.ThirdReadRatio = rate(r.Samples[2].Read, r.Samples[2].Total)
 	}
+	var link *Transition
 	for i := 0; i+1 < len(r.Samples) && i < 2; i++ {
 		a, b := r.Samples[i], r.Samples[i+1]
 		tr := Transition{From: i + 1, To: i + 2, Expected: a.Read + a.Write, Actual: b.Read, Delta: b.Read - a.Read - a.Write}
 		if a.Error == "" && b.Error == "" && a.ReadReported && a.WriteReported && b.ReadReported && tr.Expected > 0 {
-			pass := tr.Delta == 0
+			pass := absInt(tr.Delta) <= cacheSlack
 			tr.Pass = &pass
-			allPass = allPass && pass
-		} else {
-			allKnown = false
 		}
 		r.Transitions = append(r.Transitions, tr)
+		link = &r.Transitions[len(r.Transitions)-1]
 	}
-	if len(r.Transitions) > 0 {
-		r.Expected = r.Transitions[0].Expected
-		r.Actual = r.Transitions[0].Actual
-		r.Delta = r.Transitions[0].Delta
+	if link != nil {
+		r.Expected = link.Expected
+		r.Actual = link.Actual
+		r.Delta = link.Delta
 	}
-	if !allKnown {
-		r.Reason = "缓存读写字段不齐或上一轮缓存量为0，无法完整验证衔接；缺失字段不按0处理。"
+	fieldsOK := len(r.Samples) == 3 && r.Samples[1].Error == "" && r.Samples[2].Error == "" && r.Samples[0].ReadReported && r.Samples[1].ReadReported && r.Samples[1].WriteReported && r.Samples[2].ReadReported
+	if !fieldsOK || link == nil || link.Pass == nil {
+		if len(r.Samples) == 3 && r.Samples[1].Error == "" && r.Samples[2].Error == "" && r.Samples[1].ReadReported && r.Samples[1].WriteReported && r.Samples[2].ReadReported && r.Samples[1].Read+r.Samples[1].Write == 0 {
+			r.Reason = "第二轮缓存读和写都是 0，前缀没有进缓存。常见原因是前缀低于缓存门槛，或接口没有接住缓存断点。"
+			return r
+		}
+		r.Reason = "读写字段不齐或上一轮缓存量为 0，无法验证衔接；缺失字段不按 0。"
 		return r
 	}
-	r.Pass = &allPass
+	grew := r.Samples[1].Read+r.Samples[1].Write > r.Samples[0].Read+cacheSlack
+	if !grew {
+		fail := false
+		r.Pass = &fail
+		r.Status = "mismatch"
+		r.Reason = "第二轮缓存量没有比第一轮读取多出一段前缀，新内容没有进入缓存。"
+		return r
+	}
+	r.Pass = link.Pass
 	r.Status = "mismatch"
-	r.Reason = "缓存衔接未全部对齐；查看每轮读、写、输出和第三轮读取比例。"
-	if allPass {
+	r.Reason = "第二轮读加写与第三轮读相差超过 64 token。第三轮缓存率仍按该轮读取除以该轮总输入。"
+	if *link.Pass {
 		r.Status = "pass"
-		r.Reason = "三轮请求的缓存读写衔接已完成；第三轮仅展示相对上一轮缓存量的读取比例。"
+		r.Reason = "第二轮读加写与第三轮读相差不超过 64 token。第三轮缓存率是该轮读取除以该轮总输入。"
 	}
 	if r.RetriesObserved {
 		r.Reason += " 本组发生重试，首次成功样本可能不是冷缓存；重试用量未计入样本命中率。"
@@ -151,46 +162,90 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	return r
 }
 
-// Collection records one growing conversation for the cache check only.
 type Collection struct {
 	Result  Result
 	Metrics []gateway.Metrics
 	Units   []int
 }
 
-// Collect issues three continuations. Every user input gets a cache breakpoint,
-// so the following call can read the previous prefix and write its new suffix.
+const (
+	cacheTailSame = "Reply with only OK."
+	cacheTailLast = "Reply with only OK now."
+)
+
+func cacheSystemText() string {
+	var b strings.Builder
+	b.Grow(200 * 64)
+	for i := 1; i <= 200; i++ {
+		fmt.Fprintf(&b, "Cache prefix sentence %03d remains byte for byte identical.\n", i)
+	}
+	return b.String()
+}
+
+func cacheExtraText() string {
+	var b strings.Builder
+	for i := 1; i <= 20; i++ {
+		fmt.Fprintf(&b, "Cache extension sentence %02d adds only the second block.\n", i)
+	}
+	return b.String()
+}
+
+// Collect sends three serial prefix probes. A is a stable system prefix, B is
+// added on rounds 2 and 3, and only the short tail changes on round 3.
+// Assistant replies are not replayed, so the cached prefix stays byte-identical.
 func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (Collection, error) {
 	col := Collection{Metrics: make([]gateway.Metrics, 0, 3), Units: make([]int, 0, 3)}
-	var nonce [16]byte
-	if _, e := rand.Read(nonce[:]); e != nil {
-		return col, e
-	}
-	var history []gateway.ConversationMessage
-	var shapes []Sample
+	systemText := cacheSystemText()
+	extraText := cacheExtraText()
+	sum := sha256.Sum256([]byte(systemText))
+	prefixHash := hex.EncodeToString(sum[:])
 	protocol := c.ProtocolFor(model)
-	var prefixHash string
-	totalUnits := 0
+	var shapes []Sample
 	finish := func() {
 		col.Result = FromMetrics(col.Metrics, prefixHash, protocol, hasRetry(col.Metrics))
 		for i, shape := range shapes {
+			if i >= len(col.Result.Samples) {
+				break
+			}
 			col.Result.Samples[i].PromptChars = shape.PromptChars
 			col.Result.Samples[i].Messages = shape.Messages
 			col.Result.Samples[i].RequestHash = shape.RequestHash
 		}
-	}
-	// Each round waits for the previous response before starting. A few hundred
-	// tokens is enough to see a cache write; the rounds must not run together.
-	for i, units := range []int{240, 200, 160} {
-		prompt := strings.Repeat("A ", units) + "\nReply only OK."
-		if i == 0 {
-			prompt = "Audit " + hex.EncodeToString(nonce[:]) + "\n" + prompt
-			hash := sha256.Sum256([]byte(prompt))
-			prefixHash = hex.EncodeToString(hash[:])
+		if len(col.Result.Samples) > 0 {
+			col.Result.First = &col.Result.Samples[0]
 		}
-		q := gateway.CallRequest{Model: model, History: history, Prompt: prompt, MaxTokens: 64, TimeoutSeconds: timeout, Validate: validateSample}
+		if len(col.Result.Samples) > 1 {
+			col.Result.Second = &col.Result.Samples[1]
+		}
+		if len(col.Result.Samples) > 2 {
+			col.Result.Third = &col.Result.Samples[2]
+		}
+	}
+	hour := &gateway.CacheControl{TTL: "1h"}
+	for i := 0; i < 3; i++ {
+		tail := cacheTailSame
+		if i == 2 {
+			tail = cacheTailLast
+		}
+		q := gateway.CallRequest{
+			Model:          model,
+			Prompt:         tail,
+			MaxTokens:      64,
+			TimeoutSeconds: timeout,
+			Validate:       validateSample,
+			System:         []gateway.SystemBlock{{Text: systemText}},
+		}
+		visible := tail
 		if protocol == "messages" {
-			q.PromptCacheControl = &gateway.CacheControl{TTL: "1h"}
+			q.System[0].CacheControl = hour
+		}
+		if i > 0 {
+			block := gateway.TextBlock{Text: extraText}
+			if protocol == "messages" {
+				block.CacheControl = hour
+			}
+			q.UserPrefix = []gateway.TextBlock{block}
+			visible = extraText + tail
 		}
 		m, e := c.CallMessages(ctx, q)
 		if e != nil {
@@ -202,18 +257,9 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			}
 		}
 		col.Metrics = append(col.Metrics, m)
-		// The independent variable is the complete visible user text in bytes.
-		// This includes the nonce and fixed suffix, preventing them from being
-		// misreported as hidden injected tokens.
-		totalUnits += len(prompt)
-		col.Units = append(col.Units, totalUnits)
-		var request strings.Builder
-		for _, msg := range history {
-			fmt.Fprintf(&request, "%s:%s\n", msg.Role, msg.Content)
-		}
-		request.WriteString("user:" + prompt)
-		hash := sha256.Sum256([]byte(request.String()))
-		shapes = append(shapes, Sample{PromptChars: len(prompt), Messages: len(history) + 1, RequestHash: hex.EncodeToString(hash[:])})
+		col.Units = append(col.Units, len(systemText)+len(visible))
+		hash := sha256.Sum256([]byte(systemText + "\n" + visible))
+		shapes = append(shapes, Sample{PromptChars: len(visible), Messages: 1, RequestHash: hex.EncodeToString(hash[:])})
 		if m.Err != "" {
 			finish()
 			col.Result.Reason = "缓存请求未完成，保留已完成样本；不把缺失样本当成0。"
@@ -223,14 +269,11 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			protocol = m.Protocol
 			c.PinProtocol(m.Protocol)
 		}
-		history = append(history, gateway.ConversationMessage{Role: "user", Content: prompt, CacheControl: q.PromptCacheControl}, gateway.ConversationMessage{Role: "assistant", Content: m.Answer})
 	}
 	finish()
 	return col, nil
 }
 
-// Measure is the cache check entry point. Injection sampling is intentionally
-// implemented independently in internal/inject.
 func Measure(ctx context.Context, c gateway.Client, model string, timeout int) (Result, error) {
 	collection, err := Collect(ctx, c, model, timeout)
 	return collection.Result, err

@@ -55,9 +55,11 @@ export default function ResultCards({
   const cache = v.cache;
   const previousCache = cache?.samples?.find((sample) => sample.index === 2);
   const thirdCache = cache?.samples?.find((sample) => sample.index === 3);
+  const thirdTotal = thirdCache && thirdCache.read_reported !== false ? thirdCache.total : null;
   const previousCacheTotal = previousCache &&
     previousCache.read_reported !== false && previousCache.write_reported !== false
-    ? cache?.third_read_baseline ?? previousCache.read + previousCache.write : null;
+    ? (cache?.third_read_baseline ?? previousCache.read + previousCache.write) : null;
+  const cacheKnown = cache?.status !== "unknown" && cache?.third_read_ratio != null;
   const cacheToken = (value?: number | null, reported?: boolean) =>
     reported === false || value == null || !Number.isFinite(value) ? "—" : value;
   const cacheRate = (value?: number | null) =>
@@ -397,11 +399,15 @@ export default function ResultCards({
                 <div className="cache-rates">
                   <div>
                     <span>第三轮缓存率</span>
-                    <strong>{v.cache.status === "unknown" ? "—" : cacheRate(v.cache.third_read_ratio)}</strong>
+                    <strong>{cacheKnown ? cacheRate(v.cache.third_read_ratio) : "—"}</strong>
                   </div>
                   <div>
                     <span>第三轮读取</span>
                     <strong>{cacheToken(thirdCache?.read, thirdCache?.read_reported)}</strong>
+                  </div>
+                  <div>
+                    <span>第三轮总输入</span>
+                    <strong>{cacheToken(thirdTotal, thirdCache?.read_reported)}</strong>
                   </div>
                   <div>
                     <span>第二轮读 ＋ 写</span>
@@ -409,10 +415,12 @@ export default function ResultCards({
                   </div>
                 </div>
                 <p className="muted">
-                  {cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ {cacheToken(previousCacheTotal)} × 100%
+                  {cacheKnown
+                    ? `${cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ ${cacheToken(thirdTotal, thirdCache?.read_reported)} × 100%`
+                    : "—"}
                   <Hint
                     label="第三轮缓存率说明"
-                    text="仅用第三轮缓存读取除以第二轮缓存读取与写入之和。缺字段或分母为零时不计算；每轮命中率另按该轮总输入计算。"
+                    text="第三轮读取 ÷ 第三轮总输入。衔接通过要求第二轮读加写与第三轮读相差不超过 64 token。缺读取或第三轮失败时不计算。"
                   />
                 </p>
                 {v.cache.third_read_ratio != null && v.cache.third_read_ratio > 100 && (

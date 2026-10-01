@@ -197,3 +197,89 @@ func walk(answers map[string]string) (Verdict, []string) {
 	}
 	return s.verdict(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)), order
 }
+
+func TestQuestionsAreOneChoice(t *testing.T) {
+	banned := []string{"制胜球", "石破", "请回答", "如果只知道", "只知道日程，不知道结果", "是否获胜", "是否辞职"}
+	for _, p := range Anchors {
+		if strings.Count(p.Question, "？") != 1 {
+			t.Fatalf("%s stem = %s", p.ID, p.Question)
+		}
+		for _, b := range banned {
+			if strings.Contains(p.Question, b) {
+				t.Fatalf("%s stem has %s", p.ID, b)
+			}
+		}
+		if len(p.Choices) != 4 {
+			t.Fatalf("%s choices %d", p.ID, len(p.Choices))
+		}
+		seen := map[string]bool{}
+		know, wrong, unknown := 0, 0, 0
+		for _, c := range p.Choices {
+			if c.Letter < "A" || c.Letter > "D" || seen[c.Letter] || c.Text == "" {
+				t.Fatalf("%s choice %+v", p.ID, c)
+			}
+			seen[c.Letter] = true
+			switch c.Kind {
+			case kindKnow:
+				know++
+			case kindWrong:
+				wrong++
+			case kindUnknown:
+				unknown++
+			default:
+				t.Fatalf("%s kind %s", p.ID, c.Kind)
+			}
+		}
+		if know == 0 || wrong == 0 || unknown == 0 || len(seen) != 4 {
+			t.Fatalf("%s balance %d %d %d", p.ID, know, wrong, unknown)
+		}
+		if !strings.Contains(p.prompt(), `{"choice":"<字母>"}`) || !strings.Contains(p.prompt(), p.Question) {
+			t.Fatalf("%s prompt missing json contract", p.ID)
+		}
+	}
+	closed := judge(anchorByID("olympics"), "最终答案: 已经闭幕")
+	if closed.OK || closed.Kind == kindKnow {
+		t.Fatalf("closed only = %+v", closed)
+	}
+	liu := judge(anchorByID("olympics"), "最终答案: 女子单人滑冠军是刘美贤")
+	if !liu.OK || liu.Kind != kindKnow {
+		t.Fatalf("liu = %+v", liu)
+	}
+	alysa := judge(anchorByID("olympics"), "最终答案: Alysa Liu")
+	if !alysa.OK {
+		t.Fatalf("alysa = %+v", alysa)
+	}
+	oly := anchorByID("olympics")
+	var knowLetter, unkLetter string
+	for _, c := range oly.Choices {
+		if c.Kind == kindKnow && strings.Contains(c.Text, "挪威") {
+			knowLetter = c.Letter
+		}
+		if c.Kind == kindUnknown && unkLetter == "" {
+			unkLetter = c.Letter
+		}
+	}
+	hedged := judge(oly, "前文说不确定，也说将于下月闭幕。\n{\"choice\":\""+knowLetter+"\",\"note\":\"不确定\"}")
+	if !hedged.OK || hedged.Kind != kindKnow {
+		t.Fatalf("json choice = %+v", hedged)
+	}
+	unk := judge(oly, "{\"choice\":\""+unkLetter+"\"}")
+	if unk.OK || unk.Kind != kindUnknown {
+		t.Fatalf("json unknown = %+v", unk)
+	}
+	browsed := judge(oly, "我刚刚联网查了。\n{\"choice\":\""+knowLetter+"\"}")
+	if browsed.Kind != kindInvalid {
+		t.Fatalf("browsed json = %+v", browsed)
+	}
+	cup := anchorByID("worldcup")
+	var wrongLetter string
+	for _, c := range cup.Choices {
+		if strings.Contains(c.Text, "阿根廷") {
+			wrongLetter = c.Letter
+		}
+	}
+	arg := judge(cup, "{\"choice\":\""+wrongLetter+"\"}")
+	if arg.OK || arg.Unsure || arg.Kind != kindWrong {
+		t.Fatalf("json argentina = %+v", arg)
+	}
+}

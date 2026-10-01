@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -38,10 +39,17 @@ type Row struct {
 	Error      string `json:"error,omitempty"`
 }
 
+type Choice struct {
+	Letter string
+	Text   string
+	Kind   string
+}
+
 type Probe struct {
 	ID, HappenedAt, Question, Event string
 	Accept                          [][]string
 	Wrong                           [][]string
+	Choices                         []Choice
 }
 
 const (
@@ -55,7 +63,7 @@ const (
 
 var (
 	nowFn     = time.Now
-	unsureRE  = regexp.MustCompile(`(?i)不知道|不确定|无法确定|不清楚|无法确认|不能确定|没有可靠|没有任何|不会去猜|不打算|无法回答|没有信息|知识只到|知识截止|cutoff|don'?t know|not sure|unknown|只知道日程|不知道结果|只知道赛程|只知道会举办|只知道会选举|尚未发生|尚未举行|尚未闭幕|尚未结束|还未发生|还没发生|还没举行|未发生|没有发生|将举办|将举行|将于|预定于|计划于|预计将|结果未知|没有举行|未闭幕|没有闭幕|还没闭幕`)
+	unsureRE  = regexp.MustCompile(`(?i)不知道|不确定|无法确定|不清楚|无法确认|不能确定|没有可靠|没有任何|不会去猜|不打算|无法回答|没有信息|知识只到|知识截止|cutoff|don'?t know|not sure|unknown|只知道日程|不知道结果|只知道赛程|只知道会举办|只知道会选举|尚未发生|尚未举行|尚未闭幕|尚未结束|还未发生|还没发生|还没举行|未发生|没有发生|将举办|将举行|将于|预定于|计划于|预计将|结果未知|没有举行|未闭幕|没有闭幕|还没闭幕|将会|将要|将在|将去|打算于|计划在|预定在|预计在`)
 	invalidRE = regexp.MustCompile(`(?i)我(刚刚|已经|刚才)?(联网|搜索了|查了)|刚才联网|调用了工具|使用了工具|searched the web|i looked it up|根据今天|当前日期是|今天是\s*20\d\d`)
 	finalRE   = regexp.MustCompile(`(?i)(?:最终答案|最后答案|本题答案|final\s*answer|the\s+answer\s+is|answer\s+is)\s*[:：是为]?\s*([^\n]*)`)
 	leadRE    = regexp.MustCompile(`(?i)^\s*(不知道|不确定|不清楚|无法确定|unknown|don'?t know|只知道日程)`)
@@ -71,13 +79,110 @@ func (p Probe) at() time.Time {
 }
 
 func (p Probe) prompt() string {
-	return "请仅凭你的参数记忆回答，禁止联网、禁止调用工具、禁止使用当前日期、禁止根据常识推测。\n" +
-		"以下事件是否已经发生？\n" +
-		"如果已经发生，请给出具体日期和结果；\n" +
-		"如果只知道会举办/会选举，但不知道结果，请回答“只知道日程，不知道结果”；\n" +
-		"如果完全不能确认，请只回答“不知道”。\n" +
-		"事件：" + p.Question + "\n" +
-		"最后单独一行写：最终答案: <短答案、只知道日程，不知道结果、或不知道>"
+	var b strings.Builder
+	b.WriteString("请仅凭参数记忆作答。禁止联网，禁止调用工具，禁止使用当前日期，禁止推测。\n")
+	b.WriteString("只输出一个 JSON 对象，不要 Markdown，不要解释，不要输出选项原文。\n")
+	b.WriteString("格式：{\"choice\":\"<字母>\"}\n")
+	b.WriteString("choice 必须是 A、B、C、D 之一。选已经发生的那一项；只知道日程或不能确认时选对应项。\n")
+	b.WriteString("题目：" + p.Question + "\n")
+	for _, c := range p.Choices {
+		fmt.Fprintf(&b, "%s. %s\n", c.Letter, c.Text)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func (p Probe) lookupLetter(letter string) (Choice, bool) {
+	letter = strings.ToUpper(strings.TrimSpace(letter))
+	for _, c := range p.Choices {
+		if strings.EqualFold(c.Letter, letter) {
+			return c, true
+		}
+	}
+	return Choice{}, false
+}
+
+func asLetter(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if len(v) != 1 {
+		return "", false
+	}
+	u := strings.ToUpper(v)
+	if u < "A" || u > "D" {
+		return "", false
+	}
+	return u, true
+}
+
+func (p Probe) lookupChoice(v string) (Choice, bool) {
+	if letter, ok := asLetter(v); ok {
+		return p.lookupLetter(letter)
+	}
+	s := strings.TrimSpace(v)
+	for _, c := range p.Choices {
+		if s == c.Text || strings.EqualFold(s, c.Letter+". "+c.Text) {
+			return c, true
+		}
+	}
+	return Choice{}, false
+}
+
+func (p Probe) choiceFrom(content string) (Choice, bool) {
+	var hit Choice
+	found := false
+	for i := 0; i < len(content); i++ {
+		if content[i] != '{' {
+			continue
+		}
+		depth := 0
+		inStr := false
+		esc := false
+		end := -1
+		for j := i; j < len(content); j++ {
+			c := content[j]
+			if inStr {
+				if esc {
+					esc = false
+					continue
+				}
+				if c == '\\' {
+					esc = true
+					continue
+				}
+				if c == '"' {
+					inStr = false
+				}
+				continue
+			}
+			switch c {
+			case '"':
+				inStr = true
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					end = j
+				}
+			}
+			if end == j {
+				break
+			}
+		}
+		if end < 0 {
+			continue
+		}
+		var obj map[string]any
+		if json.Unmarshal([]byte(content[i:end+1]), &obj) == nil {
+			if v, ok := obj["choice"]; ok {
+				if ch, ok := p.lookupChoice(fmt.Sprint(v)); ok {
+					hit = ch
+					found = true
+				}
+			}
+		}
+		i = end
+	}
+	return hit, found
 }
 
 func (p Probe) positive(text string) bool { return matchGroups(text, p.Accept) }
@@ -197,7 +302,15 @@ func classify(p Probe, content string) (string, string) {
 		focus, _ := extractFinal(content)
 		return kindInvalid, focus
 	}
+	if ch, ok := p.choiceFrom(content); ok {
+		return ch.Kind, ch.Letter + " " + ch.Text
+	}
 	focus, explicit := extractFinal(content)
+	if explicit {
+		if ch, ok := p.lookupChoice(focus); ok {
+			return ch.Kind, ch.Letter + " " + ch.Text
+		}
+	}
 	if explicit {
 		switch decide(p, focus, true) {
 		case kindKnow, kindUnknown, kindWrong:

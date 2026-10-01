@@ -29,6 +29,11 @@ type SystemBlock struct {
 	CacheControl *CacheControl
 }
 
+type TextBlock struct {
+	Text         string
+	CacheControl *CacheControl
+}
+
 type CallRequest struct {
 	Validate           func(Metrics) error
 	ToolReply          *ToolReply
@@ -41,6 +46,7 @@ type CallRequest struct {
 	MaxTokens          int
 	Prompt             string
 	PromptCacheControl *CacheControl
+	UserPrefix         []TextBlock
 	History            []ConversationMessage
 	System             []SystemBlock
 	Thinking           *ThinkingConfig
@@ -177,7 +183,7 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 	for _, message := range req.History {
 		wire.Messages = append(wire.Messages, wireMessage{Role: message.Role, Content: messageContent(message.Content, message.CacheControl)})
 	}
-	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: messageContent(req.Prompt, req.PromptCacheControl)})
+	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: userContent(req.UserPrefix, req.Prompt, req.PromptCacheControl)})
 	if req.ToolReply != nil {
 		reply := req.ToolReply
 		wire.Messages = append(wire.Messages, wireMessage{Role: "assistant", Content: []any{map[string]any{"type": "tool_use", "id": reply.Call.ID, "name": reply.Call.Name, "input": reply.Call.Arguments}}}, wireMessage{Role: "user", Content: []any{map[string]any{"type": "tool_result", "tool_use_id": reply.Call.ID, "content": reply.Output}}})
@@ -270,11 +276,41 @@ func messageContent(text string, cache *CacheControl) any {
 	if cache == nil {
 		return text
 	}
+	return []any{textPart(text, cache)}
+}
+
+func userContent(prefix []TextBlock, prompt string, promptCache *CacheControl) any {
+	if len(prefix) == 0 {
+		return messageContent(prompt, promptCache)
+	}
+	blocks := make([]any, 0, len(prefix)+1)
+	for _, block := range prefix {
+		blocks = append(blocks, textPart(block.Text, block.CacheControl))
+	}
+	blocks = append(blocks, textPart(prompt, promptCache))
+	return blocks
+}
+
+func textPart(text string, cache *CacheControl) map[string]any {
+	part := map[string]any{"type": "text", "text": text}
+	if cache == nil {
+		return part
+	}
 	control := map[string]any{"type": "ephemeral"}
 	if cache.TTL != "" {
 		control["ttl"] = cache.TTL
 	}
-	return []any{map[string]any{"type": "text", "text": text, "cache_control": control}}
+	part["cache_control"] = control
+	return part
+}
+
+func userPlain(q CallRequest) string {
+	var b strings.Builder
+	for _, block := range q.UserPrefix {
+		b.WriteString(block.Text)
+	}
+	b.WriteString(q.Prompt)
+	return b.String()
 }
 
 // readStream consumes an SSE body: every `data: ` payload is kept verbatim in

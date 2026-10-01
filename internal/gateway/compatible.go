@@ -30,7 +30,7 @@ func (c *Client) callCompatibleOnce(ctx context.Context, q CallRequest) (Metrics
 	for _, message := range q.History {
 		messages = append(messages, map[string]string{"role": message.Role, "content": message.Content})
 	}
-	messages = append(messages, map[string]string{"role": "user", "content": q.Prompt})
+	messages = append(messages, map[string]string{"role": "user", "content": userPlain(q)})
 	body := map[string]any{"model": q.Model, "stream": q.Stream}
 	path := "/chat/completions"
 	if protocol == "responses" {
@@ -173,6 +173,12 @@ func compatibleUsage(u map[string]json.RawMessage, m *Metrics) {
 	if v, ok := u["cache_creation_input_tokens"]; ok && string(v) != "null" {
 		m.CacheCreation5m = readInt("cache_creation_input_tokens")
 		m.CacheWriteReported = true
+	}
+	if !m.CacheWriteReported {
+		if v, ok := u["prompt_cache_miss_tokens"]; ok && string(v) != "null" {
+			m.CacheCreation5m = readInt("prompt_cache_miss_tokens")
+			m.CacheWriteReported = true
+		}
 	}
 	var creation struct {
 		Five *int `json:"ephemeral_5m_input_tokens"`
