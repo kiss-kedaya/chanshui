@@ -89,23 +89,16 @@ export default function ResultCards({
                   <thead>
                     <tr>
                       <th>轮次</th>
-                      <th>累计字符</th>
+                      <th>样本字符</th>
                       <th>输入</th>
-                      <th>缓存写</th>
-                      <th>缓存读</th>
                       <th>合计</th>
-                      <th>前轮输出</th>
-                      <th>校正合计</th>
                     </tr>
                   </thead>
                   <tbody>
                     {a.points.map((p, index) => (
                       <tr key={p.round || p.n}>
                         {[
-                          p.round || index + 1, p.n, p.input,
-                          cacheToken(p.cc, cache?.samples?.[index]?.write_reported),
-                          cacheToken(p.cr, cache?.samples?.[index]?.read_reported),
-                          p.total, p.output_before ?? "—", p.adjusted_total ?? "—",
+                          p.round || index + 1, p.n, p.input, p.total,
                         ].map((n, i) => (
                           <td key={i} title={JSON.stringify(p)}>
                             {n}
@@ -231,13 +224,6 @@ export default function ResultCards({
             <div className="error-box">{t.error || t.err}</div>
           ) : (
             <>
-              <div className="metric-line">
-                <strong className={t.pass ? "good" : "bad"}>
-                  {t.pass ? "已回传" : "未回传"}
-                </strong>
-                <span>{t.pass ? "非空思考文本" : "不能只看签名"}</span>
-              </div>
-              <p className="muted">{t.reason}</p>
               <div className="mini-stats">
                 <span>
                   思考文本 <b>{t.think_len} 字</b>
@@ -375,7 +361,7 @@ export default function ResultCards({
                 <div className="cache-rates">
                   <div>
                     <span>第三轮缓存率</span>
-                    <strong>{cacheRate(v.cache.third_read_ratio)}</strong>
+                    <strong>{v.cache.status === "unknown" ? "—" : cacheRate(v.cache.third_read_ratio)}</strong>
                   </div>
                   <div>
                     <span>第三轮读取</span>

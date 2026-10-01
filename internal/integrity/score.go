@@ -54,7 +54,7 @@ const (
 func Calculate(in Inputs) Result {
 	protocol := in.Protocol
 	signals := []Signal{
-		{Key: "injection", Label: "注入大小", Weight: weightInjection, MaxPoints: 10, Applicable: true, Known: in.InjectionScore != nil, Points: in.InjectionScore, Reason: "三次合并采样的前两轮近似值"},
+		{Key: "injection", Label: "注入大小", Weight: weightInjection, MaxPoints: 10, Applicable: true, Known: in.InjectionScore != nil, Points: in.InjectionScore, Reason: "两次独立请求的线性估计"},
 		boolSignal("cache", "缓存读写", weightCache, in.CacheApplicable, in.CachePass != nil, boolPoints(in.CachePass), "三次请求衔接"),
 		boolSignal("tools", "工具调用", weightTools, in.ToolsApplicable, in.ToolsPass != nil, boolPoints(in.ToolsPass), "结构化调用与结果回传"),
 		boolSignal("web", "联网证据", weightWeb, in.WebApplicable, in.WebPass != nil, boolPoints(in.WebPass), "搜索工具与来源"),

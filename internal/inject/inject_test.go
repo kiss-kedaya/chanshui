@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -12,122 +13,86 @@ import (
 	"time"
 )
 
-func decodeConversation(t *testing.T, r *http.Request) (chars, round int) {
+func injectionServer(t *testing.T, injected, framing int, scale float64) *httptest.Server {
 	t.Helper()
-	var req struct {
-		Messages []struct {
-			Role    string
-			Content json.RawMessage
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Messages []struct{ Content string } `json:"messages"`
 		}
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		t.Error(err)
-		return
-	}
-	for _, msg := range req.Messages {
-		if msg.Role != "user" {
-			continue
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatal(err)
 		}
-		round++
-		var text string
-		if json.Unmarshal(msg.Content, &text) != nil {
-			var blocks []struct{ Text string }
-			if err := json.Unmarshal(msg.Content, &blocks); err != nil {
-				t.Error(err)
-				continue
-			}
-			for _, b := range blocks {
-				text += b.Text
-			}
-		}
-		chars += len(text)
-	}
-	return
-}
-func writeUsage(w http.ResponseWriter, total, read, write, output int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("x-cache", "MISS")
-	json.NewEncoder(w).Encode(map[string]any{"content": []any{map[string]string{"type": "text", "text": "OK"}}, "stop_reason": "end_turn", "usage": map[string]int{
-		"input_tokens": total - read - write, "output_tokens": output, "cache_read_input_tokens": read, "cache_creation_input_tokens": write,
-	}})
-}
-func TestMeasureRemovesAuditPrefixAndConversationFraming(t *testing.T) {
-	for _, tc := range []struct {
-		name              string
-		injected, framing int
-		tokenPerUnit      float64
-	}{
-		{"none", 6, 12, 1}, {"injection", 516, 12, 1}, {"large-injection", 6001, 7, 1}, {"different-tokenizer", 44, 22, 1.5},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var calls atomic.Int32
-			previousCache := 0
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls.Add(1)
-				units, round := decodeConversation(t, r)
-				total := int(float64(units)*tc.tokenPerUnit/2) + tc.injected + tc.framing*(round-1) + 2*(round-1)
-				read, write := previousCache, total-previousCache-4
-				previousCache = read + write
-				writeUsage(w, total, read, write, 2)
-			}))
-			defer s.Close()
-			r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "claude-opus-5")
-			if err != nil || r.Inj != tc.injected || !r.Reliable || r.Score == nil || *r.Score != InjectionScore(tc.injected) || calls.Load() != 3 {
-				t.Fatalf("result=%+v err=%v calls=%d", r, err, calls.Load())
-			}
-			if r.Slope != tc.tokenPerUnit/2 || r.RoundOverhead < float64(tc.framing)-1 || r.RoundOverhead > float64(tc.framing)+1 {
-				t.Fatalf("fit=%+v", r)
-			}
-			if r.Cache == nil || r.Cache.ThirdReadRatio == nil || *r.Cache.ThirdReadRatio != 100 {
-				t.Fatal("cache report was not reused", r)
-			}
-			if r.CacheHeader != "MISS" || r.Via != "direct" {
-				t.Fatal(r)
-			}
-			if r.R2 != nil || r.MaxResidual != nil || r.Probe != nil {
-				t.Fatal("fit must not claim independent linearity validation", r)
-			}
+		n := len(req.Messages[len(req.Messages)-1].Content)
+		total := int(float64(n)*scale) + injected + framing
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content":     []any{map[string]string{"type": "text", "text": "OK"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]int{"input_tokens": total, "output_tokens": 1},
 		})
+	}))
+}
+
+func TestMeasureUsesTwoIndependentRequests(t *testing.T) {
+	s := injectionServer(t, 44, 10, 0.75)
+	defer s.Close()
+	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "claude-opus-5")
+	if err != nil || len(r.Points) != 2 || r.Inj < 53 || r.Inj > 55 || !r.Reliable || r.Score == nil {
+		t.Fatalf("result=%+v err=%v", r, err)
+	}
+	if r.Slope < 0.74 || r.Slope > 0.76 || r.Note == "" {
+		t.Fatalf("fit=%+v", r)
 	}
 }
-func TestMeasureRetriesOnlyFailedContinuation(t *testing.T) {
+
+func TestMeasureDoesNotReturnCacheReport(t *testing.T) {
+	s := injectionServer(t, 6, 12, 1)
+	defer s.Close()
+	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
+	if err != nil || r.Inj != 18 || len(r.Points) != 2 {
+		t.Fatalf("result=%+v err=%v", r, err)
+	}
+	if raw, _ := json.Marshal(r); string(raw) == "" || string(raw) == "null" {
+		t.Fatal("missing independent injection result")
+	}
+}
+
+func TestMeasureRetriesEachFailedRequestWithoutRepeatingWholeProbe(t *testing.T) {
 	var calls atomic.Int32
-	var rounds []int
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := calls.Add(1)
-		chars, round := decodeConversation(t, r)
-		rounds = append(rounds, round)
-		if n == 2 || n == 3 {
-			w.WriteHeader(429)
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
-		writeUsage(w, chars/2+44+8*(round-1)+2*(round-1), 0, 0, 2)
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Messages []struct{ Content string } `json:"messages"`
+		}
+		_ = json.Unmarshal(body, &req)
+		n := len(req.Messages[len(req.Messages)-1].Content)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","usage":{"input_tokens":%d,"output_tokens":1}}`, n+44)
 	}))
 	defer s.Close()
-	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, RetryDelay: time.Millisecond}, "claude-opus-5")
-	if err != nil || r.Inj != 44 || calls.Load() != 5 || fmt.Sprint(rounds) != "[1 2 2 2 3]" {
-		t.Fatalf("result=%+v err=%v rounds=%v", r, err, rounds)
-	}
-	if r.Cache == nil || !r.Cache.RetriesObserved {
-		t.Fatal("retries not reported")
+	old := BackoffDelay
+	BackoffDelay = time.Millisecond
+	defer func() { BackoffDelay = old }()
+	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, RetryDelay: time.Millisecond}, "fixture")
+	if err != nil || r.Score == nil || calls.Load() != 4 {
+		t.Fatalf("result=%+v err=%v calls=%d", r, err, calls.Load())
 	}
 }
-func TestMeasureGivesUpAfterThreeRetries(t *testing.T) {
+
+func TestMeasureCannotScoreFailedSample(t *testing.T) {
 	var calls atomic.Int32
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(429) }))
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusBadGateway)
+	}))
 	defer s.Close()
-	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, RetryDelay: time.Millisecond}, "claude-opus-5")
-	if err == nil || r.Score != nil || calls.Load() != gateway.RetryCount+1 {
-		t.Fatal(r, err, calls.Load())
-	}
-}
-func TestConversationFitRejectsDegenerateData(t *testing.T) {
-	for _, points := range [][]Point{
-		{}, {{N: 1, AdjustedTotal: 10}}, {{N: 1, AdjustedTotal: 10}, {N: 2, AdjustedTotal: 20}, {N: 3, AdjustedTotal: 30}},
-	} {
-		s, b, i := fitConversation(points)
-		if s != 0 || b != 0 || i != 0 {
-			t.Fatal(s, b, i)
-		}
+	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
+	if err == nil || r.Score != nil || calls.Load() != 1 {
+		t.Fatalf("result=%+v err=%v calls=%d", r, err, calls.Load())
 	}
 }

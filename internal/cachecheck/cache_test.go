@@ -23,7 +23,7 @@ func TestCacheEquation(t *testing.T) {
 	}{
 		{"growing", []gateway.Metrics{cacheMetric(0, 4600, 8, 1), cacheMetric(4600, 2100, 8, 1), cacheMetric(6700, 1100, 8, 1)}, "pass", floatPtr(100)},
 		{"partial", []gateway.Metrics{cacheMetric(0, 4600, 8, 1), cacheMetric(4500, 2200, 8, 1), cacheMetric(5360, 2400, 8, 1)}, "mismatch", floatPtr(80)},
-		{"overread-visible", []gateway.Metrics{cacheMetric(0, 1000, 8, 1), cacheMetric(1000, 0, 8, 1), cacheMetric(1010, 20, 8, 1)}, "mismatch", floatPtr(101)},
+		{"overread-visible", []gateway.Metrics{cacheMetric(0, 1000, 8, 1), cacheMetric(1000, 0, 8, 1), cacheMetric(1010, 20, 8, 1)}, "unknown", floatPtr(101)},
 		{"zero", []gateway.Metrics{cacheMetric(0, 0, 8, 1), cacheMetric(0, 0, 8, 1), cacheMetric(0, 0, 8, 1)}, "unknown", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

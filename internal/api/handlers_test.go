@@ -64,7 +64,11 @@ func testSetup(t *testing.T) (*Server, *httptest.Server, *atomic.Bool, *atomic.I
 			}
 			answer = b.String()
 		}
-		resp := map[string]any{"content": []any{map[string]string{"type": "thinking", "thinking": "逐项推导并核验", "signature": "fixture-signature"}, map[string]string{"type": "text", "text": answer}}, "usage": map[string]int{"input_tokens": input, "output_tokens": 50}, "stop_reason": "end_turn"}
+		content := []any{map[string]string{"type": "text", "text": answer}}
+		if q.Thinking != nil {
+			content = append([]any{map[string]string{"type": "thinking", "thinking": "逐项推导并核验", "signature": "fixture-signature"}}, content...)
+		}
+		resp := map[string]any{"content": content, "usage": map[string]int{"input_tokens": input, "output_tokens": 50}, "stop_reason": "end_turn"}
 		if q.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			start := map[string]any{"type": "message_start", "message": resp}

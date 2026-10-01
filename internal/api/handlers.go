@@ -316,7 +316,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng)}
 	t.Verdict.Protocol = q.Protocol
 	t.Verdict.ScoringVersion = "2026-10-01-v5-jobs"
-	t.Probes = []Probe{{ID: "injection", Name: "注入大小 · 缓存读写（三轮合并）", Status: "queued"}, {ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}}
+	t.Probes = []Probe{{ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "cache", Name: "缓存读写验证", Status: "queued"}, {ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}}
 	if gateway.IsClaude(q.Model) {
 		t.Probes = append(t.Probes, Probe{ID: "thinking", Name: "思维链回传", Status: "queued"})
 	}
@@ -355,9 +355,10 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) find(id string) *Task { s.mu.Lock(); defer s.mu.Unlock(); return s.tasks[id] }
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
-	t := s.find(r.PathValue("id"))
+	id := strings.ToLower(r.PathValue("id"))
+	t := s.find(id)
 	if t == nil {
-		if rec, e := s.store.GetByReportID(r.PathValue("id")); e == nil {
+		if rec, e := s.store.GetByReportID(id); e == nil {
 			t = s.fromRecord(rec)
 		}
 	}
@@ -371,7 +372,23 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		reply(w, 410, map[string]string{"error": "检测报告已超过24小时有效期"})
 		return
 	}
-	replyConditional(w, r, t)
+	reveal := s.canReveal(r, t.ID, t.controlHash)
+	base := maskedBaseURL(t.BaseURL)
+	host := maskedHost(t.BaseURL)
+	if reveal {
+		base = publicBaseURL(t.BaseURL)
+		host = displayHost(t.BaseURL)
+	}
+	payload := map[string]any{
+		"id": t.ID, "task_id": t.ID, "job_id": t.ID, "report_id": t.ID,
+		"status": t.Status, "base_url": base, "host": host, "model": t.Model,
+		"created_at": t.CreatedAt, "expires_at": t.ExpiresAt,
+		"probes": t.Probes, "verdict": t.Verdict,
+	}
+	if t.Warning != "" {
+		payload["warning"] = t.Warning
+	}
+	replyConditional(w, r, payload)
 }
 func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
 	reply(w, 403, map[string]string{"error": "操作 key 仅可重试对应任务的失败项，不支持停止任务"})
@@ -499,6 +516,12 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []history.Summary{}
 	}
+	// History is a global, public index.  Keep the site signal, but never
+	// return the upstream URL/path from this endpoint.  A report detail can
+	// reveal the host only when its matching job capability is presented.
+	for i := range items {
+		items[i].BaseURL = maskedBaseURL(items[i].BaseURL)
+	}
 	replyConditional(w, r, items)
 }
 func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
@@ -512,7 +535,8 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"error": "历史记录不存在"})
 		return
 	}
-	replyConditional(w, r, map[string]any{"id": rec.ID, "report_id": rec.ReportID, "host": displayHost(rec.BaseURL), "status": rec.Status, "expires_at": rec.ExpiresAt, "probes": rec.Progress, "base_url": rec.BaseURL, "model": rec.Model, "created_at": rec.CreatedAt, "verdict_json": rec.Verdict})
+	reveal := s.canReveal(r, rec.ReportID, "")
+	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.BaseURL, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict, reveal))
 }
 
 func displayHost(base string) string {
@@ -522,6 +546,69 @@ func displayHost(base string) string {
 	}
 	return u.Host
 }
+
+// maskedHost intentionally keeps only a tiny, deterministic site hint.  It
+// does not expose the original hostname, path, query, credentials, or port.
+func maskedHost(base string) string {
+	u, e := url.Parse(base)
+	if e != nil || u.Hostname() == "" {
+		return "已脱敏站点"
+	}
+	name := u.Hostname()
+	labels := strings.Split(name, ".")
+	for i, label := range labels {
+		if len(label) <= 1 {
+			labels[i] = "*"
+			continue
+		}
+		labels[i] = label[:1] + "***"
+	}
+	return strings.Join(labels, ".")
+}
+
+// maskedBaseURL is the public representation used by history and reports.
+// It remains a URL so existing clients can derive a display host, but has no
+// path (including /v1), query, credentials, port, or full hostname.
+func maskedBaseURL(base string) string {
+	u, e := url.Parse(base)
+	if e != nil || u.Scheme == "" || u.Hostname() == "" {
+		return "https://已脱敏站点"
+	}
+	return u.Scheme + "://" + maskedHost(base)
+}
+
+func publicBaseURL(base string) string {
+	u, e := url.Parse(base)
+	if e != nil || u.Scheme == "" || u.Host == "" {
+		return "https://未知站点"
+	}
+	// Host excludes userinfo; deliberately discard path/query/fragment.
+	return u.Scheme + "://" + u.Host
+}
+
+func (s *Server) canReveal(r *http.Request, reportID, inMemoryHash string) bool {
+	expected := inMemoryHash
+	if expected == "" && s.store != nil {
+		expected, _ = s.store.ControlHash(reportID)
+	}
+	return controlHashMatches(r.Header.Get("X-Job-Token"), expected)
+}
+
+func reportPayload(id int64, reportID, baseURL, model, createdAt, status string, expiresAt int64, probes, verdict json.RawMessage, reveal bool) map[string]any {
+	base := maskedBaseURL(baseURL)
+	host := maskedHost(baseURL)
+	if reveal {
+		base = publicBaseURL(baseURL)
+		host = displayHost(baseURL)
+	}
+	return map[string]any{
+		"id": id, "report_id": reportID, "job_id": reportID,
+		"host": host, "base_url": base, "model": model,
+		"created_at": createdAt, "status": status, "expires_at": expiresAt,
+		"probes": probes, "verdict_json": verdict,
+	}
+}
+
 func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 	id := strings.ToLower(r.PathValue("id"))
 	if !history.ValidReportID(id) {
@@ -535,7 +622,10 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 			reply(w, 410, map[string]string{"error": "报告已过期"})
 			return
 		}
-		replyConditional(w, r, map[string]any{"id": t.HistoryID, "report_id": t.ID, "job_id": t.ID, "host": displayHost(t.BaseURL), "base_url": t.BaseURL, "model": t.Model, "created_at": t.CreatedAt, "status": t.Status, "expires_at": t.ExpiresAt, "probes": t.Probes, "verdict_json": t.Verdict})
+		reveal := s.canReveal(r, t.ID, t.controlHash)
+		verdict, _ := json.Marshal(t.Verdict)
+		probes, _ := json.Marshal(t.Probes)
+		replyConditional(w, r, reportPayload(t.HistoryID, t.ID, t.BaseURL, t.Model, t.CreatedAt, t.Status, t.ExpiresAt, probes, verdict, reveal))
 		return
 	}
 	rec, e := s.store.GetByReportID(id)
@@ -543,5 +633,6 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"error": "报告不存在或已过期（有效期24小时）"})
 		return
 	}
-	replyConditional(w, r, map[string]any{"id": rec.ID, "report_id": rec.ReportID, "host": displayHost(rec.BaseURL), "status": rec.Status, "expires_at": rec.ExpiresAt, "probes": rec.Progress, "base_url": rec.BaseURL, "model": rec.Model, "created_at": rec.CreatedAt, "verdict_json": rec.Verdict})
+	reveal := s.canReveal(r, rec.ReportID, "")
+	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.BaseURL, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict, reveal))
 }

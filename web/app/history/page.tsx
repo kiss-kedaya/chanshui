@@ -38,9 +38,14 @@ function HistoryDetailInner() {
     }
     setLoading(true);
     return watchResource<SavedReport>({
-      load: (signal) => publicID
-        ? getReport(publicID, signal)
-        : getDetection(Number(id), signal),
+      load: async (signal) => {
+        if (publicID) return getReport(publicID, signal, getJobControl(publicID)?.token);
+        const first = await getDetection(Number(id), signal);
+        // Legacy numeric links do not carry the report ID in the URL. Resolve
+        // it once, then repeat privately when this browser owns its key.
+        const token = getJobControl(first.report_id)?.token;
+        return token ? getDetection(Number(id), signal, token) : first;
+      },
       onValue: (d) => {
         reconcileJobControl({
           id: d.report_id,

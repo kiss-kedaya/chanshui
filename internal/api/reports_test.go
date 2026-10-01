@@ -2,11 +2,14 @@ package api
 
 import (
 	"chanzhushui/internal/history"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func getJSON(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
@@ -36,7 +39,7 @@ func TestSavedReportShareIndependentFromTask(t *testing.T) {
 		Host     string `json:"host"`
 	}
 	json.Unmarshal(response.Body.Bytes(), &detail)
-	if detail.Host != strings.TrimPrefix(up.URL, "http://") || detail.ReportID != oldID {
+	if detail.Host != maskedHost(up.URL) || detail.ReportID != oldID {
 		t.Fatal(detail)
 	}
 	fail.Store(false)
@@ -86,5 +89,56 @@ func TestReportIDsAndHostValidation(t *testing.T) {
 		if got := displayHost(c.base); got != c.want {
 			t.Errorf("host %s: %s", c.base, got)
 		}
+	}
+}
+
+func TestHistoryAndReportsMaskSiteUnlessMatchingJobKey(t *testing.T) {
+	s, _, _, _ := testSetup(t)
+	id := strings.Repeat("cd", 16)
+	key := "job-capability-secret"
+	base := "https://private-gateway.example:9443/prefix/v1?token=should-not-return"
+	historyID, err := s.store.CreateJob(context.Background(), history.Record{
+		ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		BaseURL: base, Model: "claude-opus-5", Verdict: json.RawMessage(`{"protocol":"anthropic"}`),
+	}, json.RawMessage(`[]`), controlHash(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &Task{ID: id, ReportID: id, HistoryID: historyID, BaseURL: base, Model: "claude-opus-5", Status: "running", ExpiresAt: time.Now().Add(time.Hour).Unix(), controlHash: controlHash(key), Probes: []Probe{{ID: "Q1", Status: "running"}}}
+	s.mu.Lock()
+	s.tasks[id] = task
+	s.mu.Unlock()
+
+	paths := []string{"/api/detect/" + id, "/api/reports/" + id, "/api/history/" + fmt.Sprint(historyID)}
+	for _, path := range paths {
+		for _, token := range []string{"", "wrong-key"} {
+			r := httptest.NewRequest("GET", path, nil)
+			if token != "" {
+				r.Header.Set("X-Job-Token", token)
+			}
+			w := httptest.NewRecorder()
+			s.Handler().ServeHTTP(w, r)
+			if w.Code != 200 {
+				t.Fatalf("public read %s: HTTP %d", path, w.Code)
+			}
+			body := w.Body.String()
+			if strings.Contains(body, "private-gateway.example") || strings.Contains(body, "/prefix/v1") || strings.Contains(body, ":9443") {
+				t.Fatalf("unmatched key exposed upstream site on %s: %s", path, body)
+			}
+			if !strings.Contains(body, "p***.e***") {
+				t.Fatalf("masked site missing on %s: %s", path, body)
+			}
+		}
+		ok := httptest.NewRequest("GET", path, nil)
+		ok.Header.Set("X-Job-Token", key)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, ok)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"host":"private-gateway.example:9443"`) || strings.Contains(w.Body.String(), "/prefix/v1") {
+			t.Fatalf("matching key did not reveal host only on %s: HTTP %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	list := getJSON(t, s.Handler(), "/api/history?limit=50")
+	if list.Code != 200 || strings.Contains(list.Body.String(), "private-gateway.example") || !strings.Contains(list.Body.String(), "p***.e***") {
+		t.Fatalf("global history leaked or omitted masked site: HTTP %d %s", list.Code, list.Body.String())
 	}
 }

@@ -155,4 +155,4 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "掺水？ ${TAG}" \
             --generate-notes \
-            --notes-file docs/release-notes/v0.1.0.md
+            --notes-file docs/release-notes/v0.1.3.md

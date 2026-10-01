@@ -1,6 +1,7 @@
 package api
 
 import (
+	"chanzhushui/internal/cachecheck"
 	"chanzhushui/internal/capability"
 	"chanzhushui/internal/fingerprint"
 	"chanzhushui/internal/gateway"
@@ -194,14 +195,15 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	}
 	job("injection", func() (any, error) {
 		v, e := inject.Measure(ctx, g, q.Model, q.Timeout)
-		if v.Cache != nil {
-			t.mu.Lock()
-			t.Verdict.Cache = sanitize(v.Cache, q.Key)
-			t.mu.Unlock()
-			v.Cache = nil
-		}
 		if e != nil {
 			return map[string]any{"error": e.Error(), "points": v.Points}, e
+		}
+		return v, nil
+	})
+	job("cache", func() (any, error) {
+		v, e := cachecheck.Measure(ctx, g, q.Model, q.Timeout)
+		if e != nil {
+			return v, e
 		}
 		return v, nil
 	})

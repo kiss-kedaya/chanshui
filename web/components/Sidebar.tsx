@@ -153,15 +153,7 @@ export default function Sidebar() {
                   day: "2-digit",
                   hour: "2-digit",
                   minute: "2-digit",
-                })}{" "}
-                ·{" "}
-                {!x.model.toLowerCase().startsWith("claude-")
-                  ? "通用协议"
-                  : x.thinking_pass == null
-                    ? "思考待定"
-                    : x.thinking_pass
-                      ? "摘要已回传"
-                      : "摘要未回传"}
+                })}
               </div>
             </Link>
           ))

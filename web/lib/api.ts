@@ -134,8 +134,8 @@ export interface DetectVerdict {
       adjusted_total?: number;
       n: number;
       input: number;
-      cc: number;
-      cr: number;
+      cc?: number;
+      cr?: number;
       total: number;
     }[];
     cache_header: string;
@@ -236,11 +236,20 @@ async function request<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const publicRead = body === undefined && /^\/api\/(detect\/|reports\/|history(?:\?|\/))/.test(path);
-  const snapshot = publicRead ? readSnapshots.get(path) : undefined;
+  // A capability-bearing read is private. Keep its validator separate from
+  // the public snapshot so a 304 can never substitute an unmasked payload
+  // into an anonymous response (or vice versa).
+  const cacheableRead = publicRead;
+  const snapshotKey = token ? path + "::authorized" : path;
+  const snapshot = cacheableRead ? readSnapshots.get(snapshotKey) : undefined;
+  const readHeaders: Record<string, string> = {
+    ...(token ? { "X-Job-Token": token } : {}),
+    ...(snapshot ? { "If-None-Match": snapshot.etag } : {}),
+  };
   const res = await fetch(
     API_BASE + path,
     body === undefined
-      ? { cache: "no-store", signal, headers: snapshot ? { "If-None-Match": snapshot.etag } : undefined }
+      ? { cache: "no-store", signal, headers: readHeaders }
       : {
           method: "POST",
           redirect: "error",
@@ -260,13 +269,13 @@ async function request<T>(
     throw Error("服务返回了非 JSON 响应，请检查本地服务");
   }
   if (!res.ok) {
-    if (publicRead) readSnapshots.delete(path);
+    if (cacheableRead) readSnapshots.delete(snapshotKey);
     throw Error(data.error || "请求失败 HTTP " + res.status);
   }
   const etag = res.headers.get("ETag");
-  if (publicRead && etag) {
-    readSnapshots.delete(path);
-    readSnapshots.set(path, { etag, data });
+  if (cacheableRead && etag) {
+    readSnapshots.delete(snapshotKey);
+    readSnapshots.set(snapshotKey, { etag, data });
     if (readSnapshots.size > 8) readSnapshots.delete(readSnapshots.keys().next().value!);
   }
   return data as T;
@@ -278,8 +287,8 @@ export const startDetect = (q: DetectRequest) =>
     control_token: string;
     expires_at: number;
   }>("/api/detect", q);
-export const getDetect = (id: string, signal?: AbortSignal) =>
-  request<DetectTask>("/api/detect/" + encodeURIComponent(id), undefined, undefined, signal);
+export const getDetect = (id: string, signal?: AbortSignal, token?: string) =>
+  request<DetectTask>("/api/detect/" + encodeURIComponent(id), undefined, token, signal);
 export const retryDetect = (id: string, q: DetectRequest, token: string) =>
   request<{ task_id: string }>("/api/detect/" + encodeURIComponent(id) + "/retry", q, token);
 export const getBankStats = () => request<BankStats>("/api/bank/stats");
@@ -299,10 +308,10 @@ export interface SavedReport {
   model: string;
   verdict_json: DetectVerdict;
 }
-export const getDetection = (id: number, signal?: AbortSignal) =>
-  request<SavedReport>("/api/history/" + id, undefined, undefined, signal);
-export const getReport = (id: string, signal?: AbortSignal) =>
-  request<SavedReport>("/api/reports/" + encodeURIComponent(id), undefined, undefined, signal);
+export const getDetection = (id: number, signal?: AbortSignal, token?: string) =>
+  request<SavedReport>("/api/history/" + id, undefined, token, signal);
+export const getReport = (id: string, signal?: AbortSignal, token?: string) =>
+  request<SavedReport>("/api/reports/" + encodeURIComponent(id), undefined, token, signal);
 export const getModels = (q: DetectRequest) =>
   request<{ models: string[]; upstream_count: number }>("/api/models", q);
 export const ask = (

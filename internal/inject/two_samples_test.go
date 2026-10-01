@@ -10,31 +10,21 @@ import (
 	"testing"
 )
 
-func TestMergedProbeUsesExactlyThreeRequests(t *testing.T) {
+func TestMeasureUsesExactlyTwoIndependentRequests(t *testing.T) {
 	var count atomic.Int32
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		count.Add(1)
-		chars, round := decodeConversation(t, r)
-		writeUsage(w, chars/2+6+12*(round-1), 0, 0, 2)
+		var q struct {
+			Messages []struct{ Content string } `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&q)
+		n := len(q.Messages[len(q.Messages)-1].Content)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": []any{map[string]string{"type": "text", "text": "OK"}}, "stop_reason": "end_turn", "usage": map[string]int{"input_tokens": n + 6, "output_tokens": 1}})
 	}))
 	defer s.Close()
-	got, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
-	if err != nil || count.Load() != 3 || len(got.Points) != 3 || got.Inj != 6 {
-		t.Fatalf("calls=%d result=%+v err=%v", count.Load(), got, err)
-	}
-	raw, _ := json.Marshal(got)
-	var fields map[string]any
-	json.Unmarshal(raw, &fields)
-	if fields["r2"] != nil || fields["max_residual"] != nil {
-		t.Fatal("three-parameter fit must not claim independent validation")
-	}
-}
-func TestOneFailedSampleCannotScore(t *testing.T) {
-	var count atomic.Int32
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { count.Add(1); w.WriteHeader(502) }))
-	defer s.Close()
-	got, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
-	if err == nil || got.Score != nil || count.Load() != 1 {
-		t.Fatal(got, err, count.Load())
+	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
+	if err != nil || count.Load() != 2 || len(r.Points) != 2 || r.Inj != 6 {
+		t.Fatalf("calls=%d result=%+v err=%v", count.Load(), r, err)
 	}
 }

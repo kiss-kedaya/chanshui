@@ -58,7 +58,10 @@ func toolWire(q CallRequest, protocol string) ([]any, any) {
 		case "responses":
 			choice = map[string]string{"type": "function", "name": q.ForceTool}
 		default:
-			choice = map[string]any{"type": "function", "function": map[string]string{"name": q.ForceTool}}
+			// `required` is accepted by more OpenAI-compatible gateways than
+			// the newer forced-function object. With one declared tool it still
+			// leaves the model no other tool to choose.
+			choice = "required"
 		}
 	}
 	return defs, choice

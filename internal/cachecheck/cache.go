@@ -76,7 +76,6 @@ func sample(m gateway.Metrics, index int) Sample {
 }
 
 // FromMetrics builds the cache report from already-collected sequential calls.
-// It lets the injection probe reuse the same three upstream requests.
 func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retriesObserved bool) Result {
 	r := Result{Status: "unknown", Protocol: protocol, PrefixHash: prefixHash, RetriesObserved: retriesObserved, Samples: []Sample{}, Transitions: []Transition{}}
 	for i, m := range metrics {
@@ -110,6 +109,14 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		}
 	}
 	allKnown, allPass := len(r.Samples) == 3, true
+	// A read-only warm hit is not proof that this endpoint can write a
+	// cache. Require a positive write in the first two rounds before calling
+	// the read/write chain a pass; reported zero is evidence, not a write.
+	if len(r.Samples) == 3 &&
+		(!r.Samples[0].WriteReported || !r.Samples[1].WriteReported ||
+			r.Samples[0].Write <= 0 || r.Samples[1].Write <= 0) {
+		allKnown = false
+	}
 	for i := 0; i+1 < len(r.Samples) && i < 2; i++ {
 		a, b := r.Samples[i], r.Samples[i+1]
 		tr := Transition{From: i + 1, To: i + 2, Expected: a.Read + a.Write, Actual: b.Read, Delta: b.Read - a.Read - a.Write}
@@ -144,7 +151,7 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	return r
 }
 
-// Collection records one growing conversation for both cache and injection checks.
+// Collection records one growing conversation for the cache check only.
 type Collection struct {
 	Result  Result
 	Metrics []gateway.Metrics
@@ -210,7 +217,7 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 		if m.Err != "" {
 			finish()
 			col.Result.Reason = "缓存请求未完成，保留已完成样本；不把缺失样本当成0。"
-			return col, fmt.Errorf("第%d次注入/缓存请求：%s", i+1, m.Err)
+			return col, fmt.Errorf("第%d次缓存请求：%s", i+1, m.Err)
 		}
 		if i == 0 {
 			protocol = m.Protocol
@@ -222,8 +229,8 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 	return col, nil
 }
 
-// Measure preserves the package's original entry point for callers that only
-// need the cache report. New combined checks should use Collect through inject.
+// Measure is the cache check entry point. Injection sampling is intentionally
+// implemented independently in internal/inject.
 func Measure(ctx context.Context, c gateway.Client, model string, timeout int) (Result, error) {
 	collection, err := Collect(ctx, c, model, timeout)
 	return collection.Result, err

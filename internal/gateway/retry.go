@@ -50,13 +50,25 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 				m.Err = validationErr.Error()
 			}
 		}
+		fallbackToChat := false
 		if (c.Mode == "" || c.Mode == "auto") && q.protocolOverride == "" {
 			baseProtocol := c.ProtocolFor(q.Model)
 			unsupportedPath := m.Status == 404 || m.Status == 405
 			toolCompatibility := m.Status == 400 && (len(q.Tools) > 0 || q.WebSearch)
 			if (baseProtocol == "responses" && unsupportedPath) || ((baseProtocol == "responses" || baseProtocol == "messages") && toolCompatibility) {
 				q.protocolOverride = "chat"
+				fallbackToChat = true
 			}
+		}
+		// Some gateways reject forced tool selection even though they accept the
+		// declared tool. One retry may proceed without the selector; this avoids
+		// spending all four attempts on identical deterministic parameter errors.
+		forceWasSet := q.ForceTool != ""
+		if (m.Status == 400 || m.Status == 422) && forceWasSet && !fallbackToChat {
+			q.ForceTool = ""
+		}
+		if (m.Status == 400 || m.Status == 422) && !forceWasSet && (len(q.Tools) > 0 || q.WebSearch) {
+			break
 		}
 		if err == nil && m.Err == "" {
 			m.Ms = time.Since(start).Milliseconds()
@@ -112,7 +124,14 @@ func FriendlyError(status int, reason string, attempts int) string {
 	case status == 404 || status == 405:
 		message = "上游不支持此模型的 API 路径"
 	case status == 400 || status == 422:
-		message = "上游拒绝请求参数，请核对模型及接口兼容性"
+		switch {
+		case strings.Contains(lower, "tool_choice"), strings.Contains(lower, "tool choice"), strings.Contains(lower, "tools"):
+			message = "上游不接受当前工具调用参数，已停止重复发送相同参数"
+		case strings.Contains(lower, "model"), strings.Contains(lower, "not found"):
+			message = "上游不接受当前模型或接口路径"
+		default:
+			message = "上游拒绝请求参数，请核对模型及接口兼容性"
+		}
 	case status >= 500:
 		message = "上游服务暂时异常"
 	case strings.Contains(lower, "deadline") || strings.Contains(lower, "timeout"):
@@ -127,6 +146,9 @@ func FriendlyError(status int, reason string, attempts int) string {
 	suffix := ""
 	if status > 0 {
 		suffix = fmt.Sprintf("（HTTP %d）", status)
+	}
+	if status == 400 || status == 422 {
+		return message + suffix
 	}
 	return fmt.Sprintf("%s%s；已尝试 %d 次", message, suffix, attempts)
 }

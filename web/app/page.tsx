@@ -101,7 +101,7 @@ export default function DetectPage() {
     setBusy(true);
     let first = true;
     stopPolling.current = watchResource<DetectTask>({
-      load: (signal) => getDetect(id, signal),
+      load: (signal) => getDetect(id, signal, getJobControl(id)?.token),
       onValue: (t) => {
         if (!alive.current) return;
         reconcileJobControl(t);
@@ -384,7 +384,7 @@ export default function DetectPage() {
               <span className="usage-note">会产生接口用量</span>
               <Hint
                 label="检测用量说明"
-                text="注入和缓存共用三个小输出请求：首轮约 4.6 千 token，之后追加约 2 千、1 千，以实际返回用量为准。每个请求首次失败后独立最多重试 3 次。报告全站可见，有效期 24 小时。"
+                text="注入大小使用两个独立小请求；缓存读写验证单独使用三轮递增对话。每个请求首次失败后独立最多重试 3 次。报告全站可见，有效期 24 小时。"
               />
             </p>
             <div className="actions">

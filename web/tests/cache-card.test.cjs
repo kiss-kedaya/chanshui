@@ -31,7 +31,7 @@ function renderCache(overrides) {
   return renderToStaticMarkup(React.createElement(ResultCards, {
     verdict: {
       cache: {
-        status: "unknown", pass: null, reason: "fixture",
+        status: "mismatch", pass: false, reason: "fixture",
         samples: [
           { index: 1, input: 4, output: 2, read: 0, write: 1000, input_reported: true, output_reported: true, read_reported: true, write_reported: true, hit_rate: 0 },
           { index: 2, input: 4, output: 2, read: 1000, write: 500, input_reported: true, output_reported: true, read_reported: true, write_reported: true, hit_rate: 66.49 },
