@@ -38,7 +38,19 @@ export default function Sidebar() {
             ? prev.filter((x) => x.id < page[page.length - 1].id)
             : [];
         const next = [...page, ...older];
-        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+        if (
+          prev.length === next.length &&
+          prev.every(
+            (x, i) =>
+              x.id === next[i].id &&
+              x.model === next[i].model &&
+              x.total_score === next[i].total_score &&
+              x.iq_score === next[i].iq_score &&
+              x.created_at === next[i].created_at,
+          )
+        )
+          return prev;
+        return next;
       });
       setHasMore(page.length === 50);
       setError("");
@@ -71,7 +83,16 @@ export default function Sidebar() {
   }
   useEffect(() => {
     alive.current = true;
-    void refresh();
+    let idle = 0;
+    let wait = 0;
+    const start = () => {
+      void refresh();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      idle = window.requestIdleCallback(start, { timeout: 480 });
+    } else {
+      wait = window.setTimeout(start, 60);
+    }
     const load = () => { void refresh(); };
     const updated = () => { void refresh(true); };
     const timer = window.setInterval(load, HISTORY_REFRESH_MS);
@@ -81,6 +102,8 @@ export default function Sidebar() {
     document.addEventListener("visibilitychange", load);
     return () => {
       alive.current = false;
+      if (idle) window.cancelIdleCallback(idle);
+      if (wait) window.clearTimeout(wait);
       window.clearInterval(timer);
       window.removeEventListener("history-updated", updated);
       window.removeEventListener("focus", load);
@@ -88,8 +111,13 @@ export default function Sidebar() {
       document.removeEventListener("visibilitychange", load);
     };
   }, [refresh]);
+  const sawPath = useRef(false);
   useEffect(() => {
-    void refresh();
+    if (!sawPath.current) {
+      sawPath.current = true;
+      return;
+    }
+    void refresh(true);
   }, [pathname, refresh]);
   return (
     <aside className={"sidebar " + (mobileOpen ? "mobile-open" : "")}>

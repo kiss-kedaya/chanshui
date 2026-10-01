@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import {
   startDetect,
@@ -27,7 +28,10 @@ import ErrorFold from "@/components/ErrorFold";
 import Select from "@/components/Select";
 import Link from "next/link";
 import ReportShare from "@/components/ReportShare";
-import ResultCards from "@/components/ResultCards";
+import ResultSkeleton from "@/components/ResultSkeleton";
+const ResultCards = dynamic(() => import("@/components/ResultCards"), {
+  loading: () => <ResultSkeleton label="正在整理检测结果" />,
+});
 export default function DetectPage() {
   const [baseUrl, setBaseUrl] = useState("");
   const [key, setKey] = useState("");

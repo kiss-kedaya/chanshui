@@ -281,18 +281,25 @@ code {
   padding: 8px 8px 4px;
 }
 .history-skeleton i {
+  position: relative;
   display: block;
   height: 58px;
+  overflow: hidden;
   border-radius: 7px;
-  background: linear-gradient(100deg, #2a2a24 30%, #3a3a32 48%, #2a2a24 64%);
-  background-size: 220% 100%;
+  background: #2a2a24;
+}
+.history-skeleton i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 28%, #3a3a32 50%, transparent 72%);
+  transform: translateX(-120%);
   animation: history-shimmer 1.15s ease-in-out infinite;
 }
 .history-skeleton i:nth-child(2) { opacity: 0.72; }
 .history-skeleton i:nth-child(3) { width: 86%; opacity: 0.48; }
 @keyframes history-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
+  to { transform: translateX(120%); }
 }
 .empty-lines {
   display: grid;
@@ -376,6 +383,20 @@ code {
   padding: 0 38px;
   min-height: 100vh;
 }
+.main::before {
+  content: "";
+  position: fixed;
+  z-index: 80;
+  top: 0;
+  left: 240px;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent) 42%, #e7b17d 68%, transparent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: boot-rail 0.82s var(--ease-out) forwards;
+}
 .page-shell {
   max-width: 1160px;
   margin: 0 auto;
@@ -442,7 +463,8 @@ code {
   color: white;
   overflow: hidden;
   box-shadow: 0 16px 42px #33301e0a;
-  animation: appear 0.65s var(--ease-out) both;
+  contain: paint;
+  animation: hero-settle 0.62s var(--ease-out) both;
 }
 .hero-content {
   position: relative;
@@ -466,6 +488,8 @@ code {
   width: 30px;
   height: 1px;
   background: #5c4a35;
+  transform-origin: left center;
+  animation: kicker-draw 0.42s 0.12s var(--ease-out) both;
 }
 .hero-content h1 {
   font:
@@ -517,22 +541,28 @@ code {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 34%;
+  width: 28%;
   pointer-events: none;
   z-index: 2;
-  background: linear-gradient(90deg, transparent, #e7b17d24, transparent);
-  transform: translateX(-140%);
-  animation: hero-scan 1.05s 0.12s cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: linear-gradient(90deg, transparent, #e7b17d33, transparent);
+  transform: translate3d(-140%, 0, 0);
+  animation: hero-scan 0.78s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.hero-kicker,
-.hero-content h1,
-.hero-content > p {
-  animation: appear 0.5s var(--ease-out) both;
-}
-.hero-content h1 { animation-delay: 0.05s; }
-.hero-content > p { animation-delay: 0.1s; }
 @keyframes hero-scan {
-  to { transform: translateX(320%); }
+  to { transform: translate3d(360%, 0, 0); }
+}
+@keyframes hero-settle {
+  from { transform: translate3d(0, 8px, 0); }
+  to { transform: none; }
+}
+@keyframes kicker-draw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes boot-rail {
+  0% { transform: scaleX(0); opacity: 1; }
+  70% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
 }
 .hero-bottom {
   position: relative;
@@ -582,7 +612,6 @@ code {
 .connection-card {
   margin-top: 18px;
   padding: 25px 28px;
-  animation: appear 0.5s 0.08s var(--ease-out) both;
 }
 .section-heading {
   display: flex;
@@ -1772,6 +1801,8 @@ tr:hover td {
 .ask-panel {
   margin-top: 12px;
   padding: 18px 22px;
+  content-visibility: auto;
+  contain-intrinsic-size: 280px;
 }
 .ask-panel > summary {
   font-size: 13px;
@@ -1972,6 +2003,7 @@ tr:hover td {
     margin-left: 214px;
     padding: 0 24px;
   }
+  .main::before { left: 214px; }
   .hero-content {
     padding: 30px 28px;
   }
@@ -2087,6 +2119,7 @@ tr:hover td {
     margin-left: 0;
     padding: 0 16px;
   }
+  .main::before { left: 0; }
   .page-top {
     height: 57px;
     gap: 9px;
