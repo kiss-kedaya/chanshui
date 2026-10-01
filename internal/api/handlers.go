@@ -326,6 +326,12 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	t.cancel = cancel
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.draining.Load() {
+		cancel()
+		w.Header().Set("Retry-After", "5")
+		reply(w, 503, map[string]string{"error": "服务正在平滑切换，当前不接收新检测"})
+		return
+	}
 	if len(s.queue) >= cap(s.queue) {
 		cancel()
 		w.Header().Set("Retry-After", "5")
@@ -460,6 +466,17 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 	t.cancel = cancel
 	t.mu.Unlock()
 	s.mu.Lock()
+	if s.draining.Load() {
+		s.mu.Unlock()
+		cancel()
+		t.mu.Lock()
+		t.Status = "partial"
+		t.Probes = beforeProbes
+		t.mu.Unlock()
+		w.Header().Set("Retry-After", "5")
+		reply(w, 503, map[string]string{"error": "服务正在平滑切换，暂不接收重试任务"})
+		return
+	}
 	if len(s.queue) >= cap(s.queue) {
 		s.mu.Unlock()
 		cancel()
