@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,6 +25,7 @@ import (
 type Options struct {
 	AutoSync     bool
 	AllowPrivate bool
+	SkipRecover  bool
 	HTTP         *http.Client
 	Workers      int
 	QueueSize    int
@@ -45,6 +47,7 @@ type Server struct {
 	store          *history.Store
 	bank           *fingerprint.Bank
 	opts           Options
+	draining       atomic.Bool
 }
 type Request struct {
 	Protocol    string `json:"protocol,omitempty"`
@@ -133,9 +136,11 @@ func New(store *history.Store, opts Options) (*Server, error) {
 	s.feedbackLimits = map[string]feedbackWindow{}
 	s.loadCachedBank()
 	s.initTransport()
-	if e := store.RecoverInterrupted(); e != nil {
-		stop()
-		return nil, e
+	if !opts.SkipRecover {
+		if e := store.RecoverInterrupted(); e != nil {
+			stop()
+			return nil, e
+		}
 	}
 	s.cleanup()
 	s.startWorkers()
@@ -147,7 +152,15 @@ func New(store *history.Store, opts Options) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, 200, map[string]any{"status": "ok", "mode": "local"})
+		queued, running := s.runtimeCounts()
+		reply(w, 200, map[string]any{"status": "ok", "mode": "local", "draining": s.draining.Load(), "queued_jobs": queued, "active_jobs": running})
+	})
+	m.HandleFunc("GET /api/ready", func(w http.ResponseWriter, r *http.Request) {
+		if s.draining.Load() {
+			reply(w, 503, map[string]any{"status": "draining"})
+			return
+		}
+		reply(w, 200, map[string]any{"status": "ready"})
 	})
 	m.HandleFunc("GET /api/bank/stats", s.stats)
 	m.HandleFunc("POST /api/detect", s.start)
@@ -274,6 +287,11 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, map[string]any{"supported_models": ids, "fingerprint_count": len(ids), "numeric_count": len(bank.Numeric.Models), "behavioral_count": len(bank.Behavioral.Models), "families": []string{"GPT", "Claude", "Gemini", "DeepSeek", "Grok", "GLM"}, "numeric_families": []string{"GPT", "Claude"}, "source": bank.Source})
 }
 func (s *Server) start(w http.ResponseWriter, r *http.Request) {
+	if s.draining.Load() {
+		w.Header().Set("Retry-After", "5")
+		reply(w, 503, map[string]string{"error": "服务正在平滑切换，当前不接收新检测"})
+		return
+	}
 	var q Request
 	if !decode(w, r, &q) {
 		return
@@ -372,11 +390,16 @@ func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, map[string]bool{"ok": true})
 }
 func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
+	if s.draining.Load() {
+		w.Header().Set("Retry-After", "5")
+		reply(w, 503, map[string]string{"error": "服务正在平滑切换，暂不接收重试任务"})
+		return
+	}
 	t := s.find(r.PathValue("id"))
 	if t == nil {
 		if rec, e := s.store.GetByReportID(r.PathValue("id")); e == nil {
 			hash, _ := s.store.ControlHash(rec.ReportID)
-			if token := r.Header.Get("X-Job-Token"); token == "" || controlHash(token) != hash {
+			if !controlHashMatches(r.Header.Get("X-Job-Token"), hash) {
 				reply(w, 403, map[string]string{"error": "只有任务创建者可重跑检测"})
 				return
 			}

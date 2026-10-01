@@ -22,6 +22,7 @@ func main() {
 	db := flag.String("db", ".local/history.db", "local SQLite path")
 	web := flag.String("web", "web/out-build", "Next.js static export directory")
 	allowPrivate := flag.Bool("allow-private", false, "allow private gateway targets for local mock testing")
+	skipRecover := flag.Bool("skip-recover", false, "do not mark another instance's queued/running jobs interrupted during a rolling start")
 	workers := flag.Int("workers", 16, "maximum concurrently executing jobs")
 	queue := flag.Int("queue", 128, "bounded waiting jobs")
 	upstream := flag.Int("upstream-concurrency", 64, "global upstream request cap")
@@ -38,7 +39,7 @@ func main() {
 		log.Fatal(e)
 	}
 	defer store.Close()
-	apiServer, e := api.New(store, api.Options{AutoSync: true, AllowPrivate: *allowPrivate, Workers: *workers, QueueSize: *queue, MaxRequests: *upstream})
+	apiServer, e := api.New(store, api.Options{AutoSync: true, AllowPrivate: *allowPrivate, SkipRecover: *skipRecover, Workers: *workers, QueueSize: *queue, MaxRequests: *upstream})
 	if e != nil {
 		log.Fatal(e)
 	}
@@ -63,6 +64,8 @@ func main() {
 	srv := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	stopDrainSignal := installDrainSignal(apiServer, ctx)
+	defer stopDrainSignal()
 	go func() {
 		<-ctx.Done()
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)

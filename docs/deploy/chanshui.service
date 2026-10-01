@@ -17,6 +17,7 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/chanshui-data
 LimitNOFILE=65536
+TimeoutStopSec=1300
 
 [Install]
 WantedBy=multi-user.target

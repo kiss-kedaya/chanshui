@@ -5,6 +5,7 @@ import (
 	"chanzhushui/internal/iq"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"log"
@@ -23,6 +24,13 @@ type queuedJob struct {
 func controlHash(value string) string {
 	h := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(h[:])
+}
+func controlHashMatches(value, expected string) bool {
+	if value == "" || expected == "" {
+		return false
+	}
+	got := controlHash(value)
+	return len(got) == len(expected) && subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1
 }
 func (s *Server) startWorkers() {
 	for i := 0; i < s.opts.Workers; i++ {
@@ -132,7 +140,7 @@ func (s *Server) persist(t *Task) {
 }
 func (s *Server) authorize(r *http.Request, t *Task) bool {
 	value := r.Header.Get("X-Job-Token")
-	return value != "" && controlHash(value) == t.controlHash
+	return controlHashMatches(value, t.controlHash)
 }
 func (s *Server) fromRecord(r *history.Record) *Task {
 	t := &Task{ID: r.ReportID, ReportID: r.ReportID, HistoryID: r.ID, CreatedAt: r.CreatedAt, BaseURL: r.BaseURL, Model: r.Model, Status: r.Status, ExpiresAt: r.ExpiresAt}

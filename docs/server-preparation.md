@@ -3,6 +3,7 @@
 本文件同时用于本地运行和 `chanshui.dev` 新机部署。生产部署使用独立 systemd 服务和 nginx 反代，数据目录必须单独持久化；不要与同机其他服务共用端口或数据库。
 
 当前部署验收：`chanshui.dev` → `<ORIGIN_IP>`（Cloudflare 橙云）→ nginx 443 → `127.0.0.1:8770`；systemd 单元为 `chanshui.service`，数据目录为 `/opt/chanshui-data`。源站不直接暴露 8770。
+升级按 `docs/deploy/rolling-upgrade.md` 排空旧 Job 后切换，不直接重启中断检测。
 
 ## 最小运行结构
 
