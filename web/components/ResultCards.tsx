@@ -2,7 +2,7 @@
 import AnimatedNumber from "@/components/AnimatedNumber";
 import ResultSkeleton from "@/components/ResultSkeleton";
 import Hint from "@/components/Hint";
-import { probabilityVisible } from "@/lib/report-view";
+import { fingerprintDiluted, probabilityVisible } from "@/lib/report-view";
 import { DetectVerdict } from "@/lib/api";
 function Details({ label, value }: { label: string; value: unknown }) {
   return (
@@ -67,14 +67,75 @@ export default function ResultCards({
     reported === false || value == null || !Number.isFinite(value) ? "—" : value;
   const cacheRate = (value?: number | null) =>
     value == null || !Number.isFinite(value) ? "—" : value.toFixed(2) + "%";
+  const diluted = Boolean(f && !f.error && fingerprintDiluted(model || "", f.family, f.top_model));
   return (
     <div
       className={"results " + (loading ? "results-loading" : "results-settled")}
     >
+      <section className={"result-card" + (diluted ? " fingerprint-bad" : "")}>
+        <div className="rc-head">
+          <h3>模型指纹归因</h3>
+          <span className="card-number">01</span>
+        </div>
+        {!f ? (
+          <ResultSkeleton label={loading ? "指纹检测中…" : "暂无结果"} />
+        ) : (
+          <>
+            {f.error ? (
+              <div className="error-box">{f.error}</div>
+            ) : (
+              <>
+                {diluted && (
+                  <p className="fingerprint-alert">归因和所选模型对不上。这是被路由到别的模型，掺水。</p>
+                )}
+                <div className="metric-line">
+                  <strong className={diluted ? "bad family-title" : "family-title"}>
+                    {f.family_name || f.family}
+                  </strong>
+                  <span>家族概率 {(f.family_prob * 100).toFixed(1)}%</span>
+                </div>
+                <div className="result-note">
+                  <Hint label="指纹归因说明" text={f.note} />
+                </div>
+                {f.results
+                  ?.filter((r) => probabilityVisible(r.probability))
+                  .slice(0, 3)
+                  .map((r) => (
+                    <div className="candidate" key={r.model}>
+                      <div>
+                        <span>{r.model}</span>
+                        <b>{(r.probability * 100).toFixed(1)}%</b>
+                      </div>
+                      <div className="prob-bar">
+                        <div
+                          style={{ transform: "scaleX(" + r.probability + ")" }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                <p className="muted">
+                  有效样本 {f.used_outputs} / 3 ·{" "}
+                  {f.low_confidence ? "低置信，请复测" : "仅在当前候选库内比较"}
+                </p>
+                {f.behavioral_top3 && (
+                  <Details
+                    label="行为相似候选（探索性参考）"
+                    value={{
+                      candidates: f.behavioral_top3,
+                      note: f.behavior_note,
+                    }}
+                  />
+                )}
+              </>
+            )}
+            <Details label="数字挑战原始证据" value={f.evidence} />
+          </>
+        )}
+      </section>
       <section className="result-card">
         <div className="rc-head">
           <h3>注入大小</h3>
-          <span className="card-number">01</span>
+          <span className="card-number">02</span>
         </div>
         {!a ? (
           <ResultSkeleton label={loading ? "采样中…" : "暂无结果"} />
@@ -180,63 +241,6 @@ export default function ResultCards({
           </div>
         </section>
       )}
-      <section className="result-card">
-        <div className="rc-head">
-          <h3>模型指纹归因</h3>
-          <span className="card-number">02</span>
-        </div>
-        {!f ? (
-          <ResultSkeleton label={loading ? "指纹检测中…" : "暂无结果"} />
-        ) : (
-          <>
-            {f.error ? (
-              <div className="error-box">{f.error}</div>
-            ) : (
-              <>
-                <div className="metric-line">
-                  <strong className="family-title">
-                    {f.family_name || f.family}
-                  </strong>
-                  <span>家族概率 {(f.family_prob * 100).toFixed(1)}%</span>
-                </div>
-                <div className="result-note">
-                  <Hint label="指纹归因说明" text={f.note} />
-                </div>
-                {f.results
-                  ?.filter((r) => probabilityVisible(r.probability))
-                  .slice(0, 3)
-                  .map((r) => (
-                    <div className="candidate" key={r.model}>
-                      <div>
-                        <span>{r.model}</span>
-                        <b>{(r.probability * 100).toFixed(1)}%</b>
-                      </div>
-                      <div className="prob-bar">
-                        <div
-                          style={{ transform: "scaleX(" + r.probability + ")" }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                <p className="muted">
-                  有效样本 {f.used_outputs} / 3 ·{" "}
-                  {f.low_confidence ? "低置信，请复测" : "仅在当前候选库内比较"}
-                </p>
-                {f.behavioral_top3 && (
-                  <Details
-                    label="行为相似候选（探索性参考）"
-                    value={{
-                      candidates: f.behavioral_top3,
-                      note: f.behavior_note,
-                    }}
-                  />
-                )}
-              </>
-            )}
-            <Details label="数字挑战原始证据" value={f.evidence} />
-          </>
-        )}
-      </section>
       {claude && (
         <section className="result-card">
           <div className="rc-head">

@@ -369,19 +369,6 @@ export default function DetectPage() {
                   onChange={(e) => setConcurrency(Number(e.target.value))}
                 />
               </div>
-              <label className="cache-opt" title="可选。按普通多轮对话测前缀缓存，默认不跑。">
-                <input
-                  type="checkbox"
-                  checked={cacheOn}
-                  disabled={busy}
-                  onChange={(e) => setCacheOn(e.target.checked)}
-                />
-                缓存读写
-                <Hint
-                  label="缓存读写说明"
-                  text="默认关闭。打开后用 6 轮普通对话串行检测：每轮回放上一轮回答，末轮读取应接近上一轮的读加写。只对勾选的任务计分。"
-                />
-              </label>
               <div className="field">
                 <label htmlFor="timeout">单请求超时 / 秒</label>
                 <input
@@ -404,6 +391,19 @@ export default function DetectPage() {
               />
             </p>
             <div className="actions">
+              <label className="cache-opt cache-beside" title="可选。按普通多轮对话测前缀缓存，默认不跑。">
+                <input
+                  type="checkbox"
+                  checked={cacheOn}
+                  disabled={busy}
+                  onChange={(e) => setCacheOn(e.target.checked)}
+                />
+                缓存读写
+                <Hint
+                  label="缓存读写说明"
+                  text="默认关闭。打开后用 6 轮普通对话串行检测：每轮回放上一轮回答，末轮读取应接近上一轮的读加写。只对勾选的任务计分。"
+                />
+              </label>
               <button
                 className="btn-primary detect-button"
                 type="submit"
@@ -436,21 +436,22 @@ export default function DetectPage() {
           text="服务端定期同步模型基线。数字指纹仅对库内候选比较，行为参考不等于型号证明。"
         />
       </div>
+      {task && failed > 0 && hasRetryKey && (
+        <button
+          className="btn-retry btn-retry-block"
+          onClick={() => run(true)}
+          disabled={!key.trim()}
+          title={!key.trim() ? "重新填写上游 API Key 后，只重试这个任务的失败项" : "只重试这个任务的失败项"}
+        >
+          <Icon name="refresh" />
+          重跑失败项（{failed}）
+        </button>
+      )}
       {task && (
         <ProbeTimeline probes={task.probes} status={task.status} timing={task.verdict.timing}>
           {!busy && (
             <div className="report-actions">
               <span className="muted">{task.warning || ""}</span>
-              {failed > 0 && hasRetryKey && (
-                <button
-                  className="btn-secondary"
-                  onClick={() => run(true)}
-                  disabled={!key.trim()}
-                  title={!key.trim() ? "重新填写上游 API Key 后，只重试这个任务的失败项" : "只重试这个任务的失败项"}
-                >
-                  重跑失败项（{failed}）
-                </button>
-              )}
               <button
                 className="btn-secondary"
                 onClick={() => {

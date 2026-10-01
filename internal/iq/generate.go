@@ -82,7 +82,7 @@ func GenColorBlind(r *rand.Rand) Question {
 	}
 }
 
-// GenAnchor is iqbench Q5. Full credit requires the direction and its
+// GenAnchor is iqbench Q5. Full credit requires 水位下降, or the direction plus its
 // displacement/weighting explanation; direction alone receives half credit.
 func GenAnchor() Question {
 	return Question{ID: "Q5", Title: "船锚水位", Prompt: "船停在池塘中，铁锚原本在船上，后来被扔进池底。池塘水位会上升、下降，还是不变？请说明理由。\n" + answerTail, MaxScore: 10, LimitSec: 60, Answer: "下降", Tags: []string{"多步科学演绎"}}

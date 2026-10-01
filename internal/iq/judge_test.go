@@ -272,6 +272,34 @@ func TestJudgeNumericEquivalence(t *testing.T) {
 	}
 }
 
+func TestJudgeAnchorLevelDrop(t *testing.T) {
+	q := GenAnchor()
+	full := []string{
+		"最终答案: 水位下降",
+		"最终答案: 水位会下降",
+		"推理里写了水位下降。\n最终答案: 下降",
+		"最终答案: 下降，因为铁锚在船上时排水体积更大",
+	}
+	for _, text := range full {
+		score, half, _ := Judge(q, text)
+		if score != 10 || half {
+			t.Fatalf("full %q => %d half=%v", text, score, half)
+		}
+	}
+	score, half, tags := Judge(q, "最终答案: 下降")
+	if score != 5 || !half || len(tags) == 0 {
+		t.Fatalf("direction only => %d half=%v tags=%v", score, half, tags)
+	}
+	score, _, _ = Judge(q, "最终答案: 上升")
+	if score != 0 {
+		t.Fatalf("rise => %d", score)
+	}
+	score, _, _ = Judge(q, "正文误写水位下降。\n最终答案: 上升")
+	if score != 0 {
+		t.Fatalf("contradiction => %d", score)
+	}
+}
+
 func TestJudgeTagsPropagate(t *testing.T) {
 	q := GenCandyClassic(newRand(42))
 	_, _, tags := Judge(q, "推理……\n最终答案: 29")

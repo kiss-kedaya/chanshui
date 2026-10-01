@@ -193,6 +193,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			s.persist(t)
 		}()
 	}
+	job("fingerprint", func() (any, error) { return s.numeric(ctx, g, q) })
 	job("injection", func() (any, error) {
 		v, e := inject.Measure(ctx, g, q.Model, q.Timeout)
 		if e != nil {
@@ -209,7 +210,6 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			return v, nil
 		})
 	}
-	job("fingerprint", func() (any, error) { return s.numeric(ctx, g, q) })
 	job("tools", func() (any, error) { return capability.Tools(ctx, g, q.Model, q.Timeout) })
 	job("web", func() (any, error) { return capability.Web(ctx, g, q.Model, q.Timeout) })
 	job("knowledge", func() (any, error) {

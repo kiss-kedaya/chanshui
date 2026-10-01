@@ -133,7 +133,7 @@ function HistoryDetailInner() {
         )}
         {data && canRetry && (
           <Link
-            className="btn-secondary"
+            className="btn-retry btn-retry-block"
             href={"/?job=" + encodeURIComponent(data.report_id)}
             prefetch={false}
           >

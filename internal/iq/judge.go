@@ -185,7 +185,7 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 	case "Q4":
 		return judgeColorBlind(text)
 	case "Q5":
-		return judgeAnchor(text)
+		return judgeAnchor(text, tail)
 	case "Q6", "Q8":
 		return judgeCandy(q, text, tail)
 	case "Q7":
@@ -214,8 +214,13 @@ func judgeBatBall(text string) (int, bool, []string) {
 
 var anchorDownRe = regexp.MustCompile(`下降|降低|下沉`)
 var anchorReasonRe = regexp.MustCompile(`排水|浮力|体积|密度|重量`)
+var anchorLevelDownRe = regexp.MustCompile(`水位(?:会|将会|将|应该|应|已经|已|明显|略)?(?:下降|降低|下沉)`)
+var anchorUpRe = regexp.MustCompile(`上升|不变|不会下降|没有下降|未下降`)
 
-func judgeAnchor(text string) (int, bool, []string) {
+func judgeAnchor(text, tail string) (int, bool, []string) {
+	if anchorLevelDownRe.MatchString(text) || (anchorLevelDownRe.MatchString(tail) && !anchorUpRe.MatchString(text)) {
+		return 10, false, nil
+	}
 	if !anchorDownRe.MatchString(text) {
 		return 0, false, nil
 	}
