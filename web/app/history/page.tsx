@@ -161,6 +161,7 @@ function HistoryDetailInner() {
           verdict={data.verdict_json}
           model={data.model}
           loading={["running", "queued"].includes(data.status)}
+          showCache={data.probes?.some((p) => p.id === "cache")}
         />
       )}
     </div>

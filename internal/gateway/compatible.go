@@ -138,65 +138,115 @@ func compatibleUsage(u map[string]json.RawMessage, m *Metrics) {
 	if len(u) == 0 {
 		return
 	}
+	present := func(v json.RawMessage) bool {
+		return len(v) > 0 && string(v) != "null"
+	}
+	readInt := func(k string) int {
+		var n int
+		json.Unmarshal(u[k], &n)
+		return n
+	}
+	nonNegRaw := func(v json.RawMessage) (int, bool) {
+		if len(v) == 0 {
+			return 0, false
+		}
+		if string(v) == "null" {
+			return 0, true
+		}
+		var n int
+		if json.Unmarshal(v, &n) != nil {
+			return 0, false
+		}
+		if n < 0 {
+			n = 0
+		}
+		return n, true
+	}
 	_, hasInput := u["input_tokens"]
 	_, hasPrompt := u["prompt_tokens"]
-	m.UsagePresent = (hasInput && string(u["input_tokens"]) != "null") || (hasPrompt && string(u["prompt_tokens"]) != "null")
-	readInt := func(k string) int { var n int; json.Unmarshal(u[k], &n); return n }
+	m.UsagePresent = (hasInput && present(u["input_tokens"])) || (hasPrompt && present(u["prompt_tokens"]))
 	m.InputTokens = readInt("input_tokens")
-	if _, ok := u["prompt_tokens"]; ok {
+	if present(u["prompt_tokens"]) {
 		m.InputTokens = readInt("prompt_tokens")
 	}
 	m.OutputTokens = readInt("output_tokens")
-	m.OutputReported = u["output_tokens"] != nil && string(u["output_tokens"]) != "null"
-	if _, ok := u["completion_tokens"]; ok {
+	m.OutputReported = present(u["output_tokens"])
+	if present(u["completion_tokens"]) {
 		m.OutputTokens = readInt("completion_tokens")
-		m.OutputReported = string(u["completion_tokens"]) != "null"
+		m.OutputReported = true
 	}
-	var details map[string]json.RawMessage
-	raw := u["input_tokens_details"]
-	if raw == nil {
-		raw = u["prompt_tokens_details"]
+	var inputDetails, promptDetails map[string]json.RawMessage
+	json.Unmarshal(u["input_tokens_details"], &inputDetails)
+	json.Unmarshal(u["prompt_tokens_details"], &promptDetails)
+	// Nested keys win even when they are zero or null. Positive top-level
+	// aliases are only a fallback. This is the sub2api responses/chat order.
+	switch {
+	case len(inputDetails["cached_tokens"]) > 0:
+		m.CacheRead, m.CacheReadReported = nonNegRaw(inputDetails["cached_tokens"])
+	case len(promptDetails["cached_tokens"]) > 0:
+		m.CacheRead, m.CacheReadReported = nonNegRaw(promptDetails["cached_tokens"])
+	case present(u["cache_read_input_tokens"]):
+		m.CacheRead, m.CacheReadReported = nonNegRaw(u["cache_read_input_tokens"])
+	case present(u["cache_read_tokens"]):
+		m.CacheRead, m.CacheReadReported = nonNegRaw(u["cache_read_tokens"])
+	case present(u["cached_tokens"]):
+		m.CacheRead, m.CacheReadReported = nonNegRaw(u["cached_tokens"])
+	case present(u["prompt_cache_hit_tokens"]):
+		m.CacheRead, m.CacheReadReported = nonNegRaw(u["prompt_cache_hit_tokens"])
 	}
-	json.Unmarshal(raw, &details)
-	if v, ok := details["cached_tokens"]; ok && string(v) != "null" {
-		json.Unmarshal(v, &m.CacheRead)
-		m.CacheReadReported = true
+	nestedWrite := false
+	switch {
+	case len(inputDetails["cache_write_tokens"]) > 0:
+		m.CacheCreation5m, m.CacheWriteReported = nonNegRaw(inputDetails["cache_write_tokens"])
+		nestedWrite = m.CacheWriteReported
+	case len(promptDetails["cache_write_tokens"]) > 0:
+		m.CacheCreation5m, m.CacheWriteReported = nonNegRaw(promptDetails["cache_write_tokens"])
+		nestedWrite = m.CacheWriteReported
+	case len(inputDetails["cache_creation_tokens"]) > 0:
+		m.CacheCreation5m, m.CacheWriteReported = nonNegRaw(inputDetails["cache_creation_tokens"])
+		nestedWrite = m.CacheWriteReported
+	case len(promptDetails["cache_creation_tokens"]) > 0:
+		m.CacheCreation5m, m.CacheWriteReported = nonNegRaw(promptDetails["cache_creation_tokens"])
+		nestedWrite = m.CacheWriteReported
 	}
-	if v, ok := u["prompt_cache_hit_tokens"]; ok && string(v) != "null" {
-		m.CacheRead = readInt("prompt_cache_hit_tokens")
-		m.CacheReadReported = true
-	}
-	if v, ok := u["cache_read_input_tokens"]; ok && string(v) != "null" {
-		m.CacheRead = readInt("cache_read_input_tokens")
-		m.CacheReadReported = true
-	}
-	if v, ok := u["cache_creation_input_tokens"]; ok && string(v) != "null" {
-		m.CacheCreation5m = readInt("cache_creation_input_tokens")
-		m.CacheWriteReported = true
-	}
-	if !m.CacheWriteReported {
-		if v, ok := u["prompt_cache_miss_tokens"]; ok && string(v) != "null" {
-			m.CacheCreation5m = readInt("prompt_cache_miss_tokens")
+	if nestedWrite {
+		m.CacheCreation1h = 0
+	} else {
+		switch {
+		case present(u["cache_write_tokens"]) && readInt("cache_write_tokens") > 0:
+			m.CacheCreation5m = readInt("cache_write_tokens")
+			m.CacheWriteReported = true
+		case present(u["cache_creation_input_tokens"]) && readInt("cache_creation_input_tokens") > 0:
+			m.CacheCreation5m = readInt("cache_creation_input_tokens")
+			m.CacheWriteReported = true
+		case present(u["cache_write_input_tokens"]) && readInt("cache_write_input_tokens") > 0:
+			m.CacheCreation5m = readInt("cache_write_input_tokens")
+			m.CacheWriteReported = true
+		case present(u["cache_creation_tokens"]) && readInt("cache_creation_tokens") > 0:
+			m.CacheCreation5m = readInt("cache_creation_tokens")
 			m.CacheWriteReported = true
 		}
-	}
-	var creation struct {
-		Five *int `json:"ephemeral_5m_input_tokens"`
-		Hour *int `json:"ephemeral_1h_input_tokens"`
-	}
-	if json.Unmarshal(u["cache_creation"], &creation) == nil && (creation.Five != nil || creation.Hour != nil) {
-		aggregate := m.CacheCreation5m
-		m.CacheCreation5m, m.CacheCreation1h = 0, 0
-		if creation.Five != nil {
-			m.CacheCreation5m = *creation.Five
+		var creation struct {
+			Five *int `json:"ephemeral_5m_input_tokens"`
+			Hour *int `json:"ephemeral_1h_input_tokens"`
 		}
-		if creation.Hour != nil {
-			m.CacheCreation1h = *creation.Hour
+		if json.Unmarshal(u["cache_creation"], &creation) == nil && (creation.Five != nil || creation.Hour != nil) {
+			aggregate := m.CacheCreation5m
+			m.CacheCreation5m, m.CacheCreation1h = 0, 0
+			if creation.Five != nil {
+				m.CacheCreation5m = *creation.Five
+			}
+			if creation.Hour != nil {
+				m.CacheCreation1h = *creation.Hour
+			}
+			if aggregate > m.CacheCreation5m+m.CacheCreation1h {
+				m.CacheCreation5m = aggregate - m.CacheCreation1h
+			}
+			m.CacheWriteReported = true
 		}
-		if aggregate > m.CacheCreation5m+m.CacheCreation1h {
-			m.CacheCreation5m = aggregate - m.CacheCreation1h
+		if !m.CacheWriteReported && present(u["prompt_cache_miss_tokens"]) {
+			m.CacheCreation5m, m.CacheWriteReported = nonNegRaw(u["prompt_cache_miss_tokens"])
 		}
-		m.CacheWriteReported = true
 	}
 	// Compatible APIs count cached tokens inside input/prompt_tokens.
 	m.InputTokens -= m.CacheRead + m.CacheCreation5m + m.CacheCreation1h

@@ -46,8 +46,8 @@ function renderCache(overrides) {
 
 test("cache card shows per-request rates, missing writes, and unbounded third-round ratio", () => {
   const html = renderCache({});
-  assert.match(html, /第三轮缓存率<\/span><strong>120\.00%<\/strong>/);
-  assert.match(html, /第二轮读 ＋ 写<\/span><strong>1500<\/strong>/);
+  assert.match(html, /末轮缓存率<\/span><strong>120\.00%<\/strong>/);
+  assert.match(html, /上一轮读 ＋ 写<\/span><strong>1500<\/strong>/);
   assert.match(html, /<th>命中率<\/th>/);
   assert.match(html, /<td>#1<\/td><td>0<\/td><td>1000<\/td><td>4<\/td><td>2<\/td><td>0\.00%<\/td>/);
   assert.match(html, /<td>#3<\/td><td>1800<\/td><td>—<\/td><td>4<\/td><td>2<\/td><td>—<\/td>/);
@@ -62,8 +62,8 @@ test("cache card does not fabricate a denominator when previous write is missing
     ],
     third_read_ratio: null,
   });
-  assert.match(html, /第三轮缓存率<\/span><strong>—<\/strong>/);
-  assert.match(html, /第二轮读 ＋ 写<\/span><strong>—<\/strong>/);
+  assert.match(html, /末轮缓存率<\/span><strong>—<\/strong>/);
+  assert.match(html, /上一轮读 ＋ 写<\/span><strong>—<\/strong>/);
 });
 
 test("cache card distinguishes absent input from a reported zero", () => {

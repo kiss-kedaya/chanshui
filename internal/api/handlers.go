@@ -56,6 +56,7 @@ type Request struct {
 	Model       string `json:"model"`
 	Concurrency int    `json:"concurrency"`
 	Timeout     int    `json:"timeout"`
+	Cache       bool   `json:"cache"`
 }
 type Probe struct {
 	ID     string `json:"id"`
@@ -316,7 +317,10 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng)}
 	t.Verdict.Protocol = q.Protocol
 	t.Verdict.ScoringVersion = "2026-10-01-v5-jobs"
-	t.Probes = []Probe{{ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "cache", Name: "缓存读写验证", Status: "queued"}, {ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}}
+	t.Probes = []Probe{{ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}}
+	if q.Cache {
+		t.Probes = append([]Probe{t.Probes[0], {ID: "cache", Name: "缓存读写验证", Status: "queued"}}, t.Probes[1:]...)
+	}
 	if gateway.IsClaude(q.Model) {
 		t.Probes = append(t.Probes, Probe{ID: "thinking", Name: "思维链回传", Status: "queued"})
 	}

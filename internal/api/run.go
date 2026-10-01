@@ -200,13 +200,15 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		}
 		return v, nil
 	})
-	job("cache", func() (any, error) {
-		v, e := cachecheck.Measure(ctx, g, q.Model, q.Timeout)
-		if e != nil {
-			return v, e
-		}
-		return v, nil
-	})
+	if q.Cache || (selected != nil && selected["cache"]) {
+		job("cache", func() (any, error) {
+			v, e := cachecheck.Measure(ctx, g, q.Model, q.Timeout)
+			if e != nil {
+				return v, e
+			}
+			return v, nil
+		})
+	}
 	job("fingerprint", func() (any, error) { return s.numeric(ctx, g, q) })
 	job("tools", func() (any, error) { return capability.Tools(ctx, g, q.Model, q.Timeout) })
 	job("web", func() (any, error) { return capability.Web(ctx, g, q.Model, q.Timeout) })

@@ -770,6 +770,20 @@ code {
   gap: 18px;
   padding: 17px 0 3px;
 }
+.cache-opt {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: var(--ink);
+  font-size: 14px;
+}
+.cache-opt input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
 .advanced[open] > .advanced-grid {
   animation: appear 0.25s var(--ease-out);
 }

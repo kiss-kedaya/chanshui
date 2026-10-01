@@ -43,6 +43,7 @@ export default function DetectPage() {
   const [modelBusy, setModelBusy] = useState(false);
   const [concurrency, setConcurrency] = useState(0);
   const [timeout, setTimeoutValue] = useState(360);
+  const [cacheOn, setCacheOn] = useState(false);
   const [hasRetryKey, setHasRetryKey] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("summary");
@@ -70,6 +71,7 @@ export default function DetectPage() {
       setModel(p.model || "");
       if (["auto", "chat", "anthropic", "openai"].includes(p.protocol))
         setProtocol(p.protocol);
+      if (typeof p.cache === "boolean") setCacheOn(p.cache);
       if (cleanedBaseUrl !== storedBaseUrl) {
         localStorage.setItem(
           "chanshui-settings",
@@ -95,6 +97,7 @@ export default function DetectPage() {
     protocol,
     concurrency,
     timeout,
+    cache: cacheOn,
   });
   const poll = (id: string, restore = false) => {
     stopPolling.current?.();
@@ -139,7 +142,7 @@ export default function DetectPage() {
       try {
         localStorage.setItem(
           "chanshui-settings",
-          JSON.stringify({ base_url: baseUrl.trim(), model, protocol }),
+          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: cacheOn }),
         );
       } catch {}
       let id: string;
@@ -366,6 +369,19 @@ export default function DetectPage() {
                   onChange={(e) => setConcurrency(Number(e.target.value))}
                 />
               </div>
+              <label className="cache-opt" title="可选。按普通多轮对话测前缀缓存，默认不跑。">
+                <input
+                  type="checkbox"
+                  checked={cacheOn}
+                  disabled={busy}
+                  onChange={(e) => setCacheOn(e.target.checked)}
+                />
+                缓存读写
+                <Hint
+                  label="缓存读写说明"
+                  text="默认关闭。打开后用 6 轮普通对话串行检测：每轮回放上一轮回答，末轮读取应接近上一轮的读加写。只对勾选的任务计分。"
+                />
+              </label>
               <div className="field">
                 <label htmlFor="timeout">单请求超时 / 秒</label>
                 <input
@@ -384,7 +400,7 @@ export default function DetectPage() {
               <span className="usage-note">会产生接口用量</span>
               <Hint
                 label="检测用量说明"
-                text="注入大小使用两个独立小请求；缓存读写验证单独使用三轮递增对话。每个请求首次失败后独立最多重试 3 次。报告全站可见，有效期 24 小时。"
+                text="注入大小使用两个独立小请求。缓存读写默认关闭，打开后才跑 6 轮串行对话。每个失败请求独立最多重试 3 次。报告全站可见，有效期 24 小时。"
               />
             </p>
             <div className="actions">
@@ -480,6 +496,7 @@ export default function DetectPage() {
           verdict={task.verdict}
           model={task.model}
           loading={["queued", "running"].includes(task.status)}
+          showCache={task.probes?.some((p) => p.id === "cache")}
         />
       )}
       <details className="ask-panel">

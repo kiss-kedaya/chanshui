@@ -6,6 +6,7 @@ export interface DetectRequest {
   model: string;
   concurrency?: number;
   timeout?: number;
+  cache?: boolean;
 }
 export interface Metrics {
   Status: number;

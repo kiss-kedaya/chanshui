@@ -40,10 +40,12 @@ export default function ResultCards({
   verdict: v,
   model,
   loading = false,
+  showCache = false,
 }: {
   verdict: DetectVerdict;
   model?: string;
   loading?: boolean;
+  showCache?: boolean;
 }) {
   const a = v.injection,
     f = v.fingerprint,
@@ -53,8 +55,9 @@ export default function ResultCards({
   const integrity = v.integrity;
   const claude = (model || "").toLowerCase().startsWith("claude-");
   const cache = v.cache;
-  const previousCache = cache?.samples?.find((sample) => sample.index === 2);
-  const thirdCache = cache?.samples?.find((sample) => sample.index === 3);
+  const cacheSamples = cache?.samples ?? [];
+  const thirdCache = cacheSamples.length ? cacheSamples[cacheSamples.length - 1] : undefined;
+  const previousCache = cacheSamples.length > 1 ? cacheSamples[cacheSamples.length - 2] : undefined;
   const thirdTotal = thirdCache && thirdCache.read_reported !== false ? thirdCache.total : null;
   const previousCacheTotal = previousCache &&
     previousCache.read_reported !== false && previousCache.write_reported !== false
@@ -373,7 +376,7 @@ export default function ResultCards({
           </>
         )}
       </section>
-      <section className="result-card cache-card">
+      {(showCache || cache) && <section className="result-card cache-card">
         <div className="rc-head">
           <h3>缓存读写验证</h3>
           <span className="card-number">CACHE</span>
@@ -398,19 +401,19 @@ export default function ResultCards({
               <>
                 <div className="cache-rates">
                   <div>
-                    <span>第三轮缓存率</span>
+                    <span>末轮缓存率</span>
                     <strong>{cacheKnown ? cacheRate(v.cache.third_read_ratio) : "—"}</strong>
                   </div>
                   <div>
-                    <span>第三轮读取</span>
+                    <span>末轮读取</span>
                     <strong>{cacheToken(thirdCache?.read, thirdCache?.read_reported)}</strong>
                   </div>
                   <div>
-                    <span>第三轮总输入</span>
+                    <span>末轮总输入</span>
                     <strong>{cacheToken(thirdTotal, thirdCache?.read_reported)}</strong>
                   </div>
                   <div>
-                    <span>第二轮读 ＋ 写</span>
+                    <span>上一轮读 ＋ 写</span>
                     <strong>{cacheToken(previousCacheTotal)}</strong>
                   </div>
                 </div>
@@ -419,8 +422,8 @@ export default function ResultCards({
                     ? `${cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ ${cacheToken(thirdTotal, thirdCache?.read_reported)} × 100%`
                     : "—"}
                   <Hint
-                    label="第三轮缓存率说明"
-                    text="第三轮读取 ÷ 第三轮总输入。衔接通过要求第二轮读加写与第三轮读相差不超过 64 token。缺读取或第三轮失败时不计算。"
+                    label="末轮缓存率说明"
+                    text="末轮读取 ÷ 末轮总输入。通过要求上一轮读加写与末轮读相差不超过 64 token。缺字段或请求失败时不计算。"
                   />
                 </p>
                 {v.cache.third_read_ratio != null && v.cache.third_read_ratio > 100 && (
@@ -467,12 +470,12 @@ export default function ResultCards({
               </div>
             )}
             <Details
-              label={v.cache.samples ? "三次缓存明细与衔接" : "旧报告缓存明细"}
+              label={v.cache.samples ? "多轮缓存明细与衔接" : "旧报告缓存明细"}
               value={v.cache}
             />
           </>
         )}
-      </section>
+      </section>}
       {(
         [
           ["工具调用检测", v.tools],

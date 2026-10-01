@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 )
 
 const cacheSlack = 64
+const cacheTurns = 6
 
 type Sample struct {
 	Index          int      `json:"index"`
@@ -83,9 +85,9 @@ func absInt(n int) int {
 	return n
 }
 
-// FromMetrics builds the cache report from three sequential prefix calls.
-// The pass check is round-2 read+write versus round-3 read, within 64 tokens.
-// The displayed rate is only round-3 read divided by round-3 total input.
+// FromMetrics checks a serial conversation. The pass condition is the last
+// round's cache read versus the previous round's read+write, within 64 tokens.
+// third_read_ratio is that last round's read divided by its total input.
 func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retriesObserved bool) Result {
 	r := Result{Status: "unknown", Protocol: protocol, PrefixHash: prefixHash, RetriesObserved: retriesObserved, Samples: []Sample{}, Transitions: []Transition{}}
 	for i, m := range metrics {
@@ -110,14 +112,20 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		r.TotalRead += s.Read
 		r.TotalOutput += s.Output
 	}
-	if len(r.Samples) > 1 && r.Samples[1].ReadReported && r.Samples[1].WriteReported {
-		r.ThirdReadBaseline = r.Samples[1].Read + r.Samples[1].Write
+	if len(r.Samples) < 2 {
+		r.Reason = "缓存对话不足两轮，无法验证衔接。"
+		return r
 	}
-	if len(r.Samples) == 3 && r.Samples[2].Error == "" && r.Samples[2].ReadReported {
-		r.ThirdReadRatio = rate(r.Samples[2].Read, r.Samples[2].Total)
+	prev := r.Samples[len(r.Samples)-2]
+	last := r.Samples[len(r.Samples)-1]
+	if prev.ReadReported && prev.WriteReported {
+		r.ThirdReadBaseline = prev.Read + prev.Write
+	}
+	if last.Error == "" && last.ReadReported {
+		r.ThirdReadRatio = rate(last.Read, last.Total)
 	}
 	var link *Transition
-	for i := 0; i+1 < len(r.Samples) && i < 2; i++ {
+	for i := 0; i+1 < len(r.Samples); i++ {
 		a, b := r.Samples[i], r.Samples[i+1]
 		tr := Transition{From: i + 1, To: i + 2, Expected: a.Read + a.Write, Actual: b.Read, Delta: b.Read - a.Read - a.Write}
 		if a.Error == "" && b.Error == "" && a.ReadReported && a.WriteReported && b.ReadReported && tr.Expected > 0 {
@@ -132,29 +140,29 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		r.Actual = link.Actual
 		r.Delta = link.Delta
 	}
-	fieldsOK := len(r.Samples) == 3 && r.Samples[1].Error == "" && r.Samples[2].Error == "" && r.Samples[0].ReadReported && r.Samples[1].ReadReported && r.Samples[1].WriteReported && r.Samples[2].ReadReported
+	fieldsOK := prev.Error == "" && last.Error == "" && r.Samples[0].ReadReported && prev.ReadReported && prev.WriteReported && last.ReadReported
 	if !fieldsOK || link == nil || link.Pass == nil {
-		if len(r.Samples) == 3 && r.Samples[1].Error == "" && r.Samples[2].Error == "" && r.Samples[1].ReadReported && r.Samples[1].WriteReported && r.Samples[2].ReadReported && r.Samples[1].Read+r.Samples[1].Write == 0 {
-			r.Reason = "第二轮缓存读和写都是 0，前缀没有进缓存。常见原因是前缀低于缓存门槛，或接口没有接住缓存断点。"
+		if prev.Error == "" && last.Error == "" && prev.ReadReported && prev.WriteReported && last.ReadReported && prev.Read+prev.Write == 0 {
+			r.Reason = "上一轮缓存读和写都是 0，前缀没有进缓存。常见原因是前缀低于缓存门槛，或接口没有接住缓存断点。"
 			return r
 		}
 		r.Reason = "读写字段不齐或上一轮缓存量为 0，无法验证衔接；缺失字段不按 0。"
 		return r
 	}
-	grew := r.Samples[1].Read+r.Samples[1].Write > r.Samples[0].Read+cacheSlack
+	grew := len(r.Samples) > 1 && r.Samples[1].Read+r.Samples[1].Write > r.Samples[0].Read+cacheSlack
 	if !grew {
 		fail := false
 		r.Pass = &fail
 		r.Status = "mismatch"
-		r.Reason = "第二轮缓存量没有比第一轮读取多出一段前缀，新内容没有进入缓存。"
+		r.Reason = "第二轮没有比第一轮多出一段缓存，新对话没有进入缓存。"
 		return r
 	}
 	r.Pass = link.Pass
 	r.Status = "mismatch"
-	r.Reason = "第二轮读加写与第三轮读相差超过 64 token。第三轮缓存率仍按该轮读取除以该轮总输入。"
+	r.Reason = "上一轮读加写与末轮读相差超过 64 token。末轮缓存率仍按该轮读取除以该轮总输入。"
 	if *link.Pass {
 		r.Status = "pass"
-		r.Reason = "第二轮读加写与第三轮读相差不超过 64 token。第三轮缓存率是该轮读取除以该轮总输入。"
+		r.Reason = "上一轮读加写与末轮读相差不超过 64 token。末轮缓存率是该轮读取除以该轮总输入。"
 	}
 	if r.RetriesObserved {
 		r.Reason += " 本组发生重试，首次成功样本可能不是冷缓存；重试用量未计入样本命中率。"
@@ -168,39 +176,54 @@ type Collection struct {
 	Units   []int
 }
 
-const (
-	cacheTailSame = "Reply with only OK."
-	cacheTailLast = "Reply with only OK now."
-)
+func prefixSentences(model string) int {
+	// Sonnet and Opus cache from 1024 tokens. Haiku caches from 2048.
+	// One prefix above both thresholds keeps the six-turn chain comparable.
+	_ = model
+	return 170
+}
 
-func cacheSystemText() string {
+func cacheSystemText(n int) string {
 	var b strings.Builder
-	b.Grow(200 * 64)
-	for i := 1; i <= 200; i++ {
+	b.Grow(n * 64)
+	b.WriteString("Stable agent brief. Keep this document byte-for-byte identical across turns.\n")
+	for i := 1; i <= n; i++ {
 		fmt.Fprintf(&b, "Cache prefix sentence %03d remains byte for byte identical.\n", i)
 	}
 	return b.String()
 }
 
-func cacheExtraText() string {
-	var b strings.Builder
-	for i := 1; i <= 20; i++ {
-		fmt.Fprintf(&b, "Cache extension sentence %02d adds only the second block.\n", i)
-	}
-	return b.String()
+func cacheTurnPrompt(i int) string {
+	return fmt.Sprintf("Continue the same document. Do not rewrite earlier turns. Reply with only noted-%d.", i+1)
 }
 
-// Collect sends three serial prefix probes. A is a stable system prefix, B is
-// added on rounds 2 and 3, and only the short tail changes on round 3.
-// Assistant replies are not replayed, so the cached prefix stays byte-identical.
+func replayAnswer(answer string) string {
+	answer = strings.TrimSpace(answer)
+	if i := strings.IndexByte(answer, '\n'); i >= 0 {
+		answer = strings.TrimSpace(answer[:i])
+	}
+	if answer == "" {
+		return "noted"
+	}
+	if utf8.RuneCountInString(answer) <= 80 {
+		return answer
+	}
+	runes := []rune(answer)
+	return string(runes[:80])
+}
+
+// Collect runs six serial chat turns. The system document stays byte-identical.
+// Each later turn replays the earlier user and assistant lines, the same way an
+// agent continues a thread. Anthropic breakpoints sit on the system block, the
+// previous user line, and the new user line. No one-hour TTL is sent.
 func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (Collection, error) {
-	col := Collection{Metrics: make([]gateway.Metrics, 0, 3), Units: make([]int, 0, 3)}
-	systemText := cacheSystemText()
-	extraText := cacheExtraText()
+	col := Collection{Metrics: make([]gateway.Metrics, 0, cacheTurns), Units: make([]int, 0, cacheTurns)}
+	systemText := cacheSystemText(prefixSentences(model))
 	sum := sha256.Sum256([]byte(systemText))
 	prefixHash := hex.EncodeToString(sum[:])
 	protocol := c.ProtocolFor(model)
 	var shapes []Sample
+	var history []gateway.ConversationMessage
 	finish := func() {
 		col.Result = FromMetrics(col.Metrics, prefixHash, protocol, hasRetry(col.Metrics))
 		for i, shape := range shapes {
@@ -221,31 +244,28 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			col.Result.Third = &col.Result.Samples[2]
 		}
 	}
-	hour := &gateway.CacheControl{TTL: "1h"}
-	for i := 0; i < 3; i++ {
-		tail := cacheTailSame
-		if i == 2 {
-			tail = cacheTailLast
-		}
+	mark := &gateway.CacheControl{}
+	for i := 0; i < cacheTurns; i++ {
+		prompt := cacheTurnPrompt(i)
+		hist := append([]gateway.ConversationMessage(nil), history...)
 		q := gateway.CallRequest{
 			Model:          model,
-			Prompt:         tail,
+			Prompt:         prompt,
 			MaxTokens:      64,
 			TimeoutSeconds: timeout,
 			Validate:       validateSample,
 			System:         []gateway.SystemBlock{{Text: systemText}},
+			History:        hist,
 		}
-		visible := tail
 		if protocol == "messages" {
-			q.System[0].CacheControl = hour
-		}
-		if i > 0 {
-			block := gateway.TextBlock{Text: extraText}
-			if protocol == "messages" {
-				block.CacheControl = hour
+			q.System[0].CacheControl = mark
+			q.PromptCacheControl = mark
+			for j := len(q.History) - 1; j >= 0; j-- {
+				if q.History[j].Role == "user" {
+					q.History[j].CacheControl = mark
+					break
+				}
 			}
-			q.UserPrefix = []gateway.TextBlock{block}
-			visible = extraText + tail
 		}
 		m, e := c.CallMessages(ctx, q)
 		if e != nil {
@@ -257,9 +277,13 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			}
 		}
 		col.Metrics = append(col.Metrics, m)
-		col.Units = append(col.Units, len(systemText)+len(visible))
-		hash := sha256.Sum256([]byte(systemText + "\n" + visible))
-		shapes = append(shapes, Sample{PromptChars: len(visible), Messages: 1, RequestHash: hex.EncodeToString(hash[:])})
+		visible := systemText + "\n" + prompt
+		for _, item := range hist {
+			visible += "\n" + item.Content
+		}
+		hash := sha256.Sum256([]byte(visible))
+		shapes = append(shapes, Sample{PromptChars: len(visible), Messages: len(hist) + 1, RequestHash: hex.EncodeToString(hash[:])})
+		col.Units = append(col.Units, len(visible))
 		if m.Err != "" {
 			finish()
 			col.Result.Reason = "缓存请求未完成，保留已完成样本；不把缺失样本当成0。"
@@ -269,6 +293,7 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			protocol = m.Protocol
 			c.PinProtocol(m.Protocol)
 		}
+		history = append(history, gateway.ConversationMessage{Role: "user", Content: prompt}, gateway.ConversationMessage{Role: "assistant", Content: replayAnswer(m.Answer)})
 	}
 	finish()
 	return col, nil

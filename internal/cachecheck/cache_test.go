@@ -111,12 +111,13 @@ func TestCollectKeepsStablePrefixBreakpoints(t *testing.T) {
 				}
 				bodies = append(bodies, q)
 				turn := len(bodies)
-				read, write := 0, 4096
-				if turn == 2 {
-					read, write = 4096, 512
+				read, write := 0, 2000
+				if turn > 1 {
+					read = 2000 + (turn-2)*40
+					write = 40
 				}
-				if turn == 3 {
-					read, write = 4608, 0
+				if turn == cacheTurns {
+					write = 20
 				}
 				usage := map[string]int{"input_tokens": 8, "output_tokens": 1, "cache_read_input_tokens": read, "cache_creation_input_tokens": write}
 				w.Header().Set("Content-Type", "application/json")
@@ -132,14 +133,14 @@ func TestCollectKeepsStablePrefixBreakpoints(t *testing.T) {
 			}))
 			defer s.Close()
 			r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, Mode: mode, NoRetry: true}, "claude-opus-5", 10)
-			if err != nil || len(bodies) != 3 || r.Pass == nil || !*r.Pass {
-				t.Fatalf("%+v %v", r, err)
+			if err != nil || len(bodies) != cacheTurns || r.Pass == nil || !*r.Pass {
+				t.Fatalf("%+v %v bodies=%d", r, err, len(bodies))
 			}
-			if ratioText(r.ThirdReadRatio) != "99.83" {
+			if ratioText(r.ThirdReadRatio) != "98.72" {
 				t.Fatal(ratioText(r.ThirdReadRatio), r)
 			}
-			if r.Samples[1].RequestHash == r.Samples[2].RequestHash {
-				t.Fatal("second and third requests are identical")
+			if r.Samples[cacheTurns-2].RequestHash == r.Samples[cacheTurns-1].RequestHash {
+				t.Fatal("last two requests are identical")
 			}
 			if maxFlight != 1 {
 				t.Fatalf("cache rounds overlapped: %d", maxFlight)
@@ -147,29 +148,40 @@ func TestCollectKeepsStablePrefixBreakpoints(t *testing.T) {
 			if !strings.Contains(r.Reason, "缓存") {
 				t.Fatal(r.Reason)
 			}
-			systems := make([]string, 3)
-			users := make([]string, 3)
+			var system0 string
 			for i, body := range bodies {
-				systems[i], users[i] = prefixAndUser(t, mode, body)
-				if i > 0 && systems[i] != systems[0] {
+				system, msgs := conversation(t, mode, body)
+				if i == 0 {
+					system0 = system
+				} else if system != system0 {
 					t.Fatal("system prefix changed between rounds")
 				}
+				if len(msgs) != 1+i*2 {
+					t.Fatalf("turn %d message count %d", i+1, len(msgs))
+				}
+				if msgs[len(msgs)-1].role != "user" || msgs[len(msgs)-1].text != cacheTurnPrompt(i) {
+					t.Fatalf("turn %d tail %#v", i+1, msgs[len(msgs)-1])
+				}
+				if i > 0 && (msgs[len(msgs)-2].role != "assistant" || msgs[len(msgs)-2].text != "OK") {
+					t.Fatalf("turn %d replay %#v", i+1, msgs[len(msgs)-2])
+				}
 			}
-			if len(systems[0]) <= 8000 {
-				t.Fatalf("system prefix too short: %d", len(systems[0]))
-			}
-			extra := strings.TrimSuffix(users[1], cacheTailSame)
-			if extra == "" || users[0] != cacheTailSame || users[1] != extra+cacheTailSame || users[2] != extra+cacheTailLast {
-				t.Fatalf("prefix shape %#v", users)
+			if len(system0) < 4500 {
+				t.Fatalf("system prefix too short: %d", len(system0))
 			}
 			if mode == "anthropic" {
-				assertAnthropicBlocks(t, bodies, extra)
+				assertAnthropicBreakpoints(t, bodies)
 			}
 		})
 	}
 }
 
-func prefixAndUser(t *testing.T, mode string, body map[string]any) (string, string) {
+type spoken struct {
+	role string
+	text string
+}
+
+func conversation(t *testing.T, mode string, body map[string]any) (string, []spoken) {
 	t.Helper()
 	raw := body["messages"]
 	if mode == "openai" {
@@ -178,29 +190,37 @@ func prefixAndUser(t *testing.T, mode string, body map[string]any) (string, stri
 	msgs, _ := raw.([]any)
 	if mode == "anthropic" {
 		system, _ := body["system"].([]any)
-		if len(system) != 1 || len(msgs) != 1 {
-			t.Fatalf("anthropic shape system=%d messages=%d", len(system), len(msgs))
+		if len(system) != 1 {
+			t.Fatalf("anthropic system blocks %d", len(system))
 		}
 		block := system[0].(map[string]any)
 		cc := block["cache_control"].(map[string]any)
-		if cc["type"] != "ephemeral" || cc["ttl"] != "1h" {
+		if cc["type"] != "ephemeral" {
 			t.Fatalf("system cache_control %#v", cc)
 		}
-		msg := msgs[0].(map[string]any)
-		if msg["role"] != "user" {
-			t.Fatalf("role %#v", msg["role"])
+		if _, ok := cc["ttl"]; ok {
+			t.Fatalf("system ttl %#v", cc)
 		}
-		return block["text"].(string), userText(t, msg["content"])
+		out := make([]spoken, 0, len(msgs))
+		for _, item := range msgs {
+			msg := item.(map[string]any)
+			out = append(out, spoken{role: msg["role"].(string), text: userText(t, msg["content"])})
+		}
+		return block["text"].(string), out
 	}
-	if len(msgs) != 2 {
+	if len(msgs) < 2 {
 		t.Fatalf("message count %d", len(msgs))
 	}
 	system := msgs[0].(map[string]any)
-	user := msgs[1].(map[string]any)
-	if system["role"] != "system" || user["role"] != "user" {
-		t.Fatalf("roles %#v %#v", system["role"], user["role"])
+	if system["role"] != "system" {
+		t.Fatalf("system role %#v", system["role"])
 	}
-	return strings.TrimRight(system["content"].(string), "\n"), user["content"].(string)
+	out := make([]spoken, 0, len(msgs)-1)
+	for _, item := range msgs[1:] {
+		msg := item.(map[string]any)
+		out = append(out, spoken{role: msg["role"].(string), text: msg["content"].(string)})
+	}
+	return strings.TrimRight(system["content"].(string), "\n"), out
 }
 
 func userText(t *testing.T, content any) string {
@@ -220,29 +240,52 @@ func userText(t *testing.T, content any) string {
 	}
 }
 
-func assertAnthropicBlocks(t *testing.T, bodies []map[string]any, extra string) {
+func assertAnthropicBreakpoints(t *testing.T, bodies []map[string]any) {
 	t.Helper()
 	for i, body := range bodies {
-		msg := body["messages"].([]any)[0].(map[string]any)
-		content := msg["content"]
-		if i == 0 {
-			if _, ok := content.(string); !ok {
-				t.Fatalf("round 1 content %#v", content)
+		msgs := body["messages"].([]any)
+		markedUsers := 0
+		for n, item := range msgs {
+			msg := item.(map[string]any)
+			content := msg["content"]
+			isLast := n == len(msgs)-1
+			prevUser := i > 0 && n == len(msgs)-3
+			if msg["role"] == "assistant" {
+				if _, ok := content.([]any); ok {
+					t.Fatalf("turn %d assistant should be plain text", i+1)
+				}
+				continue
 			}
-			continue
+			part, ok := content.([]any)
+			if !ok {
+				if isLast || prevUser {
+					t.Fatalf("turn %d user %d missing breakpoint %#v", i+1, n, content)
+				}
+				continue
+			}
+			if len(part) != 1 {
+				t.Fatalf("turn %d user %d content %#v", i+1, n, content)
+			}
+			block := part[0].(map[string]any)
+			cc, exists := block["cache_control"].(map[string]any)
+			if isLast || prevUser {
+				if !exists || cc["type"] != "ephemeral" {
+					t.Fatalf("turn %d user breakpoint %#v", i+1, block)
+				}
+				if _, hasTTL := cc["ttl"]; hasTTL {
+					t.Fatalf("turn %d ttl %#v", i+1, cc)
+				}
+				markedUsers++
+			} else if exists {
+				t.Fatalf("turn %d extra breakpoint %#v", i+1, block)
+			}
 		}
-		blocks, ok := content.([]any)
-		if !ok || len(blocks) != 2 {
-			t.Fatalf("round %d blocks %#v", i+1, content)
+		want := 1
+		if i > 0 {
+			want = 2
 		}
-		first := blocks[0].(map[string]any)
-		second := blocks[1].(map[string]any)
-		cc := first["cache_control"].(map[string]any)
-		if first["text"] != extra || cc["ttl"] != "1h" || cc["type"] != "ephemeral" {
-			t.Fatalf("B block %#v", first)
-		}
-		if _, exists := second["cache_control"]; exists {
-			t.Fatalf("tail must not be cached: %#v", second)
+		if markedUsers != want {
+			t.Fatalf("turn %d marked users %d want %d", i+1, markedUsers, want)
 		}
 	}
 }
