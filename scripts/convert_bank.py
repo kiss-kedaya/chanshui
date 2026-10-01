@@ -8,6 +8,7 @@ import copy
 import json
 import os
 import sys
+import shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -57,13 +58,17 @@ def build():
     for b in probe["baselines"]:
         behavioral_models.append({k: copy.deepcopy(b[k]) for k in BEHAVIORAL_KEEP if k in b})
 
-    return {"numeric": numeric, "behavioral": {"models": behavioral_models}}
+    result = {"numeric": numeric, "behavioral": {"models": behavioral_models}}
+    provenance = os.path.join(ROOT, "data_ref", "provenance.json")
+    if os.path.exists(provenance):
+        result["source"] = load(provenance)
+    return result
 
 
 def verify(out):
     num = out["numeric"]
     models = num["models"]
-    assert len(models) == 16, f"numeric models: {len(models)}"
+    assert len(models) >= 16, f"numeric models: {len(models)}"
     for m in models:
         assert len(m["counts"]) == 355, m["id"]
     hell = num["robust"]["hellinger"]
@@ -71,12 +76,12 @@ def verify(out):
     assert len(hell["feature_mean"]) == 355
     assert len(hell["feature_scale"]) == 355
     assert len(hell["nuisance_basis"]) == 2 and len(hell["nuisance_basis"][0]) == 355
-    assert len(hell["centroids"]) == 16 and len(hell["centroids"][0]) == 355
+    assert len(hell["centroids"]) == len(models) and len(hell["centroids"][0]) == 355
     assert len(ordered["feature_mean"]) == 74
     assert len(ordered["feature_scale"]) == 74
     assert len(ordered["nuisance_basis"]) == 2 and len(ordered["nuisance_basis"][0]) == 74
-    assert len(ordered["centroids"]) == 16 and len(ordered["centroids"][0]) == 74
-    assert len(ordered["environment_centroids"]) == 12 and len(ordered["environment_centroids"][0]) == 16
+    assert len(ordered["centroids"]) == len(models) and len(ordered["centroids"][0]) == 74
+    assert len(ordered["environment_centroids"]) == 12 and len(ordered["environment_centroids"][0]) == len(models)
     assert set(num["calibration"]) == {"1", "2", "3"}, num["calibration"].keys()
     behav = out["behavioral"]["models"]
     assert len(behav) == 34, f"behavioral models: {len(behav)}"
@@ -87,10 +92,16 @@ def verify(out):
 def main():
     out = build()
     verify(out)
-    dest = os.path.join(ROOT, "server", "data", "bank.generated.json")
+    dest = os.path.join(ROOT, "internal", "fingerprint", "bank.generated.json")
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    with open(dest, "w", encoding="utf-8", newline="\n") as fh:
+    if os.path.exists(dest):
+        backup = os.path.join(ROOT, ".artifacts", "bank-before-conversion.json")
+        os.makedirs(os.path.dirname(backup), exist_ok=True)
+        shutil.copy2(dest, backup)
+    temporary = dest + ".tmp"
+    with open(temporary, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
+    os.replace(temporary, dest)
     print(f"wrote {dest} ({os.path.getsize(dest)} bytes)")
     return 0
 

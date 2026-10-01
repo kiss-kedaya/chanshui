@@ -41,7 +41,7 @@ func TestCheckThreeShapes(t *testing.T) {
 				Status:         200,
 				ThinkLen:       812,
 				SigLen:         208,
-				ThinkingText:   "13*17 is 221.",
+				ThinkingText:   "最小正整数 is 221.",
 				Signature:      strings.Repeat("s", 208),
 				ThinkingTokens: 130,
 				InputTokens:    88,
@@ -63,7 +63,7 @@ func TestCheckThreeShapes(t *testing.T) {
 				ThinkingTokens: 128,
 			},
 			wantPass:   false,
-			wantReason: "思考被清空，只回签名",
+			wantReason: "未回传思考文本，仅收到签名",
 			wantThink:  0,
 			wantSig:    256,
 			wantTokens: 128,
@@ -78,7 +78,7 @@ func TestCheckThreeShapes(t *testing.T) {
 				ThinkingTokens: 110,
 			},
 			wantPass:   false,
-			wantReason: "思考被清空，只回签名",
+			wantReason: "未回传思考文本，仅收到签名",
 			wantThink:  0,
 			wantSig:    244,
 			wantTokens: 110,
@@ -132,8 +132,8 @@ func TestCheckCallShape(t *testing.T) {
 	if req.Model != "claude-sonnet-4-5" {
 		t.Errorf("Model = %q", req.Model)
 	}
-	if req.MaxTokens != 2048 {
-		t.Errorf("MaxTokens = %d, want 2048", req.MaxTokens)
+	if req.MaxTokens != 4096 {
+		t.Errorf("MaxTokens = %d, want 4096", req.MaxTokens)
 	}
 	if req.Thinking == nil {
 		t.Fatal("Thinking config missing")
@@ -147,8 +147,8 @@ func TestCheckCallShape(t *testing.T) {
 	if len(req.Messages) != 1 {
 		t.Fatalf("len(Messages) = %d, want 1", len(req.Messages))
 	}
-	if !strings.Contains(req.Messages[0].Content, "13*17") {
-		t.Errorf("prompt missing 13*17: %q", req.Messages[0].Content)
+	if !strings.Contains(req.Messages[0].Content, "最小正整数") {
+		t.Errorf("prompt missing 最小正整数: %q", req.Messages[0].Content)
 	}
 }
 

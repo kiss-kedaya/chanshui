@@ -1,63 +1,180 @@
 "use client";
-
+import Feedback from "@/components/Feedback";
+import Icon from "@/components/Icon";
 import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { reportHost, reportPath } from "@/lib/report-view";
 import { getHistory, getBankStats, HistorySummary, BankStats } from "@/lib/api";
-
-function scoreBadge(s: HistorySummary["iq_score"]): { cls: string; text: string } {
-  if (s == null) return { cls: "badge-neutral", text: "IQ —" };
-  const cls = s >= 80 ? "badge-ok" : s >= 50 ? "badge-neutral" : "badge-bad";
-  return { cls, text: `IQ ${s}` };
-}
-function thinkBadge(p: number | null): { cls: string; text: string } {
-  if (p == null) return { cls: "badge-neutral", text: "思考 —" };
-  return p === 1 ? { cls: "badge-ok", text: "思考✓" } : { cls: "badge-bad", text: "思考✗" };
-}
-
 export default function Sidebar() {
-  const [items, setItems] = useState<HistorySummary[]>([]);
-  const [stats, setStats] = useState<BankStats | null>(null);
-
-  useEffect(() => {
-    getHistory().then(setItems).catch(() => {});
-    getBankStats().then(setStats).catch(() => {});
+  const [items, setItems] = useState<HistorySummary[]>([]),
+    [stats, setStats] = useState<BankStats | null>(null),
+    [error, setError] = useState("");
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false),
+    [hasMore, setHasMore] = useState(false),
+    [loadingMore, setLoadingMore] = useState(false);
+  const alive = useRef(true),
+    busy = useRef(false);
+  const refresh = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const page = await getHistory(50);
+      if (!alive.current) return;
+      setItems((prev) => {
+        const older =
+          page.length === 50
+            ? prev.filter((x) => x.id < page[page.length - 1].id)
+            : [];
+        return [...page, ...older];
+      });
+      setHasMore(page.length === 50);
+      setError("");
+    } catch (e) {
+      if (alive.current) setError((e as Error).message);
+    } finally {
+      busy.current = false;
+    }
   }, []);
-
+  async function more() {
+    if (busy.current || !items.length) return;
+    busy.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await getHistory(50, items[items.length - 1].id);
+      if (!alive.current) return;
+      setItems((prev) => {
+        const ids = new Set(prev.map((x) => x.id));
+        return [...prev, ...page.filter((x) => !ids.has(x.id))];
+      });
+      setHasMore(page.length === 50);
+      setError("");
+    } catch (e) {
+      if (alive.current) setError((e as Error).message);
+    } finally {
+      busy.current = false;
+      if (alive.current) setLoadingMore(false);
+    }
+  }
+  useEffect(() => {
+    alive.current = true;
+    void refresh();
+    getBankStats()
+      .then((x) => {
+        if (alive.current) setStats(x);
+      })
+      .catch(() => {});
+    const load = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const timer = window.setInterval(load, 15000);
+    window.addEventListener("history-updated", load);
+    window.addEventListener("focus", load);
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      alive.current = false;
+      window.clearInterval(timer);
+      window.removeEventListener("history-updated", load);
+      window.removeEventListener("focus", load);
+      document.removeEventListener("visibilitychange", load);
+    };
+  }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [pathname, refresh]);
   return (
-    <aside className="sidebar">
-      <div className="sidebar-logo">掺水？</div>
-      <div className="sidebar-sub">
-        {stats
-          ? `已收录指纹模型 ${stats.fingerprint_count} 个 · ${stats.families.length} 家族`
-          : "指纹库加载中…"}
+    <aside className={"sidebar " + (mobileOpen ? "mobile-open" : "")}>
+      <Link href="/" className="sidebar-logo">
+        <span className="logo-symbol">?</span>
+        <span>
+          掺水<span className="logo-punct">？</span>
+        </span>
+      </Link>
+      <div className="sidebar-sub">模型检测台</div>
+      <Link
+        className={"nav-home " + (pathname === "/" ? "active" : "")}
+        href="/"
+      >
+        <Icon name="scan" /> 新建检测
+      </Link>
+      <button
+        className="mobile-history"
+        aria-expanded={mobileOpen}
+        onClick={() => setMobileOpen(!mobileOpen)}
+      >
+        {mobileOpen ? "收起历史" : "历史记录"}
+      </button>
+      <div className="sidebar-title">
+        <span>全站检测历史</span>
+        <span>{items.length}</span>
       </div>
       <div className="sidebar-list">
-        <div className="sidebar-title">历史检测</div>
-        {items.length === 0 && (
-          <div style={{ padding: "10px", fontSize: 12, color: "#7a8290" }}>
+        {error ? (
+          <p className="sidebar-empty">{error}</p>
+        ) : !items.length ? (
+          <div className="sidebar-empty">
+            <div className="empty-lines">
+              <i />
+              <i />
+              <i />
+            </div>
             还没有检测记录
+            <br />
+            <small>所有访客的检测报告都会出现在这里</small>
           </div>
-        )}
-        {items.map((it) => {
-          const host = it.base_url.replace(/^https?:\/\//, "").split("/")[0];
-          const sb = scoreBadge(it.iq_score);
-          const tb = thinkBadge(it.thinking_pass);
-          return (
-            <Link key={it.id} href={`/history?id=${it.id}`} className="hist-item">
-              <div className="row1">
-                <span style={{ fontWeight: 600 }}>{it.model}</span>
-                <span>
-                  <span className={`hist-badge ${sb.cls}`}>{sb.text}</span>{" "}
-                  <span className={`hist-badge ${tb.cls}`}>{tb.text}</span>
-                </span>
+        ) : (
+          items.map((x) => (
+            <Link
+              className="hist-item"
+              key={x.id}
+              href={reportPath(x.report_id)}
+            >
+              <div className="history-model">{x.model}</div>
+              <div className="history-meta">
+                <span>{reportHost(x.base_url)}</span>
+                <b className="hist-badge">
+                  {x.iq_score == null ? "待完成" : x.iq_score + " 分"}
+                </b>
               </div>
-              <div className="row2">
-                {host} · {new Date(it.created_at).toLocaleString("zh-CN")}
+              <div className="history-report-id" title={x.report_id}>
+                ID {x.report_id.slice(0, 12)}…
+              </div>
+              <div className="history-time">
+                {new Date(x.created_at).toLocaleString("zh-CN", {
+                  month: "2-digit",
+                  day: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
+                ·{" "}
+                {!x.model.toLowerCase().startsWith("claude-")
+                  ? "通用协议"
+                  : x.thinking_pass == null
+                    ? "思考待定"
+                    : x.thinking_pass
+                      ? "摘要已回传"
+                      : "摘要未回传"}
               </div>
             </Link>
-          );
-        })}
+          ))
+        )}
+        {hasMore && (
+          <button
+            className="history-more"
+            onClick={more}
+            disabled={loadingMore}
+          >
+            {loadingMore ? "正在加载…" : "加载更多全站记录"}
+          </button>
+        )}
+      </div>
+      <div className="sidebar-bottom">
+        <Feedback />
+        <span className="sidebar-retention">
+          <Icon name="clock" width="14" height="14" />
+          报告保留 24 小时
+        </span>
       </div>
     </aside>
   );

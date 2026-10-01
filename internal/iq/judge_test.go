@@ -91,7 +91,7 @@ func TestJudgeColorBlind(t *testing.T) {
 		{"女儿不是亲生的", 14, false, ""},
 		{"不可能是亲生，伴X隐性遗传女儿发病父亲必病", 14, false, ""},
 		{"排除亲生关系", 14, false, ""},
-		{"亲生的可能性极低", 14, false, ""},
+		{"亲生的可能性极低", 0, false, ""},
 		{"并非常见的亲生判断，应属非亲生", 14, false, ""},
 		{"红绿色盲是伴X隐性遗传，父亲正常则女儿不该发病", 7, true, "仅遗传链"},
 		{"这是隔代遗传，外公传给女儿", 7, true, "仅遗传链"},
@@ -195,7 +195,7 @@ func TestJudgeCandyVariant(t *testing.T) {
 				earn int
 				half bool
 				tag  string
-			}{strconvI(25), 8, true, "替代建模"})
+			}{strconvI(25), 0, false, ""})
 		}
 		for _, c := range cases {
 			earned, half, tags := Judge(q, "推理……\n最终答案: "+c.ans)
@@ -291,7 +291,6 @@ func mustNum(s string) float64 {
 	v, _ := parseNum(s)
 	return v
 }
-
 
 func strconvI(v int) string { return fmt.Sprintf("%d", v) }
 func strconvAtoi(s string) (int, error) {

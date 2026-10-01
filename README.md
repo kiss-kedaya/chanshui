@@ -1,18 +1,78 @@
-# 掺水？（chanzhushui）
+# 掺水？ · 便携模型检测站
 
-Claude 系网关黑盒检测站。填 URL + Key + 模型名，一键出四项结论：
+Go服务端 + Next.js静态前端 + SQLite。填接口、密钥、模型，提交即创建Job；Job ID就是分享ID，24小时后自动清理。
+当前版本已完成本地验证，并准备部署到 `chanshui.dev`；生产部署使用独立 systemd 服务和 nginx 反代。
 
-1. **注入 token 数** —— 网关每次请求额外塞进去多少系统提示词（回归测量，同侧差分消 tokenizer 差异）
-2. **模型家族 / 具体型号** —— 数字指纹归因（三发长整数序列 → Hellinger + 有序块融合评分，参考 ModelTrace）
-3. **summarized 思考文本是否回传** —— 不能只回签名
-4. **智商评分（满分 100）** —— 认知反射 / 色盲遗传 / 糖果题（含变题防背题）/ 袜子配对等加权判分，参考 iqbench
+## 现在支持
 
-## 状态
+- 注入大小与缓存链：三次串行请求合并完成；前两轮估计注入偏移，第三轮验证暖缓存读取比例，独立10分制。
+- 模型归因：同步ModelTrace主库17个数字基线，34条行为基线，去重39模型，包含claude-sonnet-5-5；低到显示0.0%的候选隐藏。
+- 缓存链：相同前缀连续两条，比较前次缓存读＋缓存写是否等于后次缓存读；字段不足或全0标unknown。
+- 思维链回传：只测claude-前缀；非Claude不发送Anthropic thinking、不测不展示摘要/签名。
+- IQ：参数化题库、百分制、逐题证据；新报告扩展至 Q1～Q8，旧报告分值不重算。错误不冒充模型答错。
+- 接口完整性：单独统计协议、缓存、工具、联网、流式和思维链证据，未知项显示覆盖率，不混入 IQ。
+- IQ 扩展题库：保留原题，新增洗车、球拍与球、船锚水位三类可验证题型；新评分版本不改旧报告。
+- Job进度、全站历史、ID查询、当前域名分享、停止、失败重跑、单问单答。
+- 搜索式模型下拉、统一输入样式、清楚的错误卡；无代理入口或代理兜底。
 
-开发中。技术栈：Go 后端（所有鉴定逻辑在服务端，前端零逻辑）+ 单页前端 + SQLite 历史记录。
+## 本地运行
 
-实施计划：`docs/superpowers/plans/`。
+    ./scripts/start-local.ps1
 
-## License
+自动安装锁定依赖、构建静态页面、Go测试与启动。打开 http://127.0.0.1:8770 。已有构建可加-SkipBuild。
+停止：scripts/stop-local.ps1。全套测试：scripts/test-local.ps1。
 
-MIT
+数据在.local/history.db；密钥只在运行中内存使用，不落盘、不进日志或localStorage。
+服务重启，未完成任务标interrupted，不自动重复付费请求。报告在24小时内继续可查；重跑需创建者操作token和重新填写API Key。
+
+## 部署准备（不等于已上线）
+
+scripts/build-server.ps1生成Linux amd64二进制+静态页面本地包；部署前按checksums.txt校验。
+完整运行参数、反代Host、队列/TTL和限制见docs/server-preparation.md。
+默认16个worker、128个等待Job、全局64个上游在途请求，SQLite WAL与8连接。
+单实例便携方案，不声称已支持分布式多副本。服务器容量取决于CPU/内存/磁盘及上游耗时，需针对实际机器压测。
+
+分享链接由当前网页location.origin拼接，部署域名后自动使用该域名。测试Job与分享ID完全一致，另有不公开的操作token保护停止/重跑。
+
+## 重试、缓存与协议
+
+缓存检测与注入测试合并为三次串行请求：第一轮记录输入/输出/缓存写入，第二轮携带上一轮助手输出继续对话并记录新增写入，第三轮计算本轮读取占上一轮读+写的比例。前缀长度按协议和缓存门槛控制，会产生真实上游用量。
+
+所有模型调用和拉模型请求：首次失败后重试3次，总共最多4次；主动取消立即停止，不切代理。
+Claude→Messages；GPT→Responses（只在404/405时预算内回退Chat）；Gemini/DeepSeek/Grok/GLM→OpenAI兼容Chat，不假装原生Gemini协议。
+缓存测试前缀约1.3万token，三发串行，有真实上游费用。Claude显式1h缓存，其他接口缺写字段时只能展示已报告缓存读，不能伪造公式通过。
+
+## 模型库更新
+
+服务启动即后台检查ModelTrace，之后每6小时检查，失败5分钟后再试；只读取固定官方仓库、固定commit的数据文件。维度/数据有效性校验通过后持久化到SQLite并原子切换内存快照，失败保持旧库。检测不会读取一半更新的数据，前端不显示commit或同步时间。scripts/sync-bank.cjs仅作为维护工具。
+不是旧插件assets的副本。当前commit d4131b30243dfa05e70180b5eedde742103f1d73，元数据记录在data_ref/provenance.json。
+运行时自动同步不需要前端操作或重编译。实现算法变化仍需要更新代码与oracle测试，不能仅靠数据同步适配。
+
+## 证据与边界
+
+计划：docs/superpowers/plans/2026-10-01-chanshui-detection-station.md；验收：docs/local-verification-2026-10-01.md。
+注入是含协议包装的近似值；两点不展示虚假的线性置信。数字指纹只覆盖GPT/Claude，其他家族仅行为探索参考，不伪造身份结论。
+公开流量前仍需依赖升级审查、入口防滥用和目标服务器资源配额评估；当前站点域名为 `chanshui.dev`。
+
+## 展示、反馈与新增检测
+
+参考LMSpeed的暖白/深色主视觉，默认暖橙日间。右上角外观支持暖橙/薄荷绿×日间/夜间四种组合，浏览器保存选择。说明收进悬浮提示，眼睛切换密钥可见性；获取模型、提交Job、探针进度有旋转动画，支持减少动态效果。
+
+接口格式四选：auto自适应、chat兼容、anthropic原生、openai原生。默认auto；手动指定协议禁止404后擅自换路。报告保存原模式，重跑保持一致。
+工具检测校验结构化调用名称、ID、随机参数；自动模式遇兼容网关400会在重试预算内切换到Chat，并支持字符串/对象参数回传；不执行任意外部工具。联网检测使用Messages/Responses原生搜索，须返回搜索执行和来源证据；Chat无统一联网协议，标未经验证。两项都不改变IQ评分。新报告显示Q1～Q8，旧题内部ID保持版本化。
+
+左下角反馈收联系方式和问题/建议，写入私有feedback表，无公开读取API。管理员使用反馈导出程序：
+
+    feedback-export -db ./data/jobs.db -out ./private-feedback.json
+
+本地也可go run ./cmd/feedback-export；必须指定不存在的输出文件，导出含联系方式，应按敏感件保管，不进git。反馈不跟随24h报告清理。
+
+## Release 与 GitHub Actions
+
+- `CI`：Pull Request、`main` Push、手动触发；运行 Go race/vet、前端测试、类型检查和静态构建。
+- `CodeQL`：Go 与 TypeScript/JavaScript 周期扫描。
+- `Release`：推送 `v*` 标签或手动输入标签后，构建 Linux、Windows、macOS 的 amd64/arm64 包，附静态前端、运行说明、`VERSION` 和校验文件，再创建 GitHub Release。
+- 本地准备发布包：`./scripts/build-server.ps1`。它只构建到 `.artifacts/`，不上传。
+- 发布声明：`docs/release-notes/v0.1.0.md`。
+
+Release 工作流、SEO 元数据和 `chanshui.dev` 反代配置已准备；远程发布与服务器切换需以实际验收结果为准。

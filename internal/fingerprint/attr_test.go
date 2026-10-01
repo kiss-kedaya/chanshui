@@ -133,11 +133,11 @@ func TestGenerateChallenges(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, c := range chs {
-		if c.ExpectedCount != 300 {
+		if c.ExpectedCount < 292 || c.ExpectedCount > 332 {
 			t.Fatalf("challenge expected count: %d", c.ExpectedCount)
 		}
-		if l := len([]rune(c.Prompt)); l < 292 || l > 333 {
-			t.Fatalf("challenge length %d out of [292,333]: %q", l, c.Prompt)
+		if strings.Contains(c.Prompt, strings.Repeat("。", 10)) {
+			t.Fatal("meaningless prompt padding")
 		}
 		if !strings.Contains(c.Prompt, "1 到 355") {
 			t.Fatalf("challenge missing range text: %q", c.Prompt)

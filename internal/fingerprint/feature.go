@@ -1,9 +1,12 @@
 package fingerprint
 
-import "math"
+import (
+	"math"
+	"regexp"
+	"strconv"
+	"unicode"
+)
 
-// Number-range and feature-vector dimensions from the ModelTrace bank
-// (method.range = [1, 355]; ordered block feature = 4x16 bins + 10 final digits).
 const (
 	NumMinValue     = 1
 	NumMaxValue     = 355
@@ -11,126 +14,82 @@ const (
 	OrderedBlockDim = 74
 )
 
-// ParseNumbers extracts the valid number sequence from model output text:
-// digit runs are split at alphabetic separators, the longest run wins, and
-// only values in 1..355 are retained (matches the bank's parser description).
+var numberPattern = regexp.MustCompile("[0-9]+")
+
 func ParseNumbers(text string) []int {
-	var runs [][]int
-	cur := []int{}
-	start := -1
-	for i := 0; i <= len(text); i++ {
-		digit := i < len(text) && text[i] >= '0' && text[i] <= '9'
-		alpha := i < len(text) && isAlphaSep(text[i])
-		if digit {
-			if start < 0 {
-				start = i
+	var best, cur []int
+	end := 0
+	for _, loc := range numberPattern.FindAllStringIndex(text, -1) {
+		sep := text[end:loc[0]]
+		hasLetter := false
+		for _, r := range sep {
+			if unicode.IsLetter(r) {
+				hasLetter = true
+				break
 			}
-			continue
 		}
-		if start >= 0 {
-			cur = append(cur, parseInt(text[start:i]))
-			start = -1
+		if hasLetter && len(cur) > 0 {
+			if len(cur) > len(best) {
+				best = cur
+			}
+			cur = nil
 		}
-		if alpha && len(cur) > 0 {
-			runs = append(runs, cur)
-			cur = []int{}
+		v, err := strconv.Atoi(text[loc[0]:loc[1]])
+		if err == nil && v >= 1 && v <= 355 {
+			cur = append(cur, v)
 		}
+		end = loc[1]
 	}
-	best := cur
-	for _, r := range runs {
-		if len(r) > len(best) {
-			best = r
-		}
+	if len(cur) > len(best) {
+		best = cur
 	}
-	if len(best) == 0 {
-		return nil
-	}
-	out := make([]int, 0, len(best))
-	for _, v := range best {
-		if v >= NumMinValue && v <= NumMaxValue {
-			out = append(out, v)
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return best
 }
-
-func isAlphaSep(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func parseInt(s string) int {
-	v := 0
-	for i := 0; i < len(s); i++ {
-		v = v*10 + int(s[i]-'0')
-		if v > 1<<30 {
-			return 1 << 30
-		}
-	}
-	return v
-}
-
-// CountNumbers histograms parsed numbers into the 355-dim bank bin space.
 func CountNumbers(nums []int) []int {
-	counts := make([]int, NumDim)
+	c := make([]int, 355)
 	for _, v := range nums {
-		if v >= NumMinValue && v <= NumMaxValue {
-			counts[v-NumMinValue]++
+		if v >= 1 && v <= 355 {
+			c[v-1]++
 		}
 	}
-	return counts
+	return c
 }
-
-// HellingerFeature computes sqrt((counts+0.5)/sum), the 355-dim smoothed
-// Hellinger embedding used by the bank's hellinger centroids.
-func HellingerFeature(counts []int) []float64 {
-	total := 0
-	for _, c := range counts {
-		total += c
+func HellingerFeature(c []int) []float64 {
+	f := make([]float64, len(c))
+	sum := 0.5 * float64(len(c))
+	for _, v := range c {
+		sum += float64(v)
 	}
-	f := make([]float64, len(counts))
-	if total == 0 {
-		return f
-	}
-	den := float64(total) + 0.5*float64(len(counts))
-	for i, c := range counts {
-		f[i] = math.Sqrt((float64(c) + 0.5) / den)
+	for i, v := range c {
+		f[i] = math.Sqrt((float64(v) + 0.5) / sum)
 	}
 	return f
 }
-
-// OrderedBlockFeature builds the 74-dim ordered-block feature: 4 position
-// chunks x 16 value bins plus a 10-bin final-digit histogram, sqrt-smoothed.
 func OrderedBlockFeature(nums []int) []float64 {
-	f := make([]float64, OrderedBlockDim)
-	chunk := len(nums) / 4
-	if chunk == 0 {
-		chunk = 1
-	}
-	for c := 0; c < 4; c++ {
-		lo := c * chunk
-		hi := lo + chunk
-		if c == 3 || hi > len(nums) {
-			hi = len(nums)
+	f := make([]float64, 74)
+	pos := 0
+	for b := 0; b < 4; b++ {
+		size := len(nums) / 4
+		if b < len(nums)%4 {
+			size++
 		}
-		for i := lo; i < hi; i++ {
-			f[c*16+(nums[i]-NumMinValue)%16]++
+		for _, v := range nums[pos : pos+size] {
+			if v >= 1 && v <= 355 {
+				f[b*16+(v-1)*16/355]++
+			}
 		}
+		for j := 0; j < 16; j++ {
+			f[b*16+j] = math.Sqrt((f[b*16+j] + 0.5) / (float64(size) + 8))
+		}
+		pos += size
 	}
 	for _, v := range nums {
-		f[64+(v-NumMinValue)%10]++
+		if v >= 1 && v <= 355 {
+			f[64+v%10]++
+		}
 	}
-	sum := 0.0
-	for _, v := range f {
-		sum += v
-	}
-	if sum == 0 {
-		return f
-	}
-	for i := range f {
-		f[i] = math.Sqrt((f[i] + 0.5) / (sum + 0.5*float64(len(f))))
+	for j := 64; j < 74; j++ {
+		f[j] = math.Sqrt((f[j] + 0.5) / (float64(len(nums)) + 5))
 	}
 	return f
 }

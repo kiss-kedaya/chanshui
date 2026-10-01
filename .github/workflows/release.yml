@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22.x"
+  GO_VERSION: "1.25.x"
+
+jobs:
+  package:
+    name: Package ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            goos: linux
+            goarch: amd64
+            archive: tar.gz
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+            archive: tar.gz
+          - target: windows-amd64
+            goos: windows
+            goarch: amd64
+            archive: zip
+          - target: darwin-amd64
+            goos: darwin
+            goarch: amd64
+            archive: tar.gz
+          - target: darwin-arm64
+            goos: darwin
+            goarch: arm64
+            archive: tar.gz
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Verify source before packaging
+        run: |
+          go test -race ./...
+          go vet ./...
+
+      - name: Build static frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+          npm run typecheck
+          npm run build
+
+      - name: Build and archive
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          safe_tag="${TAG//\//-}"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          root="${GITHUB_WORKSPACE}/stage/${{ matrix.target }}"
+          mkdir -p "$root/web"
+          cp -R web/out-build/. "$root/web/"
+          cp README.md docs/server-preparation.md "$root/"
+          printf '%s\n' "$TAG" > "$root/VERSION"
+          binary="chanshui"
+          if [ "$GOOS" = "windows" ]; then binary="chanshui.exe"; fi
+          CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o "$root/$binary" .
+          archive="chanshui_${safe_tag}_${{ matrix.target }}"
+          mkdir -p dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            (cd "$(dirname "$root")" && zip -qr "${GITHUB_WORKSPACE}/dist/${archive}.zip" "$(basename "$root")")
+          else
+            tar -C "$(dirname "$root")" -czf "dist/${archive}.tar.gz" "$(basename "$root")"
+          fi
+          sha256sum "dist/${archive}.${{ matrix.archive }}" > "dist/${archive}.${{ matrix.archive }}.sha256"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub Release
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Build checksum manifest
+        working-directory: dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f checksums.txt
+          sha256sum *.tar.gz *.zip > checksums.txt
+          cat checksums.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "掺水？ ${TAG}" \
+            --generate-notes \
+            --notes-file docs/release-notes/v0.1.0.md

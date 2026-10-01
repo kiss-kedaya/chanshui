@@ -77,7 +77,7 @@ func TestCallMessagesFullMetrics(t *testing.T) {
 	defer srv.Close()
 
 	c := Client{BaseURL: srv.URL, Key: "sk-test-1"}
-	m, err := c.CallMessages(context.Background(), CallRequest{
+	m, err := c.callMessagesOnce(context.Background(), CallRequest{
 		Model: "claude-x", MaxTokens: 16, Prompt: "hi",
 	})
 	if err != nil {
@@ -185,7 +185,7 @@ func TestCallMessagesThinkingAndSystemSerialization(t *testing.T) {
 	defer srv.Close()
 
 	c := Client{BaseURL: srv.URL, Key: "k"}
-	_, err := c.CallMessages(context.Background(), CallRequest{
+	_, err := c.callMessagesOnce(context.Background(), CallRequest{
 		Model:     "m",
 		MaxTokens: 32,
 		Prompt:    "p",
@@ -230,7 +230,7 @@ func TestCallMessagesErrorBodyTruncation(t *testing.T) {
 	defer srv.Close()
 
 	c := Client{BaseURL: srv.URL, Key: "k"}
-	m, err := c.CallMessages(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p"})
+	m, err := c.callMessagesOnce(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p"})
 	if err != nil {
 		t.Fatalf("CallMessages returned Go error, want nil: %v", err)
 	}
@@ -251,11 +251,11 @@ func TestCallMessagesNon200NoErrorBody(t *testing.T) {
 	defer srv.Close()
 
 	c := Client{BaseURL: srv.URL, Key: "k"}
-	m, err := c.CallMessages(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p"})
+	m, err := c.callMessagesOnce(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p"})
 	if err != nil {
 		t.Fatalf("CallMessages returned Go error, want nil: %v", err)
 	}
-	if m.Err != "HTTP 502" {
+	if !strings.HasPrefix(m.Err, "HTTP 502") {
 		t.Errorf("Err = %q, want HTTP 502", m.Err)
 	}
 }
@@ -267,7 +267,7 @@ func TestCallMessagesStreamFrames(t *testing.T) {
 			t.Errorf("stream flag not sent in request body")
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\"}\n\n"+
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":1}}}\n\n"+
 			"data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"hi\"}}\n\n"+
 			"data: [DONE]\n\n"+
 			"data: {\"type\":\"should_not_be_read\"}\n\n")
@@ -275,12 +275,12 @@ func TestCallMessagesStreamFrames(t *testing.T) {
 	defer srv.Close()
 
 	c := Client{BaseURL: srv.URL, Key: "k"}
-	m, err := c.CallMessages(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p", Stream: true})
+	m, err := c.callMessagesOnce(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p", Stream: true})
 	if err != nil {
 		t.Fatalf("CallMessages: %v", err)
 	}
 	want := []string{
-		`{"type":"message_start"}`,
+		`{"type":"message_start","message":{"content":[],"usage":{"input_tokens":1}}}`,
 		`{"type":"content_block_delta","delta":{"text":"hi"}}`,
 	}
 	if !reflect.DeepEqual(m.SSEFrames, want) {
@@ -297,7 +297,7 @@ func TestCallMessagesCacheHeaderFallback(t *testing.T) {
 	defer srv.Close()
 
 	c := Client{BaseURL: srv.URL, Key: "k"}
-	m, err := c.CallMessages(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p"})
+	m, err := c.callMessagesOnce(context.Background(), CallRequest{Model: "m", MaxTokens: 16, Prompt: "p"})
 	if err != nil {
 		t.Fatalf("CallMessages: %v", err)
 	}

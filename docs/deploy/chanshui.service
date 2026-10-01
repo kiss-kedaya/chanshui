@@ -1,0 +1,22 @@
+[Unit]
+Description=Chanshui model detection station
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chanshui
+Group=chanshui
+WorkingDirectory=/opt/chanshui-current
+ExecStart=/opt/chanshui-current/chanshui -addr 127.0.0.1:8770 -web /opt/chanshui-current/web -db /opt/chanshui-data/jobs.db -workers 16 -queue 128 -upstream-concurrency 64
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/chanshui-data
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

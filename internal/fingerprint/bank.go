@@ -10,8 +10,9 @@ var bankGenerated []byte
 
 // Bank is the dual fingerprint bank: numeric (ModelTrace) + behavioral (v3e).
 type Bank struct {
-	Numeric    NumericBank    `json:"numeric"`
-	Behavioral BehavioralBank `json:"behavioral"`
+	Source     map[string]string `json:"source"`
+	Numeric    NumericBank       `json:"numeric"`
+	Behavioral BehavioralBank    `json:"behavioral"`
 }
 
 type NumericBank struct {

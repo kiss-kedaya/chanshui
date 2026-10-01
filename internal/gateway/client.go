@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,13 +9,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const DefaultUA = "claude-cli/2.1.284 (external, claude-desktop-3p, agent-sdk/0.3.284)"
 
 type ThinkingConfig struct {
 	Type         string `json:"type"`
-	Display      string `json:"display"`
+	Display      string `json:"display,omitempty"`
 	BudgetTokens int    `json:"budget_tokens"`
 }
 
@@ -30,26 +30,46 @@ type SystemBlock struct {
 }
 
 type CallRequest struct {
-	Model     string
-	MaxTokens int
-	Prompt    string
-	System    []SystemBlock
-	Thinking  *ThinkingConfig
-	Stream    bool
+	ToolReply        *ToolReply
+	Tools            []ToolDefinition
+	ForceTool        string
+	WebSearch        bool
+	protocolOverride string
+	Effort           string
+	Model            string
+	MaxTokens        int
+	Prompt           string
+	History          []ConversationMessage
+	System           []SystemBlock
+	Thinking         *ThinkingConfig
+	Stream           bool
 	// TimeoutSeconds overrides the per-request timeout when > 0. When 0 the
 	// request runs under the context deadline only.
 	TimeoutSeconds int
 }
 
+type ConversationMessage struct {
+	Role    string
+	Content string
+}
+
 type Metrics struct {
-	Status       int
-	Ms           int64
-	Err          string
-	Answer       string
-	Blocks       []string
-	StopReason   string
-	InputTokens  int
-	OutputTokens int
+	ToolCalls          []ToolCall
+	WebSearchInvoked   bool
+	WebSearchCompleted bool
+	SearchURLs         []string
+	Attempts           int
+	Protocol           string
+	CacheReadReported  bool
+	CacheWriteReported bool
+	Status             int
+	Ms                 int64
+	Err                string
+	Answer             string
+	Blocks             []string
+	StopReason         string
+	InputTokens        int
+	OutputTokens       int
 	// ThinkingTokens comes from usage.output_tokens_details.thinking_tokens.
 	ThinkingTokens  int
 	CacheCreation5m int
@@ -65,14 +85,34 @@ type Metrics struct {
 	// transport is installed on Client.HTTP.
 	Via string
 	// SSEFrames holds raw `data: ` payload lines when Stream is true.
-	SSEFrames []string
+	UsagePresent   bool
+	StreamComplete bool
+	FirstByteMs    int64
+	SSEFrames      []string
 }
 
 type Client struct {
-	BaseURL string
-	Key     string
-	HTTP    *http.Client
-	UA      string
+	Mode       string
+	NoRetry    bool
+	RetryDelay time.Duration
+	BaseURL    string
+	Key        string
+	HTTP       *http.Client
+	UA         string
+}
+
+func apiBase(raw string) string {
+	base := strings.TrimRight(strings.TrimSpace(raw), "/")
+	for _, suffix := range []string{"/chat/completions", "/messages", "/responses", "/models"} {
+		if strings.HasSuffix(base, suffix) {
+			base = strings.TrimRight(strings.TrimSuffix(base, suffix), "/")
+			break
+		}
+	}
+	if !strings.HasSuffix(base, "/v1") {
+		base += "/v1"
+	}
+	return base
 }
 
 type wireSystemBlock struct {
@@ -83,22 +123,25 @@ type wireSystemBlock struct {
 
 type wireThinking struct {
 	Type         string `json:"type"`
-	Display      string `json:"display"`
+	Display      string `json:"display,omitempty"`
 	BudgetTokens int    `json:"budget_tokens,omitempty"`
 }
 
 type wireRequest struct {
-	Model     string            `json:"model"`
-	MaxTokens int               `json:"max_tokens"`
-	Stream    bool              `json:"stream"`
-	System    []wireSystemBlock `json:"system,omitempty"`
-	Thinking  *wireThinking     `json:"thinking,omitempty"`
-	Messages  []wireMessage     `json:"messages"`
+	Tools        []any             `json:"tools,omitempty"`
+	ToolChoice   any               `json:"tool_choice,omitempty"`
+	OutputConfig map[string]string `json:"output_config,omitempty"`
+	Model        string            `json:"model"`
+	MaxTokens    int               `json:"max_tokens"`
+	Stream       bool              `json:"stream"`
+	System       []wireSystemBlock `json:"system,omitempty"`
+	Thinking     *wireThinking     `json:"thinking,omitempty"`
+	Messages     []wireMessage     `json:"messages"`
 }
 
 type wireMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"`
 }
 
 func (c *Client) ua() string {
@@ -119,13 +162,24 @@ func (c *Client) http() *http.Client {
 // metrics. HTTP-level errors and API error bodies land in Metrics.Err, not in
 // the returned Go error; the Go error is reserved for transport failures.
 // 429 handling is the caller's job.
-func (c *Client) CallMessages(ctx context.Context, req CallRequest) (Metrics, error) {
-	base := strings.TrimRight(c.BaseURL, "/")
+func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics, error) {
+	base := apiBase(c.BaseURL)
 	wire := wireRequest{
 		Model:     req.Model,
 		MaxTokens: req.MaxTokens,
 		Stream:    req.Stream,
-		Messages:  []wireMessage{{Role: "user", Content: req.Prompt}},
+		Messages:  make([]wireMessage, 0, len(req.History)+1),
+	}
+	for _, message := range req.History {
+		wire.Messages = append(wire.Messages, wireMessage{Role: message.Role, Content: message.Content})
+	}
+	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: req.Prompt})
+	if req.ToolReply != nil {
+		reply := req.ToolReply
+		wire.Messages = append(wire.Messages, wireMessage{Role: "assistant", Content: []any{map[string]any{"type": "tool_use", "id": reply.Call.ID, "name": reply.Call.Name, "input": reply.Call.Arguments}}}, wireMessage{Role: "user", Content: []any{map[string]any{"type": "tool_result", "tool_use_id": reply.Call.ID, "content": reply.Output}}})
+	}
+	if req.Effort != "" {
+		wire.OutputConfig = map[string]string{"effort": req.Effort}
 	}
 	for _, b := range req.System {
 		sb := wireSystemBlock{Type: "text", Text: b.Text}
@@ -145,6 +199,7 @@ func (c *Client) CallMessages(ctx context.Context, req CallRequest) (Metrics, er
 			BudgetTokens: req.Thinking.BudgetTokens,
 		}
 	}
+	wire.Tools, wire.ToolChoice = toolWire(req, "messages")
 	body, err := json.Marshal(wire)
 	if err != nil {
 		return Metrics{}, fmt.Errorf("marshal request: %w", err)
@@ -157,7 +212,7 @@ func (c *Client) CallMessages(ctx context.Context, req CallRequest) (Metrics, er
 		defer cancel()
 	}
 
-	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, base+"/v1/messages", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, base+"/messages", bytes.NewReader(body))
 	if err != nil {
 		return Metrics{}, fmt.Errorf("build request: %w", err)
 	}
@@ -174,23 +229,27 @@ func (c *Client) CallMessages(ctx context.Context, req CallRequest) (Metrics, er
 	defer httpResp.Body.Close()
 
 	m := Metrics{
-		Status: httpResp.StatusCode,
-		Ms:     time.Since(start).Milliseconds(),
-		Via:    "direct",
+		Status: httpResp.StatusCode, Protocol: "messages",
+		Ms:  time.Since(start).Milliseconds(),
+		Via: "direct",
 	}
 	m.CacheHeader = firstNonEmpty(httpResp.Header.Get("x-cache"), httpResp.Header.Get("cf-cache-status"))
 
 	readErr := func() error {
-		if req.Stream && httpResp.StatusCode == 200 {
+		if req.Stream && httpResp.StatusCode == 200 && strings.Contains(httpResp.Header.Get("Content-Type"), "text/event-stream") {
 			return c.readStream(httpResp.Body, &m)
 		}
-		raw, err := io.ReadAll(httpResp.Body)
+		raw, err := io.ReadAll(io.LimitReader(httpResp.Body, 8<<20))
 		if err != nil {
 			return err
 		}
-		_ = parseMessagesBody(raw, &m)
-		return nil
+		return parseMessagesBody(raw, &m)
 	}()
+	if httpResp.StatusCode == http.StatusForbidden && strings.Contains(strings.ToLower(httpResp.Header.Get("content-type")), "text/html") && strings.Contains(strings.ToLower(httpResp.Header.Get("server")), "cloudflare") {
+		m.Err = "HTTP 403 Cloudflare WAF blocked the source address"
+	}
+	m.FirstByteMs = m.Ms
+	m.Ms = time.Since(start).Milliseconds()
 	if readErr != nil {
 		if m.Err == "" {
 			m.Err = "HTTP " + itoa(httpResp.StatusCode) + " read: " + trunc(readErr.Error(), 200)
@@ -208,23 +267,7 @@ func (c *Client) CallMessages(ctx context.Context, req CallRequest) (Metrics, er
 // itself is not recorded. Non-`data:` lines (event names, blank separators,
 // comments) are skipped.
 func (c *Client) readStream(body io.Reader, m *Metrics) error {
-	sc := bufio.NewScanner(body)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		if !strings.HasPrefix(line, "data: ") && line != "data:" {
-			continue
-		}
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" {
-			continue
-		}
-		if payload == "[DONE]" {
-			break
-		}
-		m.SSEFrames = append(m.SSEFrames, payload)
-	}
-	return sc.Err()
+	return parseStream(body, m)
 }
 
 type apiErrorBody struct {
@@ -245,10 +288,13 @@ type messagesResponse struct {
 }
 
 type contentBlock struct {
-	Type      string `json:"type"`
-	Text      string `json:"text"`
-	Thinking  string `json:"thinking"`
-	Signature string `json:"signature"`
+	Type      string          `json:"type"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Input     json.RawMessage `json:"input"`
+	Text      string          `json:"text"`
+	Thinking  string          `json:"thinking"`
+	Signature string          `json:"signature"`
 }
 
 type usageBlock struct {
@@ -258,8 +304,9 @@ type usageBlock struct {
 		Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
 		Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
 	} `json:"cache_creation"`
-	CacheReadInputTokens int `json:"cache_read_input_tokens"`
-	OutputTokensDetails  *struct {
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	OutputTokensDetails      *struct {
 		ThinkingTokens int `json:"thinking_tokens"`
 	} `json:"output_tokens_details"`
 }
@@ -270,6 +317,31 @@ func parseMessagesBody(raw []byte, m *Metrics) error {
 	var apiErr apiErrorBody
 	if json.Unmarshal(raw, &apiErr) == nil && apiErr.Error != nil {
 		m.Err = fmt.Sprintf("HTTP %s %s %s", itoa(m.Status), apiErr.Error.Type, trunc(apiErr.Error.Message, 200))
+	}
+	extractToolEvidence(raw, "messages", m)
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return err
+	}
+	if _, ok := obj["content"]; !ok && m.Err == "" {
+		return fmt.Errorf("invalid Messages response: content missing")
+	}
+	_, m.UsagePresent = obj["usage"]
+	var usageFields map[string]json.RawMessage
+	json.Unmarshal(obj["usage"], &usageFields)
+	_, m.CacheReadReported = usageFields["cache_read_input_tokens"]
+	_, m.CacheWriteReported = usageFields["cache_creation_input_tokens"]
+	if string(usageFields["cache_creation_input_tokens"]) == "null" {
+		m.CacheWriteReported = false
+	}
+	if string(usageFields["cache_read_input_tokens"]) == "null" {
+		m.CacheReadReported = false
+	}
+	if string(usageFields["input_tokens"]) == "null" || usageFields["input_tokens"] == nil {
+		m.UsagePresent = false
+	}
+	if _, ok := usageFields["cache_creation"]; ok {
+		m.CacheWriteReported = true
 	}
 	var resp messagesResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
@@ -284,7 +356,7 @@ func parseMessagesBody(raw []byte, m *Metrics) error {
 		case "thinking":
 			m.ThinkingText += b.Thinking
 			m.Signature += b.Signature
-			m.ThinkLen = len(m.ThinkingText)
+			m.ThinkLen = utf8.RuneCountInString(m.ThinkingText)
 			m.SigLen = len(m.Signature)
 		case "text":
 			m.Answer += b.Text
@@ -296,6 +368,9 @@ func parseMessagesBody(raw []byte, m *Metrics) error {
 	if resp.Usage.CacheCreation != nil {
 		m.CacheCreation5m = resp.Usage.CacheCreation.Ephemeral5m
 		m.CacheCreation1h = resp.Usage.CacheCreation.Ephemeral1h
+	}
+	if resp.Usage.CacheCreationInputTokens > m.CacheCreation5m+m.CacheCreation1h {
+		m.CacheCreation5m = resp.Usage.CacheCreationInputTokens - m.CacheCreation1h
 	}
 	m.CacheRead = resp.Usage.CacheReadInputTokens
 	if resp.Usage.OutputTokensDetails != nil {

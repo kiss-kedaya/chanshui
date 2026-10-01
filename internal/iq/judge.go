@@ -10,12 +10,11 @@ import (
 // ---------------------------------------------------------------------------
 // 答案抽取
 
-var mdNoise = regexp.MustCompile("(?s)```.*?```|`[^`]*`|\\*\\*|__|##|>>?")
-
 // stripMarkdown removes code fences/inline code and the common emphasis and
 // heading markers so that slots wrapped in ** or fenced blocks still match.
 func stripMarkdown(s string) string {
-	return mdNoise.ReplaceAllString(s, "")
+	s = regexp.MustCompile("(?m)^\x60\x60\x60[^\n]*\n?").ReplaceAllString(s, "")
+	return strings.NewReplacer("\x60", "", "**", "", "__", "", "##", "").Replace(s)
 }
 
 var slotRe = regexp.MustCompile(`(?i)(最终答案|最后答案|本题答案|答案[:：]|final answer|the answer is)`)
@@ -46,8 +45,7 @@ func ExtractAnswer(text string) (slot, chainTail string) {
 
 func indexRune(s string, r rune) int {
 	for i, c := range s {
-		if c == '\n' && i >= 0 {
-			_ = c
+		if c == r {
 			return i
 		}
 	}
@@ -59,13 +57,14 @@ func indexRune(s string, r rune) int {
 
 var numRe = regexp.MustCompile(`-?\d+(?:\.\d+)?`)
 
-// parseNum extracts the LAST numeric token in s and parses it to float64.
+// parseNum extracts the leading answer number before explanatory breakdowns in s and parses it to float64.
 // Chinese numerals (零..九十九, incl. 两=2, 二十一) are accepted when no
 // arabic number is present.
 func parseNum(s string) (float64, error) {
+	s = regexp.MustCompile(`(?:不是|并非|不等于|不应为|而非)\s*-?\d+(?:\.\d+)?`).ReplaceAllString(s, "")
 	cleaned := strings.NewReplacer(",", "", "，", "", " ", "", "\t", "").Replace(stripMarkdown(s))
 	if m := numRe.FindAllString(cleaned, -1); len(m) > 0 {
-		return strconv.ParseFloat(m[len(m)-1], 64)
+		return strconv.ParseFloat(m[0], 64)
 	}
 	if v, ok := parseCNNum(cleaned); ok {
 		return v, nil
@@ -179,8 +178,14 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 	switch q.ID {
 	case "Q1":
 		return judgePill(text)
+	case "Q2":
+		return judgeCarWash(text)
+	case "Q3":
+		return judgeBatBall(text)
 	case "Q4":
 		return judgeColorBlind(text)
+	case "Q5":
+		return judgeAnchor(text)
 	case "Q6", "Q8":
 		return judgeCandy(q, text, tail)
 	case "Q7":
@@ -189,11 +194,48 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 	return 0, false, nil
 }
 
-var pillPassRe = regexp.MustCompile(`不叫醒|不喂|暂缓给药|持药观察|无需服药|不给药|已经睡着|暂不给药`)
+var carWashPassRe = regexp.MustCompile(`开车|驾车|驾驶|自驾|开过去`)
+var carWashFailRe = regexp.MustCompile(`走路|步行|打车|出租|骑车|骑行|坐车`)
+
+func judgeCarWash(text string) (int, bool, []string) {
+	if carWashPassRe.MatchString(text) && !carWashFailRe.MatchString(text) {
+		return 5, false, nil
+	}
+	return 0, false, nil
+}
+
+func judgeBatBall(text string) (int, bool, []string) {
+	v, err := parseNum(text)
+	if err == nil && numEq(v, 0.05) {
+		return 6, false, nil
+	}
+	return 0, false, nil
+}
+
+var anchorDownRe = regexp.MustCompile(`下降|降低|下沉`)
+var anchorReasonRe = regexp.MustCompile(`排水|浮力|体积|密度|重量`)
+
+func judgeAnchor(text string) (int, bool, []string) {
+	if !anchorDownRe.MatchString(text) {
+		return 0, false, nil
+	}
+	if anchorReasonRe.MatchString(text) {
+		return 10, false, nil
+	}
+	return 5, true, []string{"只答方向"}
+}
+
+var pillPassRe = regexp.MustCompile(`不叫醒|不喂|暂缓(?:给药|发放|发药|用药)|持药观察|无需服药|不给药|不发药|不發药|不必吃药|已经睡着就不用|暂不给药|无必要叫醒|没必要叫醒`)
 var pillWakeRe = regexp.MustCompile(`叫醒|唤醒`)
 var pillNegWakeRe = regexp.MustCompile(`(?:不|别|勿|未|莫|无法|不用|无需|不能|不可|不要|暂不|千万别|切莫)(?:叫醒|唤醒)`)
 
 func judgePill(text string) (int, bool, []string) {
+	text = regexp.MustCompile(`(?:无必要|没必要|无需|不必|不要|不能|不应|不可|不用|不|别|勿)(?:把|将)?[^，。；;：:
+]{0,8}(?:叫醒|唤醒)[^，。；;：:
+]*`).ReplaceAllString(text, "不叫醒")
+	if regexp.MustCompile(`仍应喂药|应该喂药|强行喂药|必须喂药`).MatchString(text) {
+		return 0, false, nil
+	}
 	if pillPassRe.MatchString(text) && !pillWakeRe.MatchString(pillNegWakeRe.ReplaceAllString(text, "")) {
 		return 6, false, nil
 	}
@@ -201,13 +243,16 @@ func judgePill(text string) (int, bool, []string) {
 }
 
 var (
-	cbFullRe    = regexp.MustCompile(`非亲生|不是亲生|并非亲生|不可能是亲生|排除亲生|亲生的可能性`)
+	cbFullRe    = regexp.MustCompile(`非亲生|不是亲生|并非亲生|不可能是亲生|排除亲生`)
 	cbChainRe   = regexp.MustCompile(`伴X|隔代|外公|外祖父|遗传|色盲基因`)
 	cbAffirmRe  = regexp.MustCompile(`亲生|正常`)
 	cbNegPrefix = regexp.MustCompile(`(?:不|非|并|未|无法|不可)(?:可能)?(亲生|正常)`)
 )
 
 func judgeColorBlind(text string) (int, bool, []string) {
+	if regexp.MustCompile(`不能排除|无法排除|不一定|不能断定|无法断定`).MatchString(text) {
+		return 0, false, nil
+	}
 	if cbFullRe.MatchString(text) {
 		return 14, false, nil
 	}
@@ -258,10 +303,6 @@ func judgeCandy(q Question, text, tail string) (int, bool, []string) {
 		return 0, false, []string{"疑似套用经典答案"}
 	}
 	if numEq(v, float64(blind)) {
-		return 8, true, []string{"替代建模"}
-	}
-	if q.ID == "Q8" && numEq(v, 25) {
-		// 25 is the classic blind-draw answer — blind sampling on the variant
 		return 8, true, []string{"替代建模"}
 	}
 	return 0, false, nil

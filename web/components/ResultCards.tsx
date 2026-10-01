@@ -1,154 +1,463 @@
 "use client";
-
+import AnimatedNumber from "@/components/AnimatedNumber";
+import ResultSkeleton from "@/components/ResultSkeleton";
+import Hint from "@/components/Hint";
+import { probabilityVisible } from "@/lib/report-view";
 import { DetectVerdict } from "@/lib/api";
-
-const FAMILIES: Record<string, string> = {
-  gpt: "#10a37f",
-  openai: "#10a37f",
-  claude: "#d97757",
-  anthropic: "#d97757",
-  google: "#4285f4",
-  deepseek: "#4d6bfe",
-  xai: "#111827",
-  zhipu: "#4b6bfb",
-};
-
-function familyColor(f: string): string {
-  return FAMILIES[f?.toLowerCase()] || "#6b7280";
-}
-
-export default function ResultCards({ verdict }: { verdict: DetectVerdict }) {
-  const inj = verdict.injection;
-  const fp = verdict.fingerprint;
-  const tk = verdict.thinking;
-  const iq = verdict.iq;
-
+function Details({ label, value }: { label: string; value: unknown }) {
   return (
-    <div className="results">
-      {inj && (
-        <div className="result-card">
-          <div className="rc-head">
-            <span className="rc-title">注入 token</span>
-            {inj.error && <span className="hist-badge badge-bad">探测失败</span>}
-          </div>
-          {!inj.error ? (
-            <>
-              <div className="rc-big">≈ {inj.inj} tok</div>
-              <div className="rc-sub">
-                每次请求额外注入的系统提示（斜率 {inj.slope.toFixed(3)} tok/字符）
-                {inj.cache_header && ` · 缓存头: ${inj.cache_header}`}
-              </div>
-              <details className="fold">
-                <summary>采样点</summary>
-                <pre>
-                  {inj.points.map((p) => `${p.n} → ${p.total}`).join("\n")}
-                </pre>
-              </details>
-            </>
-          ) : (
-            <div className="rc-sub">{inj.error}</div>
-          )}
+    <details className="fold">
+      <summary>{label}</summary>
+      <pre>
+        {typeof value === "string"
+          ? value || "未回传"
+          : JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
+  );
+}
+export default function ResultCards({
+  verdict: v,
+  model,
+  loading = false,
+}: {
+  verdict: DetectVerdict;
+  model?: string;
+  loading?: boolean;
+}) {
+  const a = v.injection,
+    f = v.fingerprint,
+    t = v.thinking,
+    q = v.iq;
+  const knowledge = v.knowledge;
+  const integrity = v.integrity;
+  const claude = (model || "").toLowerCase().startsWith("claude-");
+  return (
+    <div
+      className={"results " + (loading ? "results-loading" : "results-settled")}
+    >
+      <section className="result-card">
+        <div className="rc-head">
+          <h3>注入大小</h3>
+          <span className="card-number">01</span>
         </div>
-      )}
-
-      {fp && (
-        <div className="result-card">
-          <div className="rc-head">
-            <span className="rc-title">模型归因</span>
-            {fp.error && <span className="hist-badge badge-bad">探测失败</span>}
-          </div>
-          {!fp.error ? (
-            <>
-              <div style={{ marginBottom: 8 }}>
-                <span
-                  className="family-badge"
-                  style={{ background: familyColor(fp.family) }}
-                >
-                  {fp.family_name || fp.family}
+        {!a ? (
+          <ResultSkeleton label={loading ? "采样中…" : "暂无结果"} />
+        ) : a.error ? (
+          <div className="error-box">{a.error}</div>
+        ) : (
+          <>
+            <div className="metric-line">
+              <strong>
+                ≈ <AnimatedNumber value={a.inj} />
+              </strong>
+              <span>token / 请求</span>
+              <b className="score-chip">
+                {a.score == null ? "待定" : a.score + " / 10"}
+              </b>
+            </div>
+            <div className="result-note">
+              <Hint label="注入估计说明" text={a.note} />
+            </div>
+            <div className="mini-stats">
+              <span>
+                斜率 <b>{a.slope.toFixed(3)}</b>
+              </span>
+              <span>
+                {a.points.length === 2 ? "采样次数" : "R²"}{" "}
+                <b>
+                  {a.points.length === 2 ? "2 次" : (a.r2?.toFixed(4) ?? "—")}
+                </b>
+              </span>
+              {a.points.length > 2 && a.max_residual != null && (
+                <span>
+                  最大残差 <b>{a.max_residual.toFixed(1)}</b>
                 </span>
-                <span style={{ marginLeft: 10, fontSize: 13, color: "var(--muted)" }}>
-                  家族置信度 {(fp.family_prob * 100).toFixed(1)}%
+              )}
+            </div>
+            <details className="fold">
+              <summary>采样明细与评分标准</summary>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>字符数</th>
+                      <th>输入</th>
+                      <th>缓存写</th>
+                      <th>缓存读</th>
+                      <th>合计</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {a.points.map((p) => (
+                      <tr key={p.n}>
+                        {[p.n, p.input, p.cc, p.cr, p.total].map((n, i) => (
+                          <td key={i} title={JSON.stringify(p)}>
+                            {n}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="muted">
+                &lt;50：10分 · 50～1000：8分 · 1001～3000：6分 · 3001～6000：4分
+                · 6001～10000：2分 · &gt;10000：0分
+              </p>
+            </details>
+            <Details
+              label={
+                a.probe
+                  ? "SSE 与缓存头诊断（不计分）"
+                  : "缓存头诊断（不增加请求）"
+              }
+              value={{ ...a.probe, cache_header: a.cache_header }}
+            />
+          </>
+        )}
+      </section>
+      {integrity && (
+        <section className="result-card integrity-card">
+          <div className="rc-head">
+            <h3>接口完整性</h3>
+            <span className="card-number">API</span>
+          </div>
+          <div className="metric-line">
+            <strong className={integrity.score == null ? "warn" : "good"}>
+              {integrity.score == null ? "—" : <AnimatedNumber value={integrity.score} />}
+            </strong>
+            <span>/ 100</span>
+            <b className="score-chip">覆盖 {integrity.coverage.toFixed(0)}%</b>
+          </div>
+          <div className="result-note"><Hint label="接口完整性说明" text="只评价协议和证据链，不代表模型智力；未支持或缺字段项目会降低覆盖率，不会伪判为失败。" /></div>
+          <p className="muted">{integrity.reason}</p>
+          <div className="integrity-signals">
+            {integrity.signals.filter(s => s.applicable).map(signal => (
+              <div className="integrity-signal" key={signal.key}>
+                <span>{signal.label}</span>
+                <b className={!signal.known ? "warn" : signal.points && signal.points > 0 ? "good" : "bad"}>
+                  {!signal.known ? "未验证" : signal.points && signal.max_points > 1 ? `${signal.points}/${signal.max_points}` : signal.points ? "通过" : "未通过"}
+                </b>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      <section className="result-card">
+        <div className="rc-head">
+          <h3>模型指纹归因</h3>
+          <span className="card-number">02</span>
+        </div>
+        {!f ? (
+          <ResultSkeleton label={loading ? "指纹检测中…" : "暂无结果"} />
+        ) : (
+          <>
+            {f.error ? (
+              <div className="error-box">{f.error}</div>
+            ) : (
+              <>
+                <div className="metric-line">
+                  <strong className="family-title">
+                    {f.family_name || f.family}
+                  </strong>
+                  <span>家族概率 {(f.family_prob * 100).toFixed(1)}%</span>
+                </div>
+                <div className="result-note">
+                  <Hint label="指纹归因说明" text={f.note} />
+                </div>
+                {f.results
+                  ?.filter((r) => probabilityVisible(r.probability))
+                  .slice(0, 3)
+                  .map((r) => (
+                    <div className="candidate" key={r.model}>
+                      <div>
+                        <span>{r.model}</span>
+                        <b>{(r.probability * 100).toFixed(1)}%</b>
+                      </div>
+                      <div className="prob-bar">
+                        <div
+                          style={{ transform: "scaleX(" + r.probability + ")" }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                <p className="muted">
+                  有效样本 {f.used_outputs} / 3 ·{" "}
+                  {f.low_confidence ? "低置信，请复测" : "仅在当前候选库内比较"}
+                </p>
+                {f.behavioral_top3 && (
+                  <Details
+                    label="行为相似候选（探索性参考）"
+                    value={{
+                      candidates: f.behavioral_top3,
+                      note: f.behavior_note,
+                    }}
+                  />
+                )}
+              </>
+            )}
+            <Details label="数字挑战原始证据" value={f.evidence} />
+          </>
+        )}
+      </section>
+      {claude && (
+        <section className="result-card">
+          <div className="rc-head">
+            <h3>思维链回传</h3>
+            <span className="card-number">03</span>
+          </div>
+          {!t ? (
+            <ResultSkeleton label={loading ? "等待思维链…" : "暂无结果"} />
+          ) : t.error || t.err ? (
+            <div className="error-box">{t.error || t.err}</div>
+          ) : (
+            <>
+              <div className="metric-line">
+                <strong className={t.pass ? "good" : "bad"}>
+                  {t.pass ? "已回传" : "未回传"}
+                </strong>
+                <span>{t.pass ? "非空思考文本" : "不能只看签名"}</span>
+              </div>
+              <p className="muted">{t.reason}</p>
+              <div className="mini-stats">
+                <span>
+                  思考文本 <b>{t.think_len} 字</b>
+                </span>
+                <span>
+                  签名 <b>{t.sig_len} 字</b>
                 </span>
               </div>
-              {fp.results.slice(0, 3).map((r) => (
-                <div key={r.model} style={{ marginTop: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
-                    <span style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>{r.model}</span>
-                    <span>{(r.probability * 100).toFixed(1)}%</span>
-                  </div>
-                  <div className="prob-bar">
-                    <div
-                      style={{
-                        width: `${Math.max(2, r.probability * 100)}%`,
-                        background: familyColor(fp.family),
+              <Details label="查看思维链全文" value={t.thinking_text} />
+              <Details label="查看完整 signature 签名" value={t.signature} />
+              <Details label="探针回答" value={t.answer} />
+            </>
+          )}
+        </section>
+      )}
+      <section className="result-card knowledge-card">
+        <div className="rc-head">
+          <h3>知识截止日期</h3>
+          <span className="card-number">INFO</span>
+        </div>
+        {!knowledge ? (
+          <ResultSkeleton label={loading ? "知识截止探针中…" : "暂无结果"} />
+        ) : knowledge.error ? (
+          <div className="error-box">{knowledge.error}</div>
+        ) : (
+          <>
+            <div className="metric-line">
+              <strong className={knowledge.cutoff ? "good" : "warn"}>
+                {knowledge.cutoff || "未自报"}
+              </strong>
+              <span>模型自报</span>
+            </div>
+            <p className="muted">{knowledge.reason}</p>
+            {knowledge.raw && (
+              <Details label="查看原始回答" value={knowledge.raw} />
+            )}
+          </>
+        )}
+      </section>
+      <section className="result-card">
+        <div className="rc-head">
+          <h3>推理表现</h3>
+          <span className="card-number">04</span>
+        </div>
+        {!q ? (
+          <ResultSkeleton label={loading ? "推理测试中…" : "暂无结果"} />
+        ) : (
+          <>
+            <div className="metric-line">
+              <strong>
+                {q.score == null ? "—" : <AnimatedNumber value={q.score} />}
+              </strong>
+              <span>/ 100</span>
+              <b className="score-chip">
+                {q.complete ? "本次测评" : "尚未完成"}
+              </b>
+            </div>
+            <div className="result-note">
+              <Hint label="评分说明" text={q.note} />
+            </div>
+            <div className="question-list">
+              {q.per_question.map((x, index) => (
+                <details key={x.id} className="question">
+                  <summary>
+                    <span>
+                      Q{index + 1} · {x.title}
+                    </span>
+                    <b
+                      className={
+                        x.error ? "bad" : x.earned === x.max ? "good" : "warn"
+                      }
+                    >
+                      {x.error
+                        ? "请求失败"
+                        : x.earned + " / " + x.max + (x.half ? "（半分）" : "")}
+                    </b>
+                  </summary>
+                  {x.error && <p className="error-box">{x.error}</p>}
+                  <h4>题目</h4>
+                  <pre>{x.prompt}</pre>
+                  <h4>标准结论</h4>
+                  <pre>{x.expected}</pre>
+                  <h4>模型回答</h4>
+                  <pre>{x.answer || "正文为空，使用已返回思考文本判分"}</pre>
+                  {claude && (
+                    <Details
+                      label="思维链全文与签名"
+                      value={{
+                        thinking: x.thinking_text,
+                        signature: x.signature,
                       }}
                     />
+                  )}
+                  <Details
+                    label="用量与耗时"
+                    value={{
+                      输入: x.metrics.InputTokens,
+                      输出: x.metrics.OutputTokens,
+                      缓存读: x.metrics.CacheRead,
+                      缓存写:
+                        x.metrics.CacheCreation5m + x.metrics.CacheCreation1h,
+                      耗时: x.ms,
+                    }}
+                  />
+                  {x.tags?.length > 0 && <p>{x.tags.join(" · ")}</p>}
+                </details>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+      <section className="result-card cache-card">
+        <div className="rc-head">
+          <h3>缓存读写验证</h3>
+          <span className="card-number">CACHE</span>
+        </div>
+        {!v.cache ? (
+          <ResultSkeleton label={loading ? "缓存验证中…" : "暂无结果"} />
+        ) : v.cache.error ? (
+          <div className="error-box">{v.cache.error}</div>
+        ) : (
+          <>
+            <div className="metric-line">
+              <strong className={v.cache.pass ? "good" : "warn"}>
+                {v.cache.pass === true
+                  ? "通过"
+                  : v.cache.pass === false
+                    ? "未对齐"
+                    : "无法验证"}
+              </strong>
+            </div>
+            <p className="muted">{v.cache.reason}</p>
+            {v.cache.samples ? (
+              <>
+                <div className="cache-rates">
+                  <div>
+                    <span>本次缓存读取</span>
+                    <strong>
+                      {v.cache.total_read == null
+                        ? "—"
+                        : v.cache.total_read}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>本次输出</span>
+                    <strong>
+                      {v.cache.total_output == null
+                        ? "—"
+                        : v.cache.total_output}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>第三轮读取比例</span>
+                    <strong>
+                      {v.cache.third_read_ratio == null
+                        ? "—"
+                        : v.cache.third_read_ratio.toFixed(2) + "%"}
+                    </strong>
                   </div>
                 </div>
-              ))}
-              <div className="rc-sub" style={{ marginTop: 8 }}>
-                有效输出 {fp.used_outputs} 份
-                {fp.behavioral_top3 && fp.behavioral_top3.length > 0 && (
-                  <>
-                    {" · "}行为指纹佐证:{" "}
-                    {fp.behavioral_top3.map((b) => b.model_id).join(" / ")}
-                  </>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="rc-sub">{fp.error}</div>
-          )}
-        </div>
-      )}
-
-      {tk && (
-        <div className="result-card">
-          <div className="rc-head">
-            <span className="rc-title">思考文本回传</span>
-            <span className={`hist-badge ${tk.pass ? "badge-ok" : "badge-bad"}`}>
-              {tk.pass ? "通过 ✓" : "未通过 ✗"}
-            </span>
-          </div>
-          <div className="rc-sub">{tk.reason}</div>
-          <div className="rc-sub">
-            思考文本 {tk.think_len} 字 · 签名 {tk.sig_len} 字
-          </div>
-        </div>
-      )}
-
-      {iq && (
-        <div className="result-card">
-          <div className="rc-head">
-            <span className="rc-title">智商评分</span>
-            {iq.error && <span className="hist-badge badge-bad">测试失败</span>}
-          </div>
-          {!iq.error ? (
-            <>
-              <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
-                <div className="score-ring">{iq.score}</div>
-                <div className="rc-sub">
-                  满分 {iq.max} · {iq.per_question.filter((q) => q.earned === q.max).length}/
-                  {iq.per_question.length} 题全对
+                <div className="table-wrap">
+                  <table className="cache-table">
+                    <thead>
+                      <tr>
+                        <th>请求</th>
+                        <th>读</th>
+                        <th>写</th>
+                        <th>输入</th>
+                        <th>输出</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {v.cache.samples.map((row) => (
+                        <tr key={row.index}>
+                          <td>#{row.index}</td>
+                          <td>{row.read}</td>
+                          <td>{row.write}</td>
+                          <td>{row.input}</td>
+                          <td>{row.output}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+              </>
+            ) : (
+              <div className="cache-equation">
+                <span>
+                  前次读 <b>{v.cache.first?.read ?? "—"}</b>
+                </span>
+                <span>
+                  ＋ 写 <b>{v.cache.first?.write ?? "—"}</b>
+                </span>
+                <span>
+                  → 后次读 <b>{v.cache.second?.read ?? "—"}</b>
+                </span>
               </div>
-              <details className="fold">
-                <summary>每题明细</summary>
-                <pre>
-                  {iq.per_question
-                    .map(
-                      (q) =>
-                        `${q.earned}/${q.max}  ${q.title}${q.half ? "  [半分]" : ""}${q.tags.length ? `  标记: ${q.tags.join(",")}` : ""}`
-                    )
-                    .join("\n")}
-                </pre>
-              </details>
-            </>
+            )}
+            <Details
+              label={v.cache.samples ? "三次缓存明细与衔接" : "旧报告缓存明细"}
+              value={v.cache}
+            />
+          </>
+        )}
+      </section>
+      {(
+        [
+          ["工具调用检测", v.tools],
+          ["联网检测", v.web],
+        ] as const
+      ).map(([title, result]) => (
+        <section className="result-card" key={title}>
+          <div className="rc-head">
+            <h3>{title}</h3>
+          </div>
+          {!result ? (
+            <ResultSkeleton label={loading ? "检测中…" : "暂无结果"} />
+          ) : result.error ? (
+            <div className="error-box">{result.error}</div>
           ) : (
-            <div className="rc-sub">{iq.error}</div>
+            <>
+              <div className="metric-line">
+                <strong className={result.pass === true ? "good" : "warn"}>
+                  {result.pass === true
+                    ? "通过"
+                    : result.pass === false
+                      ? "未通过"
+                      : "未经验证"}
+                </strong>
+              </div>
+              <p className="muted">{result.reason}</p>
+              {result.evidence != null && (
+                <Details label="检测证据" value={result.evidence} />
+              )}
+            </>
           )}
-        </div>
-      )}
+        </section>
+      ))}
     </div>
   );
 }

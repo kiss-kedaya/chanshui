@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Go and Next.js verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          files=$(git ls-files '*.go')
+          test -z "$(gofmt -l $files)"
+
+      - name: Go tests with race detector
+        run: go test -race ./...
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Frontend tests
+        working-directory: web
+        run: npm test
+
+      - name: Frontend typecheck
+        working-directory: web
+        run: npm run typecheck
+
+      - name: Frontend production build
+        working-directory: web
+        run: npm run build

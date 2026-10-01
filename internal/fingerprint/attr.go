@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/rand"
 	"sort"
-	"strings"
 )
 
 // Output is one probe response for numeric attribution.
@@ -65,61 +64,53 @@ func RobustScoreNumbers(nums []int, bank *Bank) []float64 {
 	n := len(bank.Numeric.Models)
 	h := bank.Numeric.Robust.Hellinger
 	ob := bank.Numeric.Robust.OrderedBlocks
-
-	// Hellinger side.
-	hf := HellingerFeature(CountNumbers(nums))
-	hStd := standardize(hf, h.FeatureMean, h.FeatureScale)
-	hProj := projectOut(hStd, h.NuisanceBasis)
-	hCos := make([]float64, n)
-	for c := 0; c < n; c++ {
-		cv := projectOut(h.Centroids[c], h.NuisanceBasis)
-		hCos[c] = cosine(hProj, cv)
+	hp := unit(projectOut(standardize(HellingerFeature(CountNumbers(nums)), h.FeatureMean, h.FeatureScale), h.NuisanceBasis))
+	hell := make([]float64, n)
+	for c := range hell {
+		hell[c] = dot(hp, h.Centroids[c])
 	}
-	hell := standardizeVec(hCos)
-
-	// Ordered side: direct centroids + per-environment template max, fused 0.5/0.5.
-	of := OrderedBlockFeature(nums)
-	oStd := standardize(of, ob.FeatureMean, ob.FeatureScale)
-	oProj := projectOut(oStd, ob.NuisanceBasis)
-	oCos := make([]float64, n)
+	hell = standardizeVec(hell)
+	os := standardize(OrderedBlockFeature(nums), ob.FeatureMean, ob.FeatureScale)
+	norm := unit(os)
+	op := unit(projectOut(os, ob.NuisanceBasis))
+	template, nuisance := make([]float64, n), make([]float64, n)
 	for c := 0; c < n; c++ {
-		cv := projectOut(ob.Centroids[c], ob.NuisanceBasis)
-		oCos[c] = cosine(oProj, cv)
-	}
-	oZ := standardizeVec(oCos)
-
-	envZ := make([][]float64, len(ob.EnvironmentCentroids))
-	for e, env := range ob.EnvironmentCentroids {
-		eCos := make([]float64, n)
-		for c := 0; c < n; c++ {
-			ev := projectOut(env[c], ob.NuisanceBasis)
-			eCos[c] = cosine(oProj, ev)
+		template[c] = math.Inf(-1)
+		for _, env := range ob.EnvironmentCentroids {
+			template[c] = math.Max(template[c], dot(norm, env[c]))
 		}
-		envZ[e] = standardizeVec(eCos)
-	}
-	envMax := make([]float64, n)
-	for c := 0; c < n; c++ {
-		m := envZ[0][c]
-		for e := 1; e < len(envZ); e++ {
-			if envZ[e][c] > m {
-				m = envZ[e][c]
-			}
+		if math.IsInf(template[c], -1) {
+			template[c] = 0
 		}
-		envMax[c] = m
+		nuisance[c] = dot(op, ob.Centroids[c])
 	}
-
+	template = standardizeVec(template)
+	nuisance = standardizeVec(nuisance)
 	ordered := make([]float64, n)
-	for c := 0; c < n; c++ {
-		ordered[c] = 0.5*oZ[c] + 0.5*envMax[c]
+	for c := range ordered {
+		ordered[c] = 0.5 * (template[c] + nuisance[c])
 	}
-
-	// Final fusion: (1-w) hellinger + w ordered; weight from the bank.
-	w := ob.Weight
+	ordered = standardizeVec(ordered)
 	fused := make([]float64, n)
-	for c := 0; c < n; c++ {
-		fused[c] = (1-w)*hell[c] + w*ordered[c]
+	for c := range fused {
+		fused[c] = (1-ob.Weight)*hell[c] + ob.Weight*ordered[c]
 	}
 	return fused
+}
+func dot(a, b []float64) float64 {
+	s := 0.0
+	for i := range a {
+		s += a[i] * b[i]
+	}
+	return s
+}
+func unit(a []float64) []float64 {
+	out := make([]float64, len(a))
+	norm := math.Max(math.Sqrt(dot(a, a)), 1e-12)
+	for i := range a {
+		out[i] = a[i] / norm
+	}
+	return out
 }
 
 // Attribute aggregates per-response scores across valid outputs, applies the
@@ -157,7 +148,7 @@ func Attribute(outputs []Output, bank *Bank) Attribution {
 	// Aggregate query counts across valid outputs for js_similarity.
 	queryCounts := make([]int, NumDim)
 	for _, o := range outputs {
-		if nums := ParseNumbers(o.Text); len(nums) >= minValid {
+		if nums := ParseNumbers(o.Text); len(nums) >= maxInt(minValid, int(math.Ceil(float64(o.ExpectedCount)*0.55))) {
 			for _, v := range nums {
 				queryCounts[v-NumMinValue]++
 			}
@@ -185,17 +176,23 @@ func Attribute(outputs []Output, bank *Bank) Attribution {
 	})
 
 	top := results[0]
+	winningFamily := top.Family
+	for family, prob := range familyProb {
+		if prob > familyProb[winningFamily] {
+			winningFamily = family
+		}
+	}
 	famName := ""
 	for _, m := range bank.Numeric.Models {
-		if m.Family == top.Family {
+		if m.Family == winningFamily {
 			famName = m.FamilyName
 			break
 		}
 	}
 	return Attribution{
-		Family:        top.Family,
+		Family:        winningFamily,
 		FamilyName:    famName,
-		FamilyProb:    familyProb[top.Family],
+		FamilyProb:    familyProb[winningFamily],
 		TopModel:      top.ModelID,
 		TopProb:       top.Prob,
 		Results:       results,
@@ -241,7 +238,7 @@ func jsSimilarity(a, b []int) float64 {
 	}
 	for i := range a {
 		pa[i] = float64(a[i]) / float64(sa)
-		pb[i] = float64(b[i]) / float64(sb)
+		pb[i] = (float64(b[i]) + 0.5) / (float64(sb) + 0.5*float64(len(b)))
 	}
 	js := 0.0
 	for i := range a {
@@ -253,99 +250,33 @@ func jsSimilarity(a, b []int) float64 {
 			js += (1 - jsAlpha) * pb[i] * math.Log2(pb[i]/pm)
 		}
 	}
-	return 1 - js
+	return 1 - math.Sqrt(js)
 }
 
 // ---- challenge generation (ModelTrace generate_challenges semantics) ----
 
-var chOpenings = []string{
-	"请仔细完成以下任务。",
-	"我们来进行一个小测试。",
-	"现在开始一个简单的序列任务。",
-	"请按照要求处理下面的数字任务。",
-	"接下来是一个纯文本的数字任务。",
-}
+var chOpenings = []string{"这是一次独立的数值选择记录", "请完成下面的无语义整数选择任务", "执行一次第一反应取值记录", "生成一组不承载语义的整数选择", "进行一轮快速逐项取值"}
+var chActions = []string{"为各个位置分别凭第一反应选择", "逐项选择", "每次只决定当前一项，共给出", "分别凭第一反应给出", "逐个直接选择"}
+var chEndings = []string{"允许某个数字再次出现；每项写出后不要回头排序、去重或替换。", "偶然重复是有效的；不要重新排列或修正已经写出的项目。", "相同值可以再次出现；输出过程中不要整理或改写前面的项目。", "重复值无需删除；不要筛选、重排或补成某种规律。", "不必赋予数字任何含义；已经给出的值保持不变。"}
+var chSeparatorHints = []string{"数字之间用逗号或空格分隔均可。", "使用一种一致的常见分隔符即可。", "可以用逗号、空格或换行分隔。", "只要每个整数边界清楚，格式可自行选择。"}
 
-var chActions = []string{
-	"请根据下方的规则，在 1 到 355 的范围内挑选数字并逐个输出。",
-	"请从 1 到 355 的范围内选取符合描述的数字并按顺序写出。",
-	"请在 1 到 355 的整数范围内生成一列数字并全部列出。",
-	"下面请你以 1 到 355 为取值范围生成一列数字并完整输出。",
-	"请在 1 到 355 范围内按要求生成数字并依次罗列出来。",
-}
+const chToolBan = "本任务必须由当前语言模型直接完成：禁止调用或借助任何工具，包括 Python、代码执行器、计算器、搜索、API 和外部随机数生成器；也不要先编写或运行代码。"
+const chDirect = "直接从第一个取值开始输出，不要在序列前重复数量、范围或任务说明。"
 
-var chEndings = []string{
-	"请一次性给完整序列。",
-	"输出请保持连贯，不要中断。",
-	"把整列数字完整写在回复里。",
-	"全部数字请写在同一个回复中。",
-	"请连续输出，不要分多段。",
-}
-
-var chSeparatorHints = []string{
-	"数字之间用单个空格分隔。",
-	"数字之间用逗号加空格分隔。",
-	"数字之间用换行分隔。",
-	"数字之间用顿号分隔。",
-}
-
-const (
-	chToolBan  = "禁止使用任何工具或联网功能。"
-	chDirect   = "直接输出数字序列本身，不要附加任何解释或说明。"
-	chCountAsk = "总共输出 300 个数字。"
-	chPadding  = "请注意保持输出的稳定性与一致性。"
-)
-
-// GenerateChallenges builds n numeric fingerprint prompts. Prompt length is
-// randomized in [292, 333] runes, matching the ModelTrace challenge lengths.
 func GenerateChallenges(n int, r *rand.Rand) []Challenge {
-	chs := make([]Challenge, n)
-	for i := 0; i < n; i++ {
-		chs[i] = Challenge{
-			ID:            fmt.Sprintf("numeric-%d", i+1),
-			ExpectedCount: 300,
-			Prompt:        buildChallengePrompt(r),
-		}
+	if n > 41 {
+		n = 41
 	}
-	return chs
-}
-
-func buildChallengePrompt(r *rand.Rand) string {
-	for attempt := 0; attempt < 64; attempt++ {
-		var b strings.Builder
-		b.WriteString(pick(r, chOpenings))
-		b.WriteString(pick(r, chActions))
-		b.WriteString(chCountAsk)
-		b.WriteString(pick(r, chSeparatorHints))
-		b.WriteString(pick(r, chEndings))
-		b.WriteString(chToolBan)
-		b.WriteString(chDirect)
-		s := b.String()
-		l := len([]rune(s))
-		if l >= 292 && l <= 333 {
-			return s
-		}
-		if l < 292 {
-			s = strings.Replace(s, pick(r, chEndings), pick(r, chEndings)+chPadding, 1)
-			if ll := len([]rune(s)); ll >= 292 && ll <= 333 {
-				return s
-			}
-			continue
-		}
-		// too long: try again with different picks
+	lengths := r.Perm(41)
+	out := make([]Challenge, n)
+	for i := range out {
+		count := 292 + lengths[i]
+		prompt := fmt.Sprintf("%s。%s %d 个 1 到 355（含端点）的整数。", pick(r, chOpenings), pick(r, chActions), count) + "每个位置都要单独选择；不要从 1 开始计数，不要连续递增或递减，也不要采用等差、循环、重复区块或其他规则化模式。" + chToolBan + pick(r, chEndings) + pick(r, chSeparatorHints) + chDirect
+		out[i] = Challenge{ID: fmt.Sprintf("numeric-%d", i+1), ExpectedCount: count, Prompt: prompt}
 	}
-	// Deterministic fallback inside the range.
-	base := pick(r, chOpenings) + pick(r, chActions) + chCountAsk + pick(r, chSeparatorHints) + chToolBan + chDirect
-	pad := 292 - len([]rune(base))
-	if pad > 0 {
-		base += strings.Repeat("。", pad)
-	}
-	return base
+	return out
 }
-
-func pick(r *rand.Rand, arr []string) string {
-	return arr[r.Intn(len(arr))]
-}
+func pick(r *rand.Rand, arr []string) string { return arr[r.Intn(len(arr))] }
 
 func maxInt(a, b int) int {
 	if a > b {
@@ -400,13 +331,13 @@ func projectOut(v []float64, basis [][]float64) []float64 {
 		dot := 0.0
 		norm := 0.0
 		for i := range out {
-			dot += out[i] * row[i]
+			dot += v[i] * row[i]
 			norm += row[i] * row[i]
 		}
 		if norm == 0 {
 			continue
 		}
-		coef := dot / norm
+		coef := dot
 		for i := range out {
 			out[i] -= coef * row[i]
 		}

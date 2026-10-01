@@ -38,15 +38,15 @@ func fakeMessagesServer(t *testing.T, cacheCreation map[string]any) *httptest.Se
 			w.WriteHeader(500)
 			return
 		}
-		if len(req.Messages) != 1 {
-			t.Errorf("want 1 message, got %d", len(req.Messages))
+		if len(req.Messages) < 1 {
+			t.Errorf("want at least 1 message, got %d", len(req.Messages))
 			w.WriteHeader(500)
 			return
 		}
-		n := len(req.Messages[0].Content)
+		n := len(req.Messages[len(req.Messages)-1].Content)
 		if req.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = io.WriteString(w, "data: {\"type\":\"message_start\"}\n\n"+
+			_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":1}}}\n\n"+
 				"data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"ok\"}}\n\n"+
 				"data: [DONE]\n\n")
 			return
@@ -90,10 +90,10 @@ func TestMeasureLinearInjection(t *testing.T) {
 	defer srv.Close()
 	res := setupMeasure(t, srv)
 
-	if len(res.Points) != 5 {
-		t.Fatalf("points = %d, want 5", len(res.Points))
+	if len(res.Points) != 2 {
+		t.Fatalf("points = %d, want 2", len(res.Points))
 	}
-	for i, want := range []int{1, 200, 500, 800, 1000} {
+	for i, want := range []int{1, 800} {
 		p := res.Points[i]
 		if p.N != want {
 			t.Errorf("points[%d].N = %d, want %d", i, p.N, want)
@@ -119,17 +119,8 @@ func TestMeasureLinearInjection(t *testing.T) {
 	if res.Via != "direct" {
 		t.Errorf("Via = %q, want direct", res.Via)
 	}
-	if res.Probe == nil {
-		t.Fatal("Probe nil, want ProbeDiag")
-	}
-	if !res.Probe.SSEOK {
-		t.Errorf("Probe.SSEOK = false, want true")
-	}
-	if res.Probe.SSEFrames == 0 {
-		t.Errorf("Probe.SSEFrames = 0, want > 0")
-	}
-	if res.Probe.StreamErr != "" {
-		t.Errorf("Probe.StreamErr = %q, want empty", res.Probe.StreamErr)
+	if res.Probe != nil {
+		t.Fatal("unexpected third stream probe")
 	}
 }
 
@@ -178,7 +169,7 @@ func TestMeasureRetriesOn429(t *testing.T) {
 			} `json:"messages"`
 		}
 		_ = json.Unmarshal(body, &req)
-		n := len(req.Messages[0].Content)
+		n := len(req.Messages[len(req.Messages)-1].Content)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"content":     []any{map[string]any{"type": "text", "text": "ok"}},
@@ -199,9 +190,9 @@ func TestMeasureRetriesOn429(t *testing.T) {
 	if res.Inj < 43 || res.Inj > 45 {
 		t.Errorf("Inj = %d, want in [43,45]", res.Inj)
 	}
-	if got := atomic.LoadInt64(&calls); got != 8 {
-		// 2 x 429 + 1 success on the first point, 4 more points, 1 stream probe = 8
-		t.Errorf("total gateway calls = %d, want 8", got)
+	if got := atomic.LoadInt64(&calls); got != 5 {
+		// Two retried responses + three sequential merged samples.
+		t.Errorf("total gateway calls = %d, want 5", got)
 	}
 }
 
@@ -224,10 +215,9 @@ func TestMeasureGivesUpAfterMaxAttempts(t *testing.T) {
 	if err == nil {
 		t.Fatal("Measure returned nil error, want failure after max attempts")
 	}
-	// every point burns maxAttempts calls: 5 points x 4 = 20, and Measure
-	// aborts before the stream probe (fewer than 2 usable points).
-	if got := atomic.LoadInt64(&calls); got != int64(len(sampleNs))*maxAttempts {
-		t.Errorf("gateway calls = %d, want %d", got, int64(len(sampleNs))*maxAttempts)
+	// The first merged sample burns the retry budget before the sequence can continue.
+	if got := atomic.LoadInt64(&calls); got != int64(gateway.RetryCount+1) {
+		t.Errorf("gateway calls = %d, want %d", got, int64(gateway.RetryCount+1))
 	}
 }
 

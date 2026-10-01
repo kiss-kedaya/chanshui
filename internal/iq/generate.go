@@ -28,7 +28,7 @@ func newRand(seed int64) *rand.Rand { return rand.New(rand.NewSource(seed)) }
 // Q1 安眠药（静态）
 
 func GenPill() Question {
-	prompt := "深夜，家里老人按医嘱服下了一粒安眠药，此刻已经睡着，呼吸平稳。你忽然想起他吃药时似乎呛了一下，担心那粒药没有完全咽下去，想把他叫醒起来补喂一粒。请判断：此刻正确的做法是什么——是叫醒补药，还是不叫醒、暂缓给药、持药观察？\n" + answerTail
+	prompt := "病人已经安稳睡着，医嘱为睡前口服安眠药，但药尚未发放。护士此刻应如何处理？\n" + answerTail
 	return Question{
 		ID:       "Q1",
 		Title:    "安眠药",
@@ -38,6 +38,16 @@ func GenPill() Question {
 		Answer:   "不叫醒，暂缓给药，持药观察",
 		Tags:     []string{"安全判断"},
 	}
+}
+
+// GenCarWash is iqbench Q2, a simple instruction-following control.
+func GenCarWash() Question {
+	return Question{ID: "Q2", Title: "洗车路径", Prompt: "车在楼下，洗车店 4 公里。请问应该如何前往？\n" + answerTail, MaxScore: 5, LimitSec: 45, Answer: "开车去", Tags: []string{"认知反射"}}
+}
+
+// GenBatBall is iqbench Q3, the classic bat-and-ball numerical trap.
+func GenBatBall() Question {
+	return Question{ID: "Q3", Title: "球拍与球", Prompt: "球拍和球一共 1.10 元，球拍比球贵 1 元。球多少钱？\n" + answerTail, MaxScore: 6, LimitSec: 45, Answer: "0.05", Tags: []string{"认知反射", "数值等价"}}
 }
 
 // ---------------------------------------------------------------------------
@@ -58,7 +68,7 @@ var cbPairs = []cbPair{
 func GenColorBlind(r *rand.Rand) Question {
 	p := cbPairs[r.Intn(len(cbPairs))]
 	prompt := fmt.Sprintf(
-		"体检时用的红绿色盲检测图上印着一个两位数。色觉完全正常的父亲盯着图看，说图上是「%s」，%s；可女儿却坚持说图上是「%s」。父亲反复核对后确认女儿看错了，随后崩溃了。医生最终确诊：女儿是红绿色盲，而父亲色觉完全正常。已知红绿色盲是伴X染色体隐性遗传病。\n"+
+		"体检时用的红绿色盲检测图上印着一个两位数。色觉完全正常的父亲盯着图看，说图上是「%s」，%s；可女儿却坚持说图上是「%s」。父亲反复核对后确认女儿看错了，随后崩溃了。医生最终确诊：女儿是红绿色盲，而父亲色觉完全正常。本题为经典孟德尔遗传模型：红绿色盲是完全外显的伴X染色体隐性遗传；排除新发突变、染色体异常及诊断误差。\n"+
 			"请结合遗传学规律给出最终结论：女儿是亲生还是非亲生？\n"+answerTail,
 		p.father, p.remark, p.daughter)
 	return Question{
@@ -70,6 +80,12 @@ func GenColorBlind(r *rand.Rand) Question {
 		Answer:   "非亲生",
 		Tags:     []string{"伴X隐性遗传", "参数化"},
 	}
+}
+
+// GenAnchor is iqbench Q5. Full credit requires the direction and its
+// displacement/weighting explanation; direction alone receives half credit.
+func GenAnchor() Question {
+	return Question{ID: "Q5", Title: "船锚水位", Prompt: "船停在池塘中，铁锚原本在船上，后来被扔进池底。池塘水位会上升、下降，还是不变？请说明理由。\n" + answerTail, MaxScore: 10, LimitSec: 60, Answer: "下降", Tags: []string{"多步科学演绎"}}
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +310,9 @@ func genSocksInstance(r *rand.Rand, maxAttempts int) (counts []int, p, worst int
 		}
 		// formula coincidence: loop and redraw a fresh stock
 	}
-	// fallback: accept the last attempt (or a fixed default when no attempt
+	// fallback: use a verified inventory-constrained instance
+	counts, p = []int{2, 2, 2}, 2
+	// accept the last attempt (or a fixed default when no attempt
 	// was made), tagged
 	if counts == nil {
 		counts, p = []int{2, 2, 2}, 2

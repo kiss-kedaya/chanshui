@@ -1,3 +1,15 @@
 dev/
 dev/
 dev-*/
+*.exe
+*.db
+*.db-shm
+*.db-wal
+.artifacts/
+.local/
+web/node_modules/
+web/out/
+web/out-build/
+web/.next/
+*.tsbuildinfo
+.env*

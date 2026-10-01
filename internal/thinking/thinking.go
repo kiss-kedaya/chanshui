@@ -3,6 +3,8 @@ package thinking
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 )
 
 // Verdict is the outcome of one summarized-thinking passthrough probe.
@@ -13,6 +15,9 @@ type Verdict struct {
 	SigLen         int    `json:"sig_len"`
 	ThinkingTokens int    `json:"thinking_tokens"`
 	Ms             int64  `json:"ms"`
+	ThinkingText   string `json:"thinking_text"`
+	Signature      string `json:"signature"`
+	Answer         string `json:"answer"`
 	Err            string `json:"err,omitempty"`
 }
 
@@ -21,16 +26,19 @@ type Verdict struct {
 // signature). Three verdict shapes:
 //
 //   - text + signature present  -> pass ("思考文本正常回传")
-//   - signature only            -> fail ("思考被清空，只回签名")
+//   - signature only            -> fail ("未回传思考文本，仅收到签名")
 //   - no thinking block at all  -> fail ("无思考块")
 func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
+	if c == nil {
+		return Verdict{}, ErrNoCaller
+	}
 	req := CallRequest{
 		Model:     model,
-		MaxTokens: 2048,
+		MaxTokens: 4096,
 		Messages: []Message{
 			{
 				Role:    "user",
-				Content: "What is 13*17? Answer with the number only.",
+				Content: "求最小正整数 n，使 n 除以 17 余 5，除以 19 余 7，除以 23 余 11。请推导并核验，最后给出数值。",
 			},
 		},
 		Thinking: &ThinkingConfig{
@@ -46,7 +54,11 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 		}, err
 	}
 
+	if m.Err != "" || m.Status != 200 {
+		return Verdict{Err: m.Err}, fmt.Errorf("thinking request failed: HTTP %d %s", m.Status, m.Err)
+	}
 	v := Verdict{
+		ThinkingText: m.ThinkingText, Signature: m.Signature, Answer: m.Answer,
 		ThinkLen:       m.ThinkLen,
 		SigLen:         m.SigLen,
 		ThinkingTokens: m.ThinkingTokens,
@@ -54,15 +66,17 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 	}
 
 	switch {
-	case m.ThinkLen > 0 && m.SigLen > 0:
+	case strings.TrimSpace(m.ThinkingText) != "":
 		v.Pass = true
 		v.Reason = "思考文本正常回传"
-	case m.SigLen > 0 || m.ThinkingTokens > 0:
+	case m.SigLen > 0:
 		// The upstream billed/reporting thinking tokens but stripped the text:
 		// only the signature came back. ThinkingTokens>0 with empty text is the
 		// same failure shape as signature-only.
 		v.Pass = false
-		v.Reason = "思考被清空，只回签名"
+		v.Reason = "未回传思考文本，仅收到签名"
+	case m.ThinkingTokens > 0:
+		v.Reason = "有思考用量但未回传摘要，不能仅凭用量确认原因"
 	default:
 		v.Pass = false
 		v.Reason = "无思考块"

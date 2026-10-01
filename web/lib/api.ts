@@ -1,18 +1,136 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8770";
-
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 export interface DetectRequest {
+  protocol?: "auto" | "chat" | "anthropic" | "openai";
   base_url: string;
   key: string;
   model: string;
+  concurrency?: number;
+  timeout?: number;
 }
-
+export interface Metrics {
+  Status: number;
+  Ms: number;
+  Err: string;
+  Answer: string;
+  ThinkingText: string;
+  Signature: string;
+  InputTokens: number;
+  OutputTokens: number;
+  ThinkingTokens: number;
+  CacheCreation5m: number;
+  CacheCreation1h: number;
+  CacheRead: number;
+  StopReason: string;
+}
+export interface Question {
+  id: string;
+  title: string;
+  max: number;
+  earned: number;
+  half: boolean;
+  tags: string[];
+  prompt: string;
+  expected: string;
+  answer: string;
+  thinking_text: string;
+  signature: string;
+  ms: number;
+  error?: string;
+  metrics: Metrics;
+}
+export interface CapabilityResult {
+  status: string;
+  pass: boolean | null;
+  reason: string;
+  protocol: string;
+  evidence?: unknown;
+  attempts?: number;
+  error?: string;
+}
+export interface CacheSample {
+  index: number;
+  read: number;
+  write: number;
+  input: number;
+  output: number;
+  total: number;
+  hit_rate: number | null;
+  attempts: number;
+  error?: string;
+}
+export interface KnowledgeVerdict {
+  status: string;
+  cutoff?: string;
+  raw?: string;
+  reason: string;
+  protocol: string;
+  attempts?: number;
+  thinking_used?: boolean;
+  error?: string;
+}
+export interface IntegrityVerdict {
+  score: number | null;
+  coverage: number;
+  available_weight: number;
+  applicable_weight: number;
+  status: string;
+  reason: string;
+  signals: { key: string; label: string; weight: number; applicable: boolean; known: boolean; points?: number; max_points: number; reason: string }[];
+}
 export interface DetectVerdict {
+  protocol?: string;
+  tools?: CapabilityResult | null;
+  web?: CapabilityResult | null;
+  knowledge?: KnowledgeVerdict | null;
+  integrity?: IntegrityVerdict | null;
+  cache?: {
+    samples?: CacheSample[];
+    transitions?: {
+      from: number;
+      to: number;
+      expected_read: number;
+      actual_read: number;
+      delta: number;
+      pass: boolean | null;
+    }[];
+    third_read_ratio?: number | null;
+    total_read?: number;
+    total_output?: number;
+    prefix_sha256?: string;
+    retries_observed?: boolean;
+    status: string;
+    pass: boolean | null;
+    reason: string;
+    first: { read: number; write: number; input: number } | null;
+    second: { read: number; write: number; input: number } | null;
+    expected_read: number;
+    actual_read: number;
+    delta: number;
+    protocol: string;
+    error?: string;
+  } | null;
   injection: {
     inj: number;
     slope: number;
-    points: { n: number; input: number; cc: number; cr: number; total: number }[];
+    r2: number | null;
+    max_residual: number | null;
+    reliable: boolean;
+    score: number | null;
+    max_score: number;
+    note: string;
+    points: {
+      n: number;
+      input: number;
+      cc: number;
+      cr: number;
+      total: number;
+    }[];
     cache_header: string;
+    probe?: {
+      sse_ok: boolean;
+      sse_frames: number;
+      stream_error?: string;
+    } | null;
     error?: string;
   } | null;
   fingerprint: {
@@ -21,9 +139,20 @@ export interface DetectVerdict {
     family_prob: number;
     top_model: string;
     top_prob: number;
-    results: { model: string; probability: number }[];
-    behavioral_top3?: { model_id: string; similarity: number }[];
+    results: { model: string; probability: number; similarity: number }[];
+    behavioral_top3?: { modelId: string; similarity: number }[];
+    behavior_note?: string;
     used_outputs: number;
+    low_confidence: boolean;
+    note: string;
+    evidence: {
+      id: string;
+      expected_count: number;
+      parsed_count: number;
+      answer: string;
+      error: string;
+      ms: number;
+    }[];
     error?: string;
   } | null;
   thinking: {
@@ -31,85 +160,139 @@ export interface DetectVerdict {
     think_len: number;
     sig_len: number;
     reason: string;
+    thinking_text: string;
+    signature: string;
+    answer: string;
     error?: string;
+    err?: string;
   } | null;
   iq: {
-    score: number;
+    score: number | null;
     max: number;
-    per_question: {
-      id: string;
-      title: string;
-      max: number;
-      earned: number;
-      half: boolean;
-      tags: string[];
-    }[];
+    paper_max: number;
+    complete: boolean;
+    per_question: Question[];
+    note: string;
     error?: string;
   } | null;
 }
-
+export interface Probe {
+  id: string;
+  name: string;
+  status: string;
+  ms: number;
+  error?: string;
+}
 export interface DetectTask {
   id: string;
-  status: "running" | "done" | "error";
+  status: string;
   base_url: string;
   model: string;
   created_at: string;
-  verdict?: DetectVerdict;
-  iq_score?: number;
+  probes: Probe[];
+  verdict: DetectVerdict;
+  history_id?: number;
+  report_id?: string;
+  warning?: string;
+  expires_at: number;
 }
-
-export async function startDetect(req: DetectRequest): Promise<{ task_id: string }> {
-  const res = await fetch(`${API_BASE}/api/detect`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) throw new Error(`检测任务启动失败: HTTP ${res.status}`);
-  return res.json();
-}
-
-export async function getDetect(id: string): Promise<DetectTask> {
-  const res = await fetch(`${API_BASE}/api/detect/${id}`);
-  if (!res.ok) throw new Error(`查询失败: HTTP ${res.status}`);
-  return res.json();
-}
-
 export interface BankStats {
   supported_models: string[];
   fingerprint_count: number;
+  numeric_count: number;
+  behavioral_count: number;
   families: string[];
+  numeric_families: string[];
+  source?: { commit: string; synced_at: string; built_at: string };
 }
-
-export async function getBankStats(): Promise<BankStats> {
-  const res = await fetch(`${API_BASE}/api/bank/stats`);
-  if (!res.ok) throw new Error("bank stats 加载失败");
-  return res.json();
-}
-
 export interface HistorySummary {
+  report_id: string;
   id: number;
   created_at: string;
   base_url: string;
   model: string;
   iq_score: number | null;
   family: string | null;
-  thinking_pass: number | null;
+  thinking_pass: boolean | null;
 }
-
-export async function getHistory(limit = 50): Promise<HistorySummary[]> {
-  const res = await fetch(`${API_BASE}/api/history?limit=${limit}`);
-  if (!res.ok) throw new Error("历史加载失败");
-  return res.json();
+async function request<T>(
+  path: string,
+  body?: unknown,
+  token?: string,
+): Promise<T> {
+  const res = await fetch(
+    API_BASE + path,
+    body === undefined
+      ? { cache: "no-store" }
+      : {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(token ? { "X-Job-Token": token } : {}),
+          },
+          body: JSON.stringify(body),
+        },
+  );
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw Error("服务返回了非 JSON 响应，请检查本地服务");
+  }
+  if (!res.ok) throw Error(data.error || "请求失败 HTTP " + res.status);
+  return data as T;
 }
-
-export async function getDetection(id: number): Promise<{
+export const startDetect = (q: DetectRequest) =>
+  request<{
+    task_id: string;
+    report_id: string;
+    control_token: string;
+    expires_at: number;
+  }>("/api/detect", q);
+export const getDetect = (id: string) =>
+  request<DetectTask>("/api/detect/" + id);
+export const retryDetect = (id: string, q: DetectRequest, token: string) =>
+  request<{ task_id: string }>("/api/detect/" + id + "/retry", q, token);
+export const cancelDetect = (id: string, token: string) =>
+  request("/api/detect/" + id + "/cancel", {}, token);
+export const getBankStats = () => request<BankStats>("/api/bank/stats");
+export const getHistory = (limit = 50, before?: number) =>
+  request<HistorySummary[]>(
+    "/api/history?limit=" + limit + (before ? "&before=" + before : ""),
+  );
+export interface SavedReport {
+  status: string;
+  expires_at: number;
+  probes: Probe[];
   id: number;
+  report_id: string;
+  host: string;
   created_at: string;
   base_url: string;
   model: string;
   verdict_json: DetectVerdict;
-}> {
-  const res = await fetch(`${API_BASE}/api/history/${id}`);
-  if (!res.ok) throw new Error("详情加载失败");
-  return res.json();
 }
+export const getDetection = (id: number) =>
+  request<SavedReport>("/api/history/" + id);
+export const getReport = (id: string) =>
+  request<SavedReport>("/api/reports/" + encodeURIComponent(id));
+export const getModels = (q: DetectRequest) =>
+  request<{ models: string[]; upstream_count: number }>("/api/models", q);
+export const ask = (
+  q: DetectRequest,
+  prompt: string,
+  thinking: unknown,
+  effort: string,
+) =>
+  request<Metrics>("/api/ask", {
+    ...q,
+    prompt,
+    thinking,
+    ...(effort ? { effort } : {}),
+  });
+
+export const submitFeedback = (data: {
+  kind: string;
+  contact: string;
+  message: string;
+}) => request<{ id: string; message: string }>("/api/feedback", data);
