@@ -303,6 +303,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	}
 	t.Verdict.IQ = map[string]any{"score": validScore, "max": 100, "paper_max": score.Max, "complete": complete, "per_question": lines, "note": fmt.Sprintf("当前卷面 %d；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，不伪装为模型答错。", score.Max)}
 	t.Verdict.Integrity = buildIntegrity(t.Verdict, lines, q.Model)
+	t.Verdict.Total = buildTotal(t.Verdict, q.Model)
 	t.Status = "done"
 	if ctx.Err() != nil {
 		t.Status = "cancelled"
@@ -385,4 +386,100 @@ func iqThinking(model string) *gateway.ThinkingConfig {
 		return &gateway.ThinkingConfig{Type: "adaptive", Display: "summarized"}
 	}
 	return nil
+}
+
+func buildTotal(v Verdict, model string) integrity.Total {
+	fpPoints, fpKnown := 0, false
+	if m, ok := v.Fingerprint.(map[string]any); ok {
+		errText, _ := m["error"].(string)
+		if errText == "" {
+			fpKnown = true
+			family, _ := m["family"].(string)
+			top, _ := m["top_model"].(string)
+			if !integrity.Diluted(model, family, top) {
+				fpPoints = 10
+			}
+		}
+	}
+	iqPoints, iqKnown := 0, false
+	if m, ok := v.IQ.(map[string]any); ok {
+		iqKnown = true
+		if complete, _ := m["complete"].(bool); complete {
+			if n, ok := asInt(m["score"]); ok {
+				iqPoints = n
+			}
+		}
+	}
+	injPoints, injKnown := 0, false
+	if m, ok := v.Injection.(map[string]any); ok {
+		injKnown = true
+		errText, _ := m["error"].(string)
+		if errText == "" {
+			if n, ok := asInt(m["score"]); ok {
+				injPoints = n
+			}
+		}
+	}
+	toolPoints, toolKnown := boolPart(v.Tools)
+	webApply, webPoints, webKnown := webPart(v.Web)
+	thinkApply := gateway.IsClaude(model)
+	thinkPoints, thinkKnown := 0, false
+	if thinkApply {
+		if m, ok := v.Thinking.(map[string]any); ok {
+			thinkKnown = true
+			errText, _ := m["error"].(string)
+			if errText == "" {
+				if n, ok := asInt(m["score"]); ok {
+					thinkPoints = n
+				}
+			}
+		}
+	}
+	cacheApply := v.Cache != nil
+	cachePoints, cacheKnown := 0, false
+	if cacheApply {
+		cachePoints, cacheKnown = boolPart(v.Cache)
+	}
+	return integrity.Compose([]integrity.Part{
+		{Key: "fingerprint", Label: "模型指纹归因", Applicable: true, Known: fpKnown, Points: fpPoints, MaxPoints: 10},
+		{Key: "iq", Label: "推理表现", Applicable: true, Known: iqKnown, Points: iqPoints, MaxPoints: 100},
+		{Key: "injection", Label: "注入大小", Applicable: true, Known: injKnown, Points: injPoints, MaxPoints: 10},
+		{Key: "tools", Label: "工具调用", Applicable: true, Known: toolKnown, Points: toolPoints, MaxPoints: 1},
+		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},
+		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: 10},
+		{Key: "cache", Label: "缓存读写", Applicable: cacheApply, Known: cacheKnown, Points: cachePoints, MaxPoints: 1},
+	})
+}
+
+func boolPart(v any) (int, bool) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	if errText, _ := m["error"].(string); errText != "" {
+		return 0, true
+	}
+	pass, ok := asBoolPtr(m["pass"])
+	if !ok || pass == nil {
+		return 0, true
+	}
+	if *pass {
+		return 1, true
+	}
+	return 0, true
+}
+
+func webPart(v any) (bool, int, bool) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return true, 0, false
+	}
+	status, _ := m["status"].(string)
+	protocol, _ := m["protocol"].(string)
+	_, hasPass := asBoolPtr(m["pass"])
+	if status == "unknown" && !hasPass && protocol == "chat" {
+		return false, 0, false
+	}
+	points, known := boolPart(v)
+	return true, points, known
 }

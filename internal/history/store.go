@@ -50,6 +50,7 @@ type Record struct {
 	ThinkingPass *bool           `json:"thinking_pass,omitempty"`
 	ThinkingNote string          `json:"thinking_note,omitempty"`
 	IQScore      *int            `json:"iq_score,omitempty"`
+	TotalScore   *int            `json:"total_score,omitempty"`
 	IQMax        int             `json:"iq_max"`
 	Verdict      json.RawMessage `json:"verdict,omitempty"`
 }
@@ -64,6 +65,7 @@ type Summary struct {
 	BaseURL      string `json:"base_url"`
 	Model        string `json:"model"`
 	IQScore      *int   `json:"iq_score,omitempty"`
+	TotalScore   *int   `json:"total_score,omitempty"`
 	Family       string `json:"family,omitempty"`
 	ThinkingPass *bool  `json:"thinking_pass,omitempty"`
 }
@@ -173,7 +175,7 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 		limit = 50
 	}
 	query := `SELECT id, report_id, status, expires_at, created_at, base_url, model,
-		family, thinking_pass, iq_score
+		family, thinking_pass, iq_score, total_score
 		FROM detections WHERE expires_at > ?`
 	args := []any{time.Now().Unix()}
 	if before > 0 {
@@ -193,9 +195,9 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 		var sum Summary
 		var family sql.NullString
 		var pass sql.NullBool
-		var score sql.NullInt64
+		var score, total sql.NullInt64
 		if err := rows.Scan(&sum.ID, &sum.ReportID, &sum.Status, &sum.ExpiresAt, &sum.CreatedAt, &sum.BaseURL, &sum.Model,
-			&family, &pass, &score); err != nil {
+			&family, &pass, &score, &total); err != nil {
 			return nil, fmt.Errorf("history: scan: %w", err)
 		}
 		sum.Family = family.String
@@ -206,6 +208,10 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 		if score.Valid {
 			v := int(score.Int64)
 			sum.IQScore = &v
+		}
+		if total.Valid {
+			v := int(total.Int64)
+			sum.TotalScore = &v
 		}
 		out = append(out, sum)
 	}

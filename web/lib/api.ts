@@ -102,6 +102,24 @@ export interface IntegrityVerdict {
   reason: string;
   signals: { key: string; label: string; weight: number; applicable: boolean; known: boolean; points?: number; max_points: number; reason: string }[];
 }
+
+export interface TotalPart {
+  key: string;
+  label: string;
+  applicable: boolean;
+  known: boolean;
+  points: number;
+  max_points: number;
+  weight: number;
+  coefficient: number;
+  contribution: number;
+}
+export interface TotalVerdict {
+  score: number;
+  max: number;
+  reason: string;
+  parts: TotalPart[];
+}
 export interface DetectVerdict {
   timing?: { started_at: string; finished_at?: string; total_ms: number; last_run_ms: number; runs: number };
   protocol?: string;
@@ -109,6 +127,7 @@ export interface DetectVerdict {
   web?: CapabilityResult | null;
   knowledge?: KnowledgeVerdict | null;
   integrity?: IntegrityVerdict | null;
+  total?: TotalVerdict | null;
   cache?: {
     samples?: CacheSample[];
     transitions?: {
@@ -246,6 +265,8 @@ export interface HistorySummary {
   base_url: string;
   model: string;
   iq_score: number | null;
+  total_score: number | null;
+  status?: string;
   family: string | null;
   thinking_pass: boolean | null;
 }

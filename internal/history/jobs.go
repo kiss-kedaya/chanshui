@@ -32,7 +32,7 @@ func migrateJobs(db *sql.DB) error {
 		cols[name] = true
 	}
 	rows.Close()
-	for _, col := range []struct{ name, kind string }{{"status", "TEXT NOT NULL DEFAULT 'done'"}, {"expires_at", "INTEGER NOT NULL DEFAULT 0"}, {"progress_json", "TEXT NOT NULL DEFAULT '[]'"}, {"control_hash", "TEXT NOT NULL DEFAULT ''"}, {"questions_json", "TEXT NOT NULL DEFAULT '[]'"}} {
+	for _, col := range []struct{ name, kind string }{{"status", "TEXT NOT NULL DEFAULT 'done'"}, {"expires_at", "INTEGER NOT NULL DEFAULT 0"}, {"progress_json", "TEXT NOT NULL DEFAULT '[]'"}, {"control_hash", "TEXT NOT NULL DEFAULT ''"}, {"questions_json", "TEXT NOT NULL DEFAULT '[]'"}, {"total_score", "INTEGER"}} {
 		if !cols[col.name] {
 			if _, e = tx.Exec("ALTER TABLE detections ADD COLUMN " + col.name + " " + col.kind); e != nil {
 				return e
@@ -62,7 +62,7 @@ func (s *Store) CreateJob(ctx context.Context, r Record, progress json.RawMessag
 	return res.LastInsertId()
 }
 func (s *Store) UpdateJob(ctx context.Context, r Record, progress json.RawMessage) error {
-	res, e := s.db.ExecContext(ctx, "UPDATE detections SET status=?,progress_json=?,verdict_json=?,iq_score=?,thinking_pass=?,family=?,control_hash=CASE WHEN ?='done' THEN '' ELSE control_hash END WHERE report_id=? AND expires_at>?", r.Status, string(progress), string(r.Verdict), nullableInt(r.IQScore), nullableBool(r.ThinkingPass), r.Family, r.Status, r.ReportID, time.Now().Unix())
+	res, e := s.db.ExecContext(ctx, "UPDATE detections SET status=?,progress_json=?,verdict_json=?,iq_score=?,total_score=?,thinking_pass=?,family=?,control_hash=CASE WHEN ?='done' THEN '' ELSE control_hash END WHERE report_id=? AND expires_at>?", r.Status, string(progress), string(r.Verdict), nullableInt(r.IQScore), nullableInt(r.TotalScore), nullableBool(r.ThinkingPass), r.Family, r.Status, r.ReportID, time.Now().Unix())
 	if e != nil {
 		return e
 	}

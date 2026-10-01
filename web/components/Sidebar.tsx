@@ -139,8 +139,12 @@ export default function Sidebar() {
             >
               <div className="history-model">{x.model}</div>
               <div className="history-meta">
-                <b className="hist-badge">
-                  {x.iq_score == null ? "待完成" : x.iq_score + " 分"}
+                <b className="hist-badge" title="总分">
+                  {x.total_score == null
+                    ? x.status === "done" || x.status === "partial"
+                      ? "—"
+                      : "待完成"
+                    : x.total_score + " 分"}
                 </b>
                 <time className="history-time" dateTime={x.created_at}>
                   {new Date(x.created_at).toLocaleString("zh-CN", {

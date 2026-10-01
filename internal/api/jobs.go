@@ -2,6 +2,7 @@ package api
 
 import (
 	"chanzhushui/internal/history"
+	"chanzhushui/internal/integrity"
 	"chanzhushui/internal/iq"
 	"context"
 	"crypto/sha256"
@@ -123,6 +124,10 @@ func (s *Server) persist(t *Task) {
 		if n, ok := m["score"].(int); ok {
 			r.IQScore = &n
 		}
+	}
+	if total, ok := t.Verdict.Total.(integrity.Total); ok {
+		n := total.Score
+		r.TotalScore = &n
 	}
 	if m, ok := t.Verdict.Thinking.(map[string]any); ok {
 		if b, ok := m["pass"].(bool); ok {
