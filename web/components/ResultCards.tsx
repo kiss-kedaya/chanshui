@@ -16,6 +16,13 @@ function Details({ label, value }: { label: string; value: unknown }) {
     </details>
   );
 }
+
+function knowledgeLabel(k: { label?: string; cutoff?: string; correct?: number; total?: number }) {
+  if (k.label) return k.label;
+  if (k.cutoff && /^\d{4}-\d{2}$/.test(k.cutoff)) return `旧报告自报 ${k.cutoff}`;
+  if (k.cutoff) return `知识≈${k.cutoff}${k.total ? `（${k.correct ?? 0}/${k.total}）` : ""}`;
+  return "知识≈未知";
+}
 export default function ResultCards({
   verdict: v,
   model,
@@ -224,12 +231,18 @@ export default function ResultCards({
             <div className="error-box">{t.error || t.err}</div>
           ) : (
             <>
+              <div className="metric-line">
+                <strong className={(t.score ?? ((t.think_len > 0 ? 5 : 0) + (t.sig_len > 0 ? 5 : 0))) === 10 ? "good" : "warn"}>
+                  {(t.score ?? ((t.think_len > 0 ? 5 : 0) + (t.sig_len > 0 ? 5 : 0)))} / 10
+                </strong>
+              </div>
+              <p className="muted">{t.reason}</p>
               <div className="mini-stats">
                 <span>
-                  思考文本 <b>{t.think_len} 字</b>
+                  思维摘要 <b>{t.summary_score ?? (t.think_len > 0 ? 5 : 0)} / 5</b>
                 </span>
                 <span>
-                  签名 <b>{t.sig_len} 字</b>
+                  signature <b>{t.signature_score ?? (t.sig_len > 0 ? 5 : 0)} / 5</b>
                 </span>
               </div>
               <Details label="查看思维链全文" value={t.thinking_text} />
@@ -251,14 +264,26 @@ export default function ResultCards({
         ) : (
           <>
             <div className="metric-line">
-              <strong className={knowledge.cutoff ? "good" : "warn"}>
-                {knowledge.cutoff || "未自报"}
+              <strong className={knowledge.correct ? "good" : "warn"}>
+                {knowledgeLabel(knowledge)}
               </strong>
-              <span>模型自报</span>
+              <span>客观事件</span>
             </div>
             <p className="muted">{knowledge.reason}</p>
-            {knowledge.raw && (
-              <Details label="查看原始回答" value={knowledge.raw} />
+            {knowledge.web_suspect && <p className="knowledge-note">{knowledge.web_suspect}</p>}
+            {knowledge.gap_note && <p className="knowledge-note">{knowledge.gap_note}</p>}
+            {!!knowledge.rows?.length && (
+              <ul className="knowledge-ladder">
+                {knowledge.rows.map((row) => (
+                  <li key={row.id}>
+                    <b className={row.ok ? "good" : row.unsure ? "muted" : "warn"}>
+                      {row.ok ? "对" : row.unsure ? "不确定" : "错"}
+                    </b>
+                    <span>{row.quarter}</span>
+                    <span>{row.event}</span>
+                  </li>
+                ))}
+              </ul>
             )}
           </>
         )}

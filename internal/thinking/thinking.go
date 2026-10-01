@@ -10,6 +10,9 @@ import (
 // Verdict is the outcome of one summarized-thinking passthrough probe.
 type Verdict struct {
 	Pass           bool   `json:"pass"`
+	Score          int    `json:"score"`
+	SummaryScore   int    `json:"summary_score"`
+	SignatureScore int    `json:"signature_score"`
 	Reason         string `json:"reason"`
 	ThinkLen       int    `json:"think_len"`
 	SigLen         int    `json:"sig_len"`
@@ -65,21 +68,23 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 		Ms:             m.Ms,
 	}
 
+	if strings.TrimSpace(m.ThinkingText) != "" {
+		v.SummaryScore = 5
+	}
+	if strings.TrimSpace(m.Signature) != "" || m.SigLen > 0 {
+		v.SignatureScore = 5
+	}
+	v.Score = v.SummaryScore + v.SignatureScore
+	v.Pass = v.Score == 10
 	switch {
-	case strings.TrimSpace(m.ThinkingText) != "":
-		v.Pass = true
-		v.Reason = "思考文本正常回传"
-	case m.SigLen > 0:
-		// The upstream billed/reporting thinking tokens but stripped the text:
-		// only the signature came back. ThinkingTokens>0 with empty text is the
-		// same failure shape as signature-only.
-		v.Pass = false
-		v.Reason = "未回传思考文本，仅收到签名"
-	case m.ThinkingTokens > 0:
-		v.Reason = "有思考用量但未回传摘要，不能仅凭用量确认原因"
+	case v.Score == 10:
+		v.Reason = "思维摘要 5 分，signature 5 分"
+	case v.SummaryScore == 5:
+		v.Reason = "思维摘要 5 分，没有 signature"
+	case v.SignatureScore == 5:
+		v.Reason = "signature 5 分，没有思维摘要"
 	default:
-		v.Pass = false
-		v.Reason = "无思考块"
+		v.Reason = "没有思维摘要，也没有 signature"
 	}
 	return v, nil
 }

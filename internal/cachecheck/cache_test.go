@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -68,7 +69,20 @@ func TestCollectKeepsGrowingConversationAndBreakpoints(t *testing.T) {
 	for _, mode := range []string{"anthropic", "chat", "openai"} {
 		t.Run(mode, func(t *testing.T) {
 			var calls [][]map[string]any
+			inFlight, maxFlight := 0, 0
+			var flight sync.Mutex
 			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				flight.Lock()
+				inFlight++
+				if inFlight > maxFlight {
+					maxFlight = inFlight
+				}
+				flight.Unlock()
+				defer func() {
+					flight.Lock()
+					inFlight--
+					flight.Unlock()
+				}()
 				var q map[string]json.RawMessage
 				if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
 					t.Error(err)
@@ -141,6 +155,14 @@ func TestCollectKeepsGrowingConversationAndBreakpoints(t *testing.T) {
 			}
 			if r.Samples[1].RequestHash == r.Samples[2].RequestHash || r.Samples[1].PromptChars == r.Samples[2].PromptChars {
 				t.Fatal("second and third requests are identical")
+			}
+			if maxFlight != 1 {
+				t.Fatalf("cache rounds overlapped: %d", maxFlight)
+			}
+			for _, sample := range r.Samples {
+				if sample.PromptChars < 300 || sample.PromptChars > 900 {
+					t.Fatalf("prompt should be a few hundred tokens, got %d chars", sample.PromptChars)
+				}
 			}
 			if !strings.Contains(r.Reason, "缓存") {
 				t.Fatal(r.Reason)

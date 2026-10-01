@@ -25,7 +25,7 @@ type Inputs struct {
 	ToolsApplicable bool
 	WebPass         *bool
 	WebApplicable   bool
-	ThinkingPass    *bool
+	ThinkingScore   *int
 	ThinkingApply   bool
 	StreamPass      *bool
 }
@@ -59,7 +59,7 @@ func Calculate(in Inputs) Result {
 		boolSignal("tools", "工具调用", weightTools, in.ToolsApplicable, in.ToolsPass != nil, boolPoints(in.ToolsPass), "结构化调用与结果回传"),
 		boolSignal("web", "联网证据", weightWeb, in.WebApplicable, in.WebPass != nil, boolPoints(in.WebPass), "搜索工具与来源"),
 		boolSignal("stream", "流式完整性", weightStream, in.StreamPass != nil, in.StreamPass != nil, boolPoints(in.StreamPass), "结束事件与响应完整"),
-		boolSignal("thinking", "思维链回传", weightThinking, in.ThinkingApply, in.ThinkingPass != nil, boolPoints(in.ThinkingPass), "仅 Claude 适用"),
+		{Key: "thinking", Label: "思维链回传", Weight: weightThinking, MaxPoints: 10, Applicable: in.ThinkingApply, Known: in.ThinkingScore != nil, Points: in.ThinkingScore, Reason: "思维摘要 5 分，signature 5 分"},
 	}
 
 	applicable, available, earned := 0, 0, 0

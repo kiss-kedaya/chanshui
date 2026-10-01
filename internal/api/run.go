@@ -338,7 +338,9 @@ func buildIntegrity(v Verdict, results []QuestionResult, model string) any {
 		input.WebPass, _ = asBoolPtr(m["pass"])
 	}
 	if m, ok := v.Thinking.(map[string]any); ok {
-		input.ThinkingPass, _ = asBoolPtr(m["pass"])
+		if n, ok := asInt(m["score"]); ok {
+			input.ThinkingScore = &n
+		}
 	}
 	stream := false
 	streamKnown := false

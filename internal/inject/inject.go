@@ -72,18 +72,10 @@ func Measure(ctx context.Context, gw gateway.Client, model string, timeout ...in
 		prompt := strings.TrimSpace(strings.Repeat("x ", units))
 		m, err := gw.CallMessages(ctx, gateway.CallRequest{
 			Model: model, Prompt: prompt,
-			MaxTokens: 16, TimeoutSeconds: seconds, Validate: func(m gateway.Metrics) error {
-				if !m.UsagePresent {
+			MaxTokens: 64, TimeoutSeconds: seconds, Validate: func(m gateway.Metrics) error {
+				total := m.InputTokens + m.CacheCreation5m + m.CacheCreation1h + m.CacheRead
+				if !m.UsagePresent || m.InputTokens < 0 || total <= 0 {
 					return fmt.Errorf("missing token usage")
-				}
-				if m.StopReason == "max_tokens" || m.StopReason == "length" {
-					return fmt.Errorf("response truncated")
-				}
-				if m.ThinkingTokens > 0 || m.ThinkLen > 0 {
-					return fmt.Errorf("reasoning output included in sample")
-				}
-				if strings.TrimSpace(m.Answer) == "" {
-					return fmt.Errorf("empty response")
 				}
 				return nil
 			},
@@ -103,12 +95,11 @@ func Measure(ctx context.Context, gw gateway.Client, model string, timeout ...in
 	if len(points) != 2 {
 		return r, fmt.Errorf("注入采样不足：%d/2 有效；%v", len(points), lastErr)
 	}
-	r.Slope, r.Inj = fit(points)
-	r.Inj = int(math.Round(math.Max(0, float64(r.Inj))))
-	// Two points cannot establish a residual, but an implausible token/character
-	// slope or offset still indicates a malformed usage report.
-	r.Reliable = r.Slope > 0 && r.Slope <= 4 && r.Inj >= 0 && r.Inj <= 100000
+	var raw int
+	r.Slope, raw = fit(points)
+	r.Reliable = r.Slope > 0 && r.Slope <= 4 && raw >= 0 && raw <= 100000
 	if r.Reliable {
+		r.Inj = raw
 		score := InjectionScore(r.Inj)
 		r.Score = &score
 	} else {

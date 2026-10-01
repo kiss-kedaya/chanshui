@@ -151,8 +151,9 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
+          notes="docs/release-notes/${TAG}.md"
+          test -f "$notes"
           gh release create "$TAG" dist/* \
             --repo "${GITHUB_REPOSITORY}" \
             --title "掺水？ ${TAG}" \
-            --generate-notes \
-            --notes-file docs/release-notes/v0.1.3.md
+            --notes-file "$notes"

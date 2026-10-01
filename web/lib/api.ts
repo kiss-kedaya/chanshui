@@ -65,14 +65,30 @@ export interface CacheSample {
   request_sha256?: string;
   error?: string;
 }
+export interface KnowledgeRow {
+  id: string;
+  quarter: string;
+  happened_at: string;
+  event: string;
+  ok: boolean;
+  unsure: boolean;
+  answer: string;
+  error?: string;
+}
 export interface KnowledgeVerdict {
   status: string;
   cutoff?: string;
+  label?: string;
+  correct?: number;
+  total?: number;
+  web_suspect?: string;
+  gap_note?: string;
   raw?: string;
   reason: string;
   protocol: string;
   attempts?: number;
   thinking_used?: boolean;
+  rows?: KnowledgeRow[];
   error?: string;
 }
 export interface IntegrityVerdict {
@@ -170,6 +186,9 @@ export interface DetectVerdict {
   } | null;
   thinking: {
     pass: boolean;
+    score?: number;
+    summary_score?: number;
+    signature_score?: number;
     think_len: number;
     sig_len: number;
     reason: string;

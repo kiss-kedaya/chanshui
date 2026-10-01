@@ -96,3 +96,45 @@ func TestMeasureCannotScoreFailedSample(t *testing.T) {
 		t.Fatalf("result=%+v err=%v calls=%d", r, err, calls.Load())
 	}
 }
+
+func TestMeasureKeepsUsageWhenReplyThinks(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Messages []struct{ Content string } `json:"messages"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatal(err)
+		}
+		n := len(req.Messages[len(req.Messages)-1].Content)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"content":[{"type":"thinking","thinking":"need more room","signature":"sig"},{"type":"text","text":""}],"stop_reason":"max_tokens","usage":{"input_tokens":%d,"output_tokens":16}}`, n+40)
+	}))
+	defer s.Close()
+	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "claude-opus-5-5")
+	if err != nil || r.Score == nil || *r.Score != 10 || r.Inj < 39 || r.Inj > 41 {
+		t.Fatalf("result=%+v err=%v", r, err)
+	}
+}
+
+func TestNegativeInterceptIsNotScored(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Messages []struct{ Content string } `json:"messages"`
+		}
+		_ = json.Unmarshal(body, &req)
+		n := len(req.Messages[len(req.Messages)-1].Content)
+		total := 20
+		if n > 10 {
+			total = 10
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","usage":{"input_tokens":%d,"output_tokens":1}}`, total)
+	}))
+	defer s.Close()
+	r, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "claude-opus-5")
+	if err != nil || r.Reliable || r.Score != nil || r.Inj != 0 {
+		t.Fatalf("negative intercept scored: %+v %v", r, err)
+	}
+}

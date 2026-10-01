@@ -48,7 +48,7 @@ func TestCheckThreeShapes(t *testing.T) {
 				OutputTokens:   260,
 			},
 			wantPass:   true,
-			wantReason: "思考文本正常回传",
+			wantReason: "思维摘要 5 分，signature 5 分",
 			wantThink:  812,
 			wantSig:    208,
 			wantTokens: 130,
@@ -63,7 +63,7 @@ func TestCheckThreeShapes(t *testing.T) {
 				ThinkingTokens: 128,
 			},
 			wantPass:   false,
-			wantReason: "未回传思考文本，仅收到签名",
+			wantReason: "signature 5 分，没有思维摘要",
 			wantThink:  0,
 			wantSig:    256,
 			wantTokens: 128,
@@ -78,7 +78,7 @@ func TestCheckThreeShapes(t *testing.T) {
 				ThinkingTokens: 110,
 			},
 			wantPass:   false,
-			wantReason: "未回传思考文本，仅收到签名",
+			wantReason: "signature 5 分，没有思维摘要",
 			wantThink:  0,
 			wantSig:    244,
 			wantTokens: 110,
@@ -89,7 +89,7 @@ func TestCheckThreeShapes(t *testing.T) {
 				Status: 200,
 			},
 			wantPass:   false,
-			wantReason: "无思考块",
+			wantReason: "没有思维摘要，也没有 signature",
 		},
 	}
 
@@ -105,6 +105,15 @@ func TestCheckThreeShapes(t *testing.T) {
 			}
 			if v.Reason != tc.wantReason {
 				t.Errorf("Reason = %q, want %q", v.Reason, tc.wantReason)
+			}
+			wantScore := 0
+			if tc.wantPass {
+				wantScore = 10
+			} else if tc.wantSig > 0 {
+				wantScore = 5
+			}
+			if v.Score != wantScore || v.SummaryScore+v.SignatureScore != v.Score {
+				t.Errorf("Score = %d summary %d signature %d, want %d", v.Score, v.SummaryScore, v.SignatureScore, wantScore)
 			}
 			if v.ThinkLen != tc.wantThink {
 				t.Errorf("ThinkLen = %d, want %d", v.ThinkLen, tc.wantThink)

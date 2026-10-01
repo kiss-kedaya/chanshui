@@ -4,7 +4,7 @@ import Icon from "@/components/Icon";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { reportHost, reportPath } from "@/lib/report-view";
+import { reportPath } from "@/lib/report-view";
 import { getHistory, HistorySummary } from "@/lib/api";
 
 const HISTORY_REFRESH_MS = 45000;
@@ -139,21 +139,20 @@ export default function Sidebar() {
             >
               <div className="history-model">{x.model}</div>
               <div className="history-meta">
-                <span>{reportHost(x.base_url)}</span>
                 <b className="hist-badge">
                   {x.iq_score == null ? "待完成" : x.iq_score + " 分"}
                 </b>
+                <time className="history-time" dateTime={x.created_at}>
+                  {new Date(x.created_at).toLocaleString("zh-CN", {
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </time>
               </div>
               <div className="history-report-id" title={x.report_id}>
                 ID {x.report_id.slice(0, 12)}…
-              </div>
-              <div className="history-time">
-                {new Date(x.created_at).toLocaleString("zh-CN", {
-                  month: "2-digit",
-                  day: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
               </div>
             </Link>
           ))

@@ -179,9 +179,9 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			col.Result.Samples[i].RequestHash = shape.RequestHash
 		}
 	}
-	// Spaced units avoid BPE compressing a long run of A into 8-character tokens.
-	// Unequal continuation sizes let injection remove per-turn framing overhead.
-	for i, units := range []int{4608, 2048, 1024} {
+	// Each round waits for the previous response before starting. A few hundred
+	// tokens is enough to see a cache write; the rounds must not run together.
+	for i, units := range []int{240, 200, 160} {
 		prompt := strings.Repeat("A ", units) + "\nReply only OK."
 		if i == 0 {
 			prompt = "Audit " + hex.EncodeToString(nonce[:]) + "\n" + prompt

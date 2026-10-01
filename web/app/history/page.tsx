@@ -3,7 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getDetection, getReport, SavedReport } from "@/lib/api";
-import { parseReportID, reportHost, reportPath } from "@/lib/report-view";
+import { parseReportID, reportPath } from "@/lib/report-view";
 import { getJobControl, reconcileJobControl } from "@/lib/job-controls";
 import { watchResource } from "@/lib/polling";
 import ResultCards from "@/components/ResultCards";
@@ -121,8 +121,7 @@ function HistoryDetailInner() {
         </h1>
         {data && (
           <p className="report-meta">
-            <span>{data.host || reportHost(data.base_url)}</span> ·{" "}
-            {new Date(data.created_at).toLocaleString("zh-CN")}
+            <time dateTime={data.created_at}>{new Date(data.created_at).toLocaleString("zh-CN")}</time>
           </p>
         )}
         {data && (

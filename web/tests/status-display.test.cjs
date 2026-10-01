@@ -50,6 +50,7 @@ test("thinking card does not render delivery status summaries", () => {
     },
   }));
   assert.match(html, /思维链回传/);
-  assert.match(html, /思考文本/);
+  assert.match(html, /思维摘要/);
+  assert.match(html, /signature/);
   assert.doesNotMatch(html, /已回传|未回传|思考待定|摘要已回传|摘要未回传/);
 });
