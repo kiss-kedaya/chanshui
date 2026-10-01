@@ -147,8 +147,10 @@ func compatibleUsage(u map[string]json.RawMessage, m *Metrics) {
 		m.InputTokens = readInt("prompt_tokens")
 	}
 	m.OutputTokens = readInt("output_tokens")
+	m.OutputReported = u["output_tokens"] != nil && string(u["output_tokens"]) != "null"
 	if _, ok := u["completion_tokens"]; ok {
 		m.OutputTokens = readInt("completion_tokens")
+		m.OutputReported = string(u["completion_tokens"]) != "null"
 	}
 	var details map[string]json.RawMessage
 	raw := u["input_tokens_details"]
@@ -156,26 +158,58 @@ func compatibleUsage(u map[string]json.RawMessage, m *Metrics) {
 		raw = u["prompt_tokens_details"]
 	}
 	json.Unmarshal(raw, &details)
-	if v, ok := details["cached_tokens"]; ok {
+	if v, ok := details["cached_tokens"]; ok && string(v) != "null" {
 		json.Unmarshal(v, &m.CacheRead)
 		m.CacheReadReported = true
 	}
-	if _, ok := u["prompt_cache_hit_tokens"]; ok {
+	if v, ok := u["prompt_cache_hit_tokens"]; ok && string(v) != "null" {
 		m.CacheRead = readInt("prompt_cache_hit_tokens")
 		m.CacheReadReported = true
 	}
-	if _, ok := u["cache_read_input_tokens"]; ok {
+	if v, ok := u["cache_read_input_tokens"]; ok && string(v) != "null" {
 		m.CacheRead = readInt("cache_read_input_tokens")
 		m.CacheReadReported = true
 	}
-	if _, ok := u["cache_creation_input_tokens"]; ok {
+	if v, ok := u["cache_creation_input_tokens"]; ok && string(v) != "null" {
 		m.CacheCreation5m = readInt("cache_creation_input_tokens")
+		m.CacheWriteReported = true
+	}
+	var creation struct {
+		Five *int `json:"ephemeral_5m_input_tokens"`
+		Hour *int `json:"ephemeral_1h_input_tokens"`
+	}
+	if json.Unmarshal(u["cache_creation"], &creation) == nil && (creation.Five != nil || creation.Hour != nil) {
+		aggregate := m.CacheCreation5m
+		m.CacheCreation5m, m.CacheCreation1h = 0, 0
+		if creation.Five != nil {
+			m.CacheCreation5m = *creation.Five
+		}
+		if creation.Hour != nil {
+			m.CacheCreation1h = *creation.Hour
+		}
+		if aggregate > m.CacheCreation5m+m.CacheCreation1h {
+			m.CacheCreation5m = aggregate - m.CacheCreation1h
+		}
 		m.CacheWriteReported = true
 	}
 	// Compatible APIs count cached tokens inside input/prompt_tokens.
 	m.InputTokens -= m.CacheRead + m.CacheCreation5m + m.CacheCreation1h
 	if m.InputTokens < 0 {
 		m.InputTokens = 0
+	}
+	var outputDetails struct {
+		Thinking  int `json:"thinking_tokens"`
+		Reasoning int `json:"reasoning_tokens"`
+	}
+	outputRaw := u["output_tokens_details"]
+	if outputRaw == nil {
+		outputRaw = u["completion_tokens_details"]
+	}
+	if json.Unmarshal(outputRaw, &outputDetails) == nil {
+		m.ThinkingTokens = outputDetails.Thinking
+		if outputDetails.Reasoning > m.ThinkingTokens {
+			m.ThinkingTokens = outputDetails.Reasoning
+		}
 	}
 }
 func parseCompatibleJSON(raw []byte, protocol string, m *Metrics) error {

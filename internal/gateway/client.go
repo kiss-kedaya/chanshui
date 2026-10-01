@@ -30,27 +30,30 @@ type SystemBlock struct {
 }
 
 type CallRequest struct {
-	ToolReply        *ToolReply
-	Tools            []ToolDefinition
-	ForceTool        string
-	WebSearch        bool
-	protocolOverride string
-	Effort           string
-	Model            string
-	MaxTokens        int
-	Prompt           string
-	History          []ConversationMessage
-	System           []SystemBlock
-	Thinking         *ThinkingConfig
-	Stream           bool
+	Validate           func(Metrics) error
+	ToolReply          *ToolReply
+	Tools              []ToolDefinition
+	ForceTool          string
+	WebSearch          bool
+	protocolOverride   string
+	Effort             string
+	Model              string
+	MaxTokens          int
+	Prompt             string
+	PromptCacheControl *CacheControl
+	History            []ConversationMessage
+	System             []SystemBlock
+	Thinking           *ThinkingConfig
+	Stream             bool
 	// TimeoutSeconds overrides the per-request timeout when > 0. When 0 the
 	// request runs under the context deadline only.
 	TimeoutSeconds int
 }
 
 type ConversationMessage struct {
-	Role    string
-	Content string
+	Role         string
+	Content      string
+	CacheControl *CacheControl
 }
 
 type Metrics struct {
@@ -70,6 +73,7 @@ type Metrics struct {
 	StopReason         string
 	InputTokens        int
 	OutputTokens       int
+	OutputReported     bool
 	// ThinkingTokens comes from usage.output_tokens_details.thinking_tokens.
 	ThinkingTokens  int
 	CacheCreation5m int
@@ -171,9 +175,9 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 		Messages:  make([]wireMessage, 0, len(req.History)+1),
 	}
 	for _, message := range req.History {
-		wire.Messages = append(wire.Messages, wireMessage{Role: message.Role, Content: message.Content})
+		wire.Messages = append(wire.Messages, wireMessage{Role: message.Role, Content: messageContent(message.Content, message.CacheControl)})
 	}
-	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: req.Prompt})
+	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: messageContent(req.Prompt, req.PromptCacheControl)})
 	if req.ToolReply != nil {
 		reply := req.ToolReply
 		wire.Messages = append(wire.Messages, wireMessage{Role: "assistant", Content: []any{map[string]any{"type": "tool_use", "id": reply.Call.ID, "name": reply.Call.Name, "input": reply.Call.Arguments}}}, wireMessage{Role: "user", Content: []any{map[string]any{"type": "tool_result", "tool_use_id": reply.Call.ID, "content": reply.Output}}})
@@ -262,6 +266,17 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 	return m, nil
 }
 
+func messageContent(text string, cache *CacheControl) any {
+	if cache == nil {
+		return text
+	}
+	control := map[string]any{"type": "ephemeral"}
+	if cache.TTL != "" {
+		control["ttl"] = cache.TTL
+	}
+	return []any{map[string]any{"type": "text", "text": text, "cache_control": control}}
+}
+
 // readStream consumes an SSE body: every `data: ` payload is kept verbatim in
 // Metrics.SSEFrames until the [DONE] sentinel or EOF. The [DONE] sentinel
 // itself is not recorded. Non-`data:` lines (event names, blank separators,
@@ -340,8 +355,14 @@ func parseMessagesBody(raw []byte, m *Metrics) error {
 	if string(usageFields["input_tokens"]) == "null" || usageFields["input_tokens"] == nil {
 		m.UsagePresent = false
 	}
-	if _, ok := usageFields["cache_creation"]; ok {
-		m.CacheWriteReported = true
+	m.OutputReported = usageFields["output_tokens"] != nil && string(usageFields["output_tokens"]) != "null"
+	var creationFields map[string]json.RawMessage
+	if json.Unmarshal(usageFields["cache_creation"], &creationFields) == nil {
+		for _, field := range []string{"ephemeral_5m_input_tokens", "ephemeral_1h_input_tokens"} {
+			if v := creationFields[field]; v != nil && string(v) != "null" {
+				m.CacheWriteReported = true
+			}
+		}
 	}
 	var resp messagesResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {

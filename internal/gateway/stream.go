@@ -107,6 +107,7 @@ func parseStream(body io.Reader, m *Metrics) error {
 				if err := json.Unmarshal(v, &m.OutputTokens); err != nil {
 					return err
 				}
+				m.OutputReported = true
 			case "cache_read_input_tokens":
 				m.CacheReadReported = true
 				if err := json.Unmarshal(v, &m.CacheRead); err != nil {

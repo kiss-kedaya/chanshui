@@ -4,20 +4,20 @@ import (
 	"chanzhushui/internal/cachecheck"
 	"chanzhushui/internal/gateway"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"math"
-	"strings"
 	"time"
 )
 
 type Point struct {
-	N     int `json:"n"`
-	Input int `json:"input"`
-	CC    int `json:"cc"`
-	CR    int `json:"cr"`
-	Total int `json:"total"`
+	N             int `json:"n"`
+	Round         int `json:"round"`
+	Input         int `json:"input"`
+	CC            int `json:"cc"`
+	CR            int `json:"cr"`
+	Total         int `json:"total"`
+	OutputBefore  int `json:"output_before"`
+	AdjustedTotal int `json:"adjusted_total"`
 }
 type ProbeDiag struct {
 	SSEOK     bool   `json:"sse_ok"`
@@ -25,25 +25,24 @@ type ProbeDiag struct {
 	StreamErr string `json:"stream_error,omitempty"`
 }
 type Result struct {
-	Inj         int                `json:"inj"`
-	Slope       float64            `json:"slope"`
-	Points      []Point            `json:"points"`
-	CacheHeader string             `json:"cache_header"`
-	Via         string             `json:"via"`
-	Probe       *ProbeDiag         `json:"probe,omitempty"`
-	R2          *float64           `json:"r2"`
-	MaxResidual *float64           `json:"max_residual"`
-	Reliable    bool               `json:"reliable"`
-	Score       *int               `json:"score"`
-	MaxScore    int                `json:"max_score"`
-	Note        string             `json:"note"`
-	Cache       *cachecheck.Result `json:"cache,omitempty"`
+	Inj           int                `json:"inj"`
+	Slope         float64            `json:"slope"`
+	RoundOverhead float64            `json:"round_overhead"`
+	Points        []Point            `json:"points"`
+	CacheHeader   string             `json:"cache_header"`
+	Via           string             `json:"via"`
+	Probe         *ProbeDiag         `json:"probe,omitempty"`
+	R2            *float64           `json:"r2"`
+	MaxResidual   *float64           `json:"max_residual"`
+	Reliable      bool               `json:"reliable"`
+	Score         *int               `json:"score"`
+	MaxScore      int                `json:"max_score"`
+	Note          string             `json:"note"`
+	Cache         *cachecheck.Result `json:"cache,omitempty"`
 }
 
-var sampleNs = []int{1, 800}
-
-const maxAttempts = 3
-
+// Kept for compatibility with older package tests; request retry timing now
+// belongs to gateway.Client and is applied independently to every probe.
 var BackoffDelay = 2 * time.Second
 var retryDelay = time.Millisecond
 
@@ -64,101 +63,73 @@ func InjectionScore(n int) int {
 		return 0
 	}
 }
-func Measure(ctx context.Context, gw gateway.Client, model string) (Result, error) {
-	lines := 64
-	if gateway.IsClaude(model) {
-		lines = 160
+
+// Measure reuses all three cache requests; optional timeout preserves callers
+// that already supply a configured HTTP client.
+func Measure(ctx context.Context, gw gateway.Client, model string, timeout ...int) (Result, error) {
+	seconds := 0
+	if len(timeout) > 0 {
+		seconds = timeout[0]
 	}
-	var prefix strings.Builder
-	fmt.Fprintf(&prefix, "Cache and injection audit reference.\n")
-	for i := 0; i < lines; i++ {
-		fmt.Fprintf(&prefix, "Record %04d: inventory verification values %d %d %d, stable repeated reference.\n", i, i*17+19, i*31+43, i*7+11)
-	}
-	hash := sha256.Sum256([]byte(prefix.String()))
-	prefixHash := hex.EncodeToString(hash[:])
-	system := gateway.SystemBlock{Text: prefix.String()}
-	if gw.ProtocolFor(model) == "messages" {
-		system.CacheControl = &gateway.CacheControl{TTL: "1h"}
-	}
-	// Three sequential calls serve both measurements: n=1 and n=800 estimate
-	// the injected offset, while the repeated n=800 call measures warm reads.
-	metrics := make([]gateway.Metrics, 0, 3)
-	all := make([]Point, 0, 2)
-	history := []gateway.ConversationMessage{}
-	var lastErr error
-	for i, n := range []int{sampleNs[0], sampleNs[1], sampleNs[1]} {
-		m, e := gw.CallMessages(ctx, gateway.CallRequest{Model: model, MaxTokens: 16, Prompt: strings.Repeat("A", n), History: history, System: []gateway.SystemBlock{system}})
-		if e != nil {
-			lastErr = fmt.Errorf("n=%d: %w", n, e)
-			break
-		}
-		if m.Err != "" {
-			lastErr = fmt.Errorf("n=%d: %s", n, m.Err)
-			break
-		}
-		if m.InputTokens < 0 || m.CacheRead < 0 || m.CacheCreation5m < 0 || m.CacheCreation1h < 0 || !m.UsagePresent {
-			lastErr = fmt.Errorf("n=%d: invalid or missing token usage", n)
-			break
-		}
-		metrics = append(metrics, m)
-		if i < 2 {
-			all = append(all, Point{N: n, Input: m.InputTokens, CC: m.CacheCreation5m + m.CacheCreation1h, CR: m.CacheRead, Total: m.InputTokens + m.CacheCreation5m + m.CacheCreation1h + m.CacheRead})
-		}
-		if i == 0 {
-			gw.PinProtocol(m.Protocol)
-		}
-		if strings.TrimSpace(m.Answer) != "" {
-			history = append(history, gateway.ConversationMessage{Role: "assistant", Content: m.Answer})
-		}
-	}
-	r := Result{MaxScore: 10, Points: all, Note: "三次串行请求合并完成注入大小与缓存读写验证：前两轮估计注入偏移，第三轮读取比例只相对上一轮缓存读写量计算。"}
-	if len(metrics) < 3 {
-		return r, fmt.Errorf("注入/缓存采样不足：%d/3 有效；%v", len(metrics), lastErr)
-	}
-	for _, m := range metrics {
+	col, err := cachecheck.Collect(ctx, gw, model, seconds)
+	r := Result{MaxScore: 10, Points: make([]Point, 0, len(col.Metrics)), Cache: &col.Result,
+		Note: "注入与缓存共用三次递增对话。按累计样本文本回归，扣除前轮输出并修正每轮新增包装；近似值仍包含首轮协议包装和短指令，不能当作隐藏提示词的精确数量。"}
+	outputBefore := 0
+	visibleOutput := true
+	for i, m := range col.Metrics {
 		if m.CacheHeader != "" {
 			r.CacheHeader = m.CacheHeader
 		}
 		r.Via = m.Via
+		if m.Err != "" || !m.UsagePresent {
+			continue
+		}
+		total := m.InputTokens + m.CacheRead + m.CacheCreation5m + m.CacheCreation1h
+		r.Points = append(r.Points, Point{N: col.Units[i], Round: i + 1, Input: m.InputTokens, CC: m.CacheCreation5m + m.CacheCreation1h,
+			CR: m.CacheRead, Total: total, OutputBefore: outputBefore, AdjustedTotal: total - outputBefore})
+		outputBefore += m.OutputTokens
+		visibleOutput = visibleOutput && m.OutputReported && m.ThinkingTokens == 0 && m.ThinkLen == 0
 	}
-	cacheResult := cachecheck.FromMetrics(metrics, prefixHash, metrics[0].Protocol, anyRetry(metrics))
-	r.Cache = &cacheResult
-	slope, intercept := linReg(r.Points)
-	r.Slope = slope
+	if err != nil {
+		return r, err
+	}
+	if len(r.Points) != 3 {
+		return r, fmt.Errorf("注入/缓存采样不足：%d/3 有效", len(r.Points))
+	}
+	var intercept float64
+	r.Slope, r.RoundOverhead, intercept = fitConversation(r.Points)
 	r.Inj = int(math.Round(math.Max(0, intercept)))
-	// Two points have zero residual by construction, so R2 and residual remain null.
-	r.Reliable = slope > 0 && intercept >= -2
+	// Three fitted points cannot independently establish linearity. Keep R2
+	// and residual null, and reject implausible slopes/framing corrections.
+	r.Reliable = visibleOutput && r.Slope > 0 && r.Slope <= 4 && intercept >= -16 && r.RoundOverhead >= -4 && r.RoundOverhead <= 128
 	if r.Reliable {
 		score := InjectionScore(r.Inj)
 		r.Score = &score
 	} else {
-		r.Note += " 两次采样用量异常，暂不计分。"
+		r.Note += " 用量不符合稳定的文本/包装模型，或包含未回传推理用量，暂不计分。"
 	}
 	return r, nil
 }
 
-func anyRetry(metrics []gateway.Metrics) bool {
-	for _, m := range metrics {
-		if m.Attempts > 1 {
-			return true
-		}
+// y_i = slope*x_i + roundOverhead*i + intercept, after removing prior output.
+// Unequal appended lengths make the three unknowns identifiable. Keeping the
+// entire test prefix in x is critical: it must never become injected overhead.
+func fitConversation(points []Point) (slope, roundOverhead, intercept float64) {
+	if len(points) != 3 {
+		return
 	}
-	return false
-}
-func linReg(points []Point) (slope, intercept float64) {
-	var n, sx, sy, sxx, sxy float64
-	for _, p := range points {
-		x, y := float64(p.N), float64(p.Total)
-		n++
-		sx += x
-		sy += y
-		sxx += x * x
-		sxy += x * y
+	a, b, c := points[0], points[1], points[2]
+	dx1, dx2 := float64(b.N-a.N), float64(c.N-b.N)
+	dy1, dy2 := float64(b.AdjustedTotal-a.AdjustedTotal), float64(c.AdjustedTotal-b.AdjustedTotal)
+	if dx1 <= 0 || dx2 <= 0 || dx1 == dx2 {
+		return
 	}
-	den := n*sxx - sx*sx
-	if den == 0 {
-		return 0, sy / n
-	}
-	slope = (n*sxy - sx*sy) / den
-	return slope, (sy - slope*sx) / n
+	slope = (dy1 - dy2) / (dx1 - dx2)
+	// Usage is integer-valued. The large unequal intervals make the tokenizer
+	// slope stable to roughly 1e-3; quantizing it removes one-token floor noise
+	// from the intercept instead of turning rounding noise into fake injection.
+	slope = math.Round(slope*1000) / 1000
+	roundOverhead = dy1 - slope*dx1
+	intercept = float64(a.AdjustedTotal) - slope*float64(a.N)
+	return
 }

@@ -10,45 +10,31 @@ import (
 	"testing"
 )
 
-func TestMergedProbeUsesThreeRequests(t *testing.T) {
+func TestMergedProbeUsesExactlyThreeRequests(t *testing.T) {
 	var count atomic.Int32
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		count.Add(1)
-		var q struct {
-			Stream   bool
-			Messages []struct{ Content string }
-		}
-		json.NewDecoder(r.Body).Decode(&q)
-		if q.Stream {
-			t.Error("unexpected extra stream request")
-		}
-		json.NewEncoder(w).Encode(map[string]any{"content": []any{}, "usage": map[string]int{"input_tokens": len(q.Messages[len(q.Messages)-1].Content) + 6}})
+		chars, round := decodeConversation(t, r)
+		writeUsage(w, chars/2+6+12*(round-1), 0, 0, 2)
 	}))
 	defer s.Close()
-	got, e := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
-	if e != nil || count.Load() != 3 || len(got.Points) != 2 || got.Inj != 6 {
-		t.Fatalf("merged probe: calls=%d result=%+v err=%v", count.Load(), got, e)
+	got, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
+	if err != nil || count.Load() != 3 || len(got.Points) != 3 || got.Inj != 6 {
+		t.Fatalf("calls=%d result=%+v err=%v", count.Load(), got, err)
 	}
 	raw, _ := json.Marshal(got)
 	var fields map[string]any
 	json.Unmarshal(raw, &fields)
 	if fields["r2"] != nil || fields["max_residual"] != nil {
-		t.Fatal("two samples must not claim linearity validation")
+		t.Fatal("three-parameter fit must not claim independent validation")
 	}
 }
 func TestOneFailedSampleCannotScore(t *testing.T) {
 	var count atomic.Int32
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := count.Add(1)
-		if n == 1 {
-			w.WriteHeader(502)
-			return
-		}
-		json.NewEncoder(w).Encode(map[string]any{"content": []any{}, "usage": map[string]int{"input_tokens": 20}})
-	}))
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { count.Add(1); w.WriteHeader(502) }))
 	defer s.Close()
-	got, e := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
-	if e == nil || got.Score != nil || count.Load() != 1 {
-		t.Fatal(got, e, count.Load())
+	got, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, NoRetry: true}, "fixture")
+	if err == nil || got.Score != nil || count.Load() != 1 {
+		t.Fatal(got, err, count.Load())
 	}
 }

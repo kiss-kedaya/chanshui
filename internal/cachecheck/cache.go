@@ -12,17 +12,22 @@ import (
 )
 
 type Sample struct {
-	Index         int      `json:"index"`
-	Read          int      `json:"read"`
-	Write         int      `json:"write"`
-	Input         int      `json:"input"`
-	Output        int      `json:"output"`
-	Total         int      `json:"total"`
-	ReadReported  bool     `json:"read_reported"`
-	WriteReported bool     `json:"write_reported"`
-	Attempts      int      `json:"attempts"`
-	HitRate       *float64 `json:"hit_rate"`
-	Error         string   `json:"error,omitempty"`
+	Index          int      `json:"index"`
+	Read           int      `json:"read"`
+	Write          int      `json:"write"`
+	Input          int      `json:"input"`
+	Output         int      `json:"output"`
+	Total          int      `json:"total"`
+	ReadReported   bool     `json:"read_reported"`
+	WriteReported  bool     `json:"write_reported"`
+	InputReported  bool     `json:"input_reported"`
+	OutputReported bool     `json:"output_reported"`
+	Attempts       int      `json:"attempts"`
+	HitRate        *float64 `json:"hit_rate"`
+	PromptChars    int      `json:"prompt_chars"`
+	Messages       int      `json:"messages"`
+	RequestHash    string   `json:"request_sha256,omitempty"`
+	Error          string   `json:"error,omitempty"`
 }
 type Transition struct {
 	From     int   `json:"from"`
@@ -33,27 +38,28 @@ type Transition struct {
 	Pass     *bool `json:"pass"`
 }
 type Result struct {
-	Status          string       `json:"status"`
-	Pass            *bool        `json:"pass"`
-	Reason          string       `json:"reason"`
-	First           *Sample      `json:"first"`
-	Second          *Sample      `json:"second"`
-	Third           *Sample      `json:"third"`
-	Samples         []Sample     `json:"samples"`
-	Transitions     []Transition `json:"transitions"`
-	Expected        int          `json:"expected_read"`
-	Actual          int          `json:"actual_read"`
-	Delta           int          `json:"delta"`
-	Protocol        string       `json:"protocol"`
-	ThirdReadRatio  *float64     `json:"third_read_ratio"`
-	TotalRead       int          `json:"total_read"`
-	TotalOutput     int          `json:"total_output"`
-	PrefixHash      string       `json:"prefix_sha256"`
-	RetriesObserved bool         `json:"retries_observed"`
+	Status            string       `json:"status"`
+	Pass              *bool        `json:"pass"`
+	Reason            string       `json:"reason"`
+	First             *Sample      `json:"first"`
+	Second            *Sample      `json:"second"`
+	Third             *Sample      `json:"third"`
+	Samples           []Sample     `json:"samples"`
+	Transitions       []Transition `json:"transitions"`
+	Expected          int          `json:"expected_read"`
+	Actual            int          `json:"actual_read"`
+	Delta             int          `json:"delta"`
+	Protocol          string       `json:"protocol"`
+	ThirdReadRatio    *float64     `json:"third_read_ratio"`
+	ThirdReadBaseline int          `json:"third_read_baseline"`
+	TotalRead         int          `json:"total_read"`
+	TotalOutput       int          `json:"total_output"`
+	PrefixHash        string       `json:"prefix_sha256"`
+	RetriesObserved   bool         `json:"retries_observed"`
 }
 
 func rate(read, total int) *float64 {
-	if total <= 0 || read < 0 || read > total {
+	if total <= 0 || read < 0 {
 		return nil
 	}
 	v := math.Round(float64(read)/float64(total)*10000) / 100
@@ -61,7 +67,11 @@ func rate(read, total int) *float64 {
 }
 func sample(m gateway.Metrics, index int) Sample {
 	total := m.InputTokens + m.CacheRead + m.CacheCreation5m + m.CacheCreation1h
-	s := Sample{Index: index, Read: m.CacheRead, Write: m.CacheCreation5m + m.CacheCreation1h, Input: m.InputTokens, Output: m.OutputTokens, Total: total, ReadReported: m.CacheReadReported, WriteReported: m.CacheWriteReported, Attempts: m.Attempts}
+	s := Sample{Index: index, Read: m.CacheRead, Write: m.CacheCreation5m + m.CacheCreation1h, Input: m.InputTokens, Output: m.OutputTokens, Total: total, ReadReported: m.CacheReadReported, WriteReported: m.CacheWriteReported, InputReported: m.UsagePresent, Attempts: m.Attempts}
+	s.OutputReported = m.OutputReported
+	if m.UsagePresent && m.CacheReadReported && (m.Protocol != "messages" || m.CacheWriteReported) {
+		s.HitRate = rate(s.Read, s.Total)
+	}
 	return s
 }
 
@@ -92,8 +102,9 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		r.TotalRead += s.Read
 		r.TotalOutput += s.Output
 	}
-	if len(r.Samples) == 3 && r.Samples[1].ReadReported && r.Samples[1].WriteReported && r.Samples[2].ReadReported {
+	if len(r.Samples) == 3 && r.Samples[1].Error == "" && r.Samples[2].Error == "" && r.Samples[1].ReadReported && r.Samples[1].WriteReported && r.Samples[2].ReadReported {
 		denom := r.Samples[1].Read + r.Samples[1].Write
+		r.ThirdReadBaseline = denom
 		if denom > 0 {
 			r.ThirdReadRatio = rate(r.Samples[2].Read, denom)
 		}
@@ -102,7 +113,7 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	for i := 0; i+1 < len(r.Samples) && i < 2; i++ {
 		a, b := r.Samples[i], r.Samples[i+1]
 		tr := Transition{From: i + 1, To: i + 2, Expected: a.Read + a.Write, Actual: b.Read, Delta: b.Read - a.Read - a.Write}
-		if a.ReadReported && a.WriteReported && b.ReadReported && tr.Expected > 0 {
+		if a.Error == "" && b.Error == "" && a.ReadReported && a.WriteReported && b.ReadReported && tr.Expected > 0 {
 			pass := tr.Delta == 0
 			tr.Pass = &pass
 			allPass = allPass && pass
@@ -117,7 +128,7 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		r.Delta = r.Transitions[0].Delta
 	}
 	if !allKnown {
-		r.Reason = "三个请求已完成，但缓存读写字段不齐或缓存量为0，无法完整验证衔接；0＝0不算通过。"
+		r.Reason = "缓存读写字段不齐或上一轮缓存量为0，无法完整验证衔接；缺失字段不按0处理。"
 		return r
 	}
 	r.Pass = &allPass
@@ -132,50 +143,107 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	}
 	return r
 }
-func Measure(ctx context.Context, c gateway.Client, model string, timeout int) (Result, error) {
-	r := Result{Status: "unknown", Protocol: c.ProtocolFor(model), Samples: []Sample{}, Transitions: []Transition{}}
-	metrics := make([]gateway.Metrics, 0, 3)
+
+// Collection records one growing conversation for both cache and injection checks.
+type Collection struct {
+	Result  Result
+	Metrics []gateway.Metrics
+	Units   []int
+}
+
+// Collect issues three continuations. Every user input gets a cache breakpoint,
+// so the following call can read the previous prefix and write its new suffix.
+func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (Collection, error) {
+	col := Collection{Metrics: make([]gateway.Metrics, 0, 3), Units: make([]int, 0, 3)}
 	var nonce [16]byte
 	if _, e := rand.Read(nonce[:]); e != nil {
-		return r, e
+		return col, e
 	}
-	var prefix strings.Builder
-	fmt.Fprintf(&prefix, "Cache audit %s. Fixed reference data.\n", hex.EncodeToString(nonce[:]))
-	lines := 64
-	if gateway.IsClaude(model) {
-		lines = 160
+	var history []gateway.ConversationMessage
+	var shapes []Sample
+	protocol := c.ProtocolFor(model)
+	var prefixHash string
+	totalUnits := 0
+	finish := func() {
+		col.Result = FromMetrics(col.Metrics, prefixHash, protocol, hasRetry(col.Metrics))
+		for i, shape := range shapes {
+			col.Result.Samples[i].PromptChars = shape.PromptChars
+			col.Result.Samples[i].Messages = shape.Messages
+			col.Result.Samples[i].RequestHash = shape.RequestHash
+		}
 	}
-	for i := 0; i < lines; i++ {
-		fmt.Fprintf(&prefix, "Record %04d: inventory verification values %d %d %d, stable repeated reference.\n", i, i*17+19, i*31+43, i*7+11)
-	}
-	hash := sha256.Sum256([]byte(prefix.String()))
-	r.PrefixHash = hex.EncodeToString(hash[:])
-	system := gateway.SystemBlock{Text: prefix.String()}
-	if c.ProtocolFor(model) == "messages" {
-		system.CacheControl = &gateway.CacheControl{TTL: "1h"}
-	}
-	q := gateway.CallRequest{Model: model, System: []gateway.SystemBlock{system}, Prompt: "Reply OK.", MaxTokens: 16, Stream: true, TimeoutSeconds: timeout}
-	for i := 1; i <= 3; i++ {
+	// Spaced units avoid BPE compressing a long run of A into 8-character tokens.
+	// Unequal continuation sizes let injection remove per-turn framing overhead.
+	for i, units := range []int{4608, 2048, 1024} {
+		prompt := strings.Repeat("A ", units) + "\nReply only OK."
+		if i == 0 {
+			prompt = "Audit " + hex.EncodeToString(nonce[:]) + "\n" + prompt
+			hash := sha256.Sum256([]byte(prompt))
+			prefixHash = hex.EncodeToString(hash[:])
+		}
+		q := gateway.CallRequest{Model: model, History: history, Prompt: prompt, MaxTokens: 64, TimeoutSeconds: timeout, Validate: validateSample}
+		if protocol == "messages" {
+			q.PromptCacheControl = &gateway.CacheControl{TTL: "1h"}
+		}
 		m, e := c.CallMessages(ctx, q)
-		s := sample(m, i)
 		if e != nil {
-			s.Error = e.Error()
-		} else {
-			s.Error = m.Err
+			m.Err = e.Error()
 		}
-		r.Samples = append(r.Samples, s)
-		if m.Attempts > 1 {
-			r.RetriesObserved = true
+		if m.Err == "" {
+			if e = validateSample(m); e != nil {
+				m.Err = e.Error()
+			}
 		}
-		if s.Error != "" {
-			r.Reason = "缓存请求未完成，保留已完成样本；不把缺失样本当成0。"
-			return r, fmt.Errorf("第%d次缓存请求：%s", i, s.Error)
+		col.Metrics = append(col.Metrics, m)
+		// The independent variable is the complete visible user text in bytes.
+		// This includes the nonce and fixed suffix, preventing them from being
+		// misreported as hidden injected tokens.
+		totalUnits += len(prompt)
+		col.Units = append(col.Units, totalUnits)
+		var request strings.Builder
+		for _, msg := range history {
+			fmt.Fprintf(&request, "%s:%s\n", msg.Role, msg.Content)
 		}
-		metrics = append(metrics, m)
-		if i == 1 {
-			r.Protocol = m.Protocol
+		request.WriteString("user:" + prompt)
+		hash := sha256.Sum256([]byte(request.String()))
+		shapes = append(shapes, Sample{PromptChars: len(prompt), Messages: len(history) + 1, RequestHash: hex.EncodeToString(hash[:])})
+		if m.Err != "" {
+			finish()
+			col.Result.Reason = "缓存请求未完成，保留已完成样本；不把缺失样本当成0。"
+			return col, fmt.Errorf("第%d次注入/缓存请求：%s", i+1, m.Err)
+		}
+		if i == 0 {
+			protocol = m.Protocol
 			c.PinProtocol(m.Protocol)
 		}
+		history = append(history, gateway.ConversationMessage{Role: "user", Content: prompt, CacheControl: q.PromptCacheControl}, gateway.ConversationMessage{Role: "assistant", Content: m.Answer})
 	}
-	return FromMetrics(metrics, r.PrefixHash, r.Protocol, r.RetriesObserved), nil
+	finish()
+	return col, nil
+}
+
+// Measure preserves the package's original entry point for callers that only
+// need the cache report. New combined checks should use Collect through inject.
+func Measure(ctx context.Context, c gateway.Client, model string, timeout int) (Result, error) {
+	collection, err := Collect(ctx, c, model, timeout)
+	return collection.Result, err
+}
+
+func validateSample(m gateway.Metrics) error {
+	if !m.UsagePresent || m.InputTokens < 0 || m.CacheRead < 0 || m.CacheCreation5m < 0 || m.CacheCreation1h < 0 || m.OutputTokens < 0 {
+		return fmt.Errorf("上游缺少有效 token 用量")
+	}
+	if strings.TrimSpace(m.Answer) == "" || m.StopReason == "max_tokens" {
+		return fmt.Errorf("上游确认文本为空或被截断")
+	}
+	return nil
+}
+
+func hasRetry(metrics []gateway.Metrics) bool {
+	for _, m := range metrics {
+		if m.Attempts > 1 {
+			return true
+		}
+	}
+	return false
 }
