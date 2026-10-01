@@ -4,6 +4,7 @@ export default function AuditHero() {
     <section className="audit-hero" aria-labelledby="audit-title">
       <div className="hero-glow" aria-hidden="true" />
       <div className="hero-grid" aria-hidden="true" />
+      <div className="hero-scan" aria-hidden="true" />
       <div className="hero-content">
         <div className="hero-kicker">
           <Icon name="scan" />

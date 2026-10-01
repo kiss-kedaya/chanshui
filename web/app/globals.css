@@ -275,6 +275,25 @@ code {
   font-size: 11px;
   color: #929186;
 }
+.history-skeleton {
+  display: grid;
+  gap: 8px;
+  padding: 8px 8px 4px;
+}
+.history-skeleton i {
+  display: block;
+  height: 58px;
+  border-radius: 7px;
+  background: linear-gradient(100deg, #2a2a24 30%, #3a3a32 48%, #2a2a24 64%);
+  background-size: 220% 100%;
+  animation: history-shimmer 1.15s ease-in-out infinite;
+}
+.history-skeleton i:nth-child(2) { opacity: 0.72; }
+.history-skeleton i:nth-child(3) { width: 86%; opacity: 0.48; }
+@keyframes history-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
 .empty-lines {
   display: grid;
   gap: 6px;
@@ -493,6 +512,28 @@ code {
   background-size: 32px 32px;
   mask-image: linear-gradient(100deg, transparent 30%, #000 100%);
 }
+.hero-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 34%;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(90deg, transparent, #e7b17d24, transparent);
+  transform: translateX(-140%);
+  animation: hero-scan 1.05s 0.12s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.hero-kicker,
+.hero-content h1,
+.hero-content > p {
+  animation: appear 0.5s var(--ease-out) both;
+}
+.hero-content h1 { animation-delay: 0.05s; }
+.hero-content > p { animation-delay: 0.1s; }
+@keyframes hero-scan {
+  to { transform: translateX(320%); }
+}
 .hero-bottom {
   position: relative;
   z-index: 1;
@@ -539,9 +580,9 @@ code {
   border-radius: 11px;
 }
 .connection-card {
-  margin-top: 22px;
+  margin-top: 18px;
   padding: 25px 28px;
-  animation: appear 0.65s 0.08s var(--ease-out) both;
+  animation: appear 0.5s 0.08s var(--ease-out) both;
 }
 .section-heading {
   display: flex;

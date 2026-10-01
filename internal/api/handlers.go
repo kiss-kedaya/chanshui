@@ -4,6 +4,7 @@ import (
 	"chanzhushui/internal/fingerprint"
 	"chanzhushui/internal/gateway"
 	"chanzhushui/internal/history"
+	"chanzhushui/internal/integrity"
 	"chanzhushui/internal/iq"
 	"context"
 
@@ -534,6 +535,11 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	// reveal the host only when its matching job capability is presented.
 	for i := range items {
 		items[i].BaseURL = maskedBaseURL(items[i].BaseURL)
+		if items[i].TotalScore == nil {
+			continue
+		}
+		shown := integrity.PresentedScore(*items[i].TotalScore, items[i].FingerprintContribution, integrity.Diluted(items[i].Model, items[i].Family, items[i].TopModel))
+		items[i].TotalScore = &shown
 	}
 	replyConditional(w, r, items)
 }

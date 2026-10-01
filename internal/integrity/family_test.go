@@ -25,3 +25,15 @@ func TestDilutedMatchesRequestedModel(t *testing.T) {
 		t.Fatal("same model with different punctuation")
 	}
 }
+
+func TestPresentedScoreDropsOnlyDilutedFingerprint(t *testing.T) {
+	if got := PresentedScore(85, 32, true); got != 53 {
+		t.Fatalf("diluted total %d", got)
+	}
+	if got := PresentedScore(85, 32, false); got != 85 {
+		t.Fatalf("matching total %d", got)
+	}
+	if got := PresentedScore(20, 32, true); got != 0 {
+		t.Fatalf("floor %d", got)
+	}
+}

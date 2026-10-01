@@ -42,6 +42,7 @@ export default function DetectPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [modelBusy, setModelBusy] = useState(false);
+  const [catalogReady, setCatalogReady] = useState(false);
   const [concurrency, setConcurrency] = useState(0);
   const [timeout, setTimeoutValue] = useState(360);
   const [cacheOn, setCacheOn] = useState(false);
@@ -58,8 +59,16 @@ export default function DetectPage() {
   useEffect(() => {
     alive.current = true;
     getBankStats()
-      .then(setStats)
-      .catch((e) => setError(e.message));
+      .then((value) => {
+        if (!alive.current) return;
+        setStats(value);
+      })
+      .catch((e) => {
+        if (alive.current) setError(e.message);
+      })
+      .finally(() => {
+        if (alive.current) setCatalogReady(true);
+      });
     try {
       const p = JSON.parse(localStorage.getItem("chanshui-settings") || "{}");
       const storedBaseUrl = typeof p.base_url === "string" ? p.base_url.trim() : "";
@@ -325,7 +334,7 @@ export default function DetectPage() {
                 id="model"
                 value={model}
                 disabled={busy}
-                loading={modelBusy}
+                loading={modelBusy || (!catalogReady && !model)}
                 onChange={(e) => setModel(e.target.value)}
               >
                 <option value="">选择可测模型</option>

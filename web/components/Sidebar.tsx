@@ -15,7 +15,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false),
     [hasMore, setHasMore] = useState(false),
-    [loadingMore, setLoadingMore] = useState(false);
+    [loadingMore, setLoadingMore] = useState(false),
+    [ready, setReady] = useState(false);
   const alive = useRef(true),
     busy = useRef(false),
     lastRefresh = useRef(0);
@@ -45,6 +46,7 @@ export default function Sidebar() {
       if (alive.current) setError((e as Error).message);
     } finally {
       busy.current = false;
+      if (alive.current) setReady(true);
     }
   }, []);
   async function more() {
@@ -113,11 +115,17 @@ export default function Sidebar() {
       </button>
       <div className="sidebar-title">
         <span>全站检测历史</span>
-        <span>{items.length}</span>
+        <span>{ready ? items.filter((x) => (x.total_score ?? x.iq_score) !== 0).length : "·"}</span>
       </div>
       <div className="sidebar-list">
         {error ? (
           <p className="sidebar-empty">{error}</p>
+        ) : !ready ? (
+          <div className="history-skeleton" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </div>
         ) : !items.filter((x) => (x.total_score ?? x.iq_score) !== 0).length ? (
           <div className="sidebar-empty">
             <div className="empty-lines">

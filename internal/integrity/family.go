@@ -84,3 +84,16 @@ func Diluted(requested, family, topModel string) bool {
 	wantLine, gotLine := lineName(requested), lineName(topModel)
 	return wantLine != "" && gotLine != "" && wantLine != gotLine
 }
+
+// PresentedScore is the total shown to visitors. A diluted fingerprint contributes nothing,
+// including on reports saved before that rule existed.
+func PresentedScore(score, fingerprintContribution int, diluted bool) int {
+	if !diluted || fingerprintContribution <= 0 || score <= 0 {
+		return score
+	}
+	next := score - fingerprintContribution
+	if next < 0 {
+		return 0
+	}
+	return next
+}

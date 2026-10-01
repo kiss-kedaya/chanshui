@@ -142,3 +142,25 @@ func TestHistoryAndReportsMaskSiteUnlessMatchingJobKey(t *testing.T) {
 		t.Fatalf("global history leaked or omitted masked site: HTTP %d %s", list.Code, list.Body.String())
 	}
 }
+
+func TestHistoryListDropsDilutedFingerprint(t *testing.T) {
+	s, _, _, _ := testSetup(t)
+	verdict := json.RawMessage(`{"fingerprint":{"family":"gpt","top_model":"gpt-5.6-luna"},"total":{"score":85,"parts":[{"key":"fingerprint","contribution":32,"coefficient":32}]}}`)
+	id := strings.Repeat("ab", 16)
+	if _, err := s.store.CreateJob(context.Background(), history.Record{
+		ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		BaseURL: "https://gw.example.com/v1", Model: "gpt-6-astra", Verdict: verdict,
+	}, json.RawMessage(`[]`), "hash"); err != nil {
+		t.Fatal(err)
+	}
+	score := 85
+	if err := s.store.UpdateJob(context.Background(), history.Record{
+		ReportID: id, Status: "done", Family: "gpt", Verdict: verdict, TotalScore: &score,
+	}, json.RawMessage(`[]`)); err != nil {
+		t.Fatal(err)
+	}
+	body := getJSON(t, s.Handler(), "/api/history?limit=50").Body.String()
+	if !strings.Contains(body, `"total_score":53`) || strings.Contains(body, `"total_score":85`) || strings.Contains(body, "gpt-5.6-luna") {
+		t.Fatalf("history total was not presented: %s", body)
+	}
+}

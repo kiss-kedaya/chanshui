@@ -254,3 +254,24 @@ func TestListHidesZeroScoresButKeepsOpenAndLookup(t *testing.T) {
 		t.Fatalf("zero report lookup = %+v %v", rec, err)
 	}
 }
+
+func TestListReadsFingerprintForPresentedScore(t *testing.T) {
+	s := tempDB(t)
+	rec := sampleRecord(2)
+	rec.IQScore = intPtr(70)
+	id, err := s.Save(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verdict := `{"fingerprint":{"family":"gpt","top_model":"gpt-5.6-luna"},"total":{"score":85,"parts":[{"key":"fingerprint","contribution":32}]}}`
+	if _, err = s.db.Exec("UPDATE detections SET model=?, family=?, total_score=85, verdict_json=? WHERE id=?", "gpt-6-astra", "gpt", verdict, id); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].TopModel != "gpt-5.6-luna" || list[0].FingerprintContribution != 32 || list[0].TotalScore == nil || *list[0].TotalScore != 85 {
+		t.Fatalf("stored list view = %+v %v", list, err)
+	}
+}
