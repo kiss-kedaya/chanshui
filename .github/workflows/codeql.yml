@@ -37,3 +37,6 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: /language:${{ matrix.language }}
+          # Private repositories without Code Scanning enabled cannot upload SARIF.
+          # Keep extraction and query analysis in CI without making the workflow red.
+          upload: false
