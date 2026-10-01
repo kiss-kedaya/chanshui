@@ -17,6 +17,19 @@ function Details({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+
+function knowledgeMark(row: { kind?: string; ok: boolean; unsure: boolean; error?: string }) {
+  if (row.kind === "know" || (row.ok && row.kind !== "wrong" && row.kind !== "error" && row.kind !== "invalid")) {
+    return { text: "知道", cls: "good" };
+  }
+  if (row.kind === "wrong" || (!row.ok && !row.unsure && !row.error && row.kind !== "unknown")) {
+    return { text: "答错", cls: "warn" };
+  }
+  if (row.kind === "invalid") return { text: "无效", cls: "warn" };
+  if (row.kind === "error" || row.error) return { text: "失败", cls: "warn" };
+  return { text: "不知道", cls: "muted" };
+}
+
 function knowledgeLabel(k: { label?: string; cutoff?: string; correct?: number; total?: number }) {
   if (k.label) return k.label;
   if (k.cutoff && /^\d{4}-\d{2}$/.test(k.cutoff)) return `旧报告自报 ${k.cutoff}`;
@@ -276,10 +289,8 @@ export default function ResultCards({
               <ul className="knowledge-ladder">
                 {knowledge.rows.map((row) => (
                   <li key={row.id}>
-                    <b className={row.ok ? "good" : row.unsure ? "muted" : "warn"}>
-                      {row.ok ? "对" : row.unsure ? "不确定" : "错"}
-                    </b>
-                    <span>{row.quarter}</span>
+                    <b className={knowledgeMark(row).cls}>{knowledgeMark(row).text}</b>
+                    <span>{row.happened_at || row.quarter}</span>
                     <span>{row.event}</span>
                   </li>
                 ))}

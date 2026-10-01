@@ -72,6 +72,7 @@ export interface KnowledgeRow {
   event: string;
   ok: boolean;
   unsure: boolean;
+  kind?: string;
   answer: string;
   error?: string;
 }

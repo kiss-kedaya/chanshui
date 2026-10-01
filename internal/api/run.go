@@ -213,7 +213,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	job("knowledge", func() (any, error) {
 		v, e := knowledge.Check(ctx, g, q.Model, q.Timeout)
 		if e != nil {
-			return map[string]any{"status": "error", "reason": "知识截止探针请求失败；不参与评分"}, e
+			return v, e
 		}
 		return v, nil
 	})

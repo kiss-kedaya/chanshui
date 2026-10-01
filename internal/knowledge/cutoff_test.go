@@ -7,118 +7,136 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"chanzhushui/internal/gateway"
 )
 
-func TestLadderJudgementUsesFinalLineNotSelfReport(t *testing.T) {
-	k01 := Ladder[0]
-	row := judge(k01, "我的训练截止是 2025-02。\n最终答案: Sam Altman")
-	if !row.OK || row.Quarter != "2023Q4" {
-		t.Fatalf("altman = %+v", row)
-	}
-	unknown := judge(k01, "2024-06\n最终答案: 不知道")
-	if unknown.OK || !unknown.Unsure {
-		t.Fatalf("self-report must not count: %+v", unknown)
-	}
-	if judge(find("K06"), "最终答案: 8").OK != true {
-		t.Fatal("month 8")
-	}
-	if judge(find("K06"), "最终答案: 18").OK {
-		t.Fatal("18 is not August")
-	}
-	if judge(find("K08"), "最终答案: innovation").OK {
-		t.Fatal("innovation must not match November")
-	}
-	if judge(find("K08"), "最终答案: 11").OK != true {
-		t.Fatal("month 11")
-	}
-	if judge(find("K11"), "最终答案: absolute").OK {
-		t.Fatal("absolute must not match sol")
-	}
-	if !judge(find("K11"), "最终答案: Sol").OK {
-		t.Fatal("sol")
-	}
-	if !judge(find("K05"), "最终答案: DeepSeek-R1").OK {
-		t.Fatal("r1")
-	}
-	if !judge(find("K13"), "最终答案: ChatGPT for Teens").OK {
-		t.Fatal("teens")
-	}
-	long := strings.Repeat("董事会只说解除了CEO职务。", 12) + "这位CEO是 Sam Altman。"
-	if !judge(find("K01"), long).OK {
-		t.Fatal("name after the first 120 runes must still count")
-	}
-	if judge(find("K01"), "Sam Altman 曾复职。\n最终答案: 不知道").OK {
-		t.Fatal("explicit refusal must beat an earlier mention")
-	}
-	if !judge(find("K02"), "公布的模型是 Sora。\n最").OK {
-		t.Fatal("truncated final-answer fragment must fall back to the body")
-	}
-	refused := judge(find("K12"), "这场比赛我没有任何可靠信息，也不会去猜一个名字。")
-	if refused.OK || !refused.Unsure {
+func TestFinalLineBeatsEarlierMentionAndEcho(t *testing.T) {
+	p := anchorByID("mamdani")
+	refused := judge(p, "佐兰·马姆达尼当选纽约市长。\n最终答案: 不知道")
+	if refused.OK || !refused.Unsure || refused.Kind != kindUnknown {
 		t.Fatalf("refusal = %+v", refused)
 	}
+	echo := judge(p, p.prompt()+"\n最终答案: 马姆达尼当选")
+	if !echo.OK || echo.Kind != kindKnow {
+		t.Fatalf("echo = %+v", echo)
+	}
+	schedule := judge(anchorByID("worldcup"), "西班牙是热门。\n最终答案: 只知道日程，不知道结果")
+	if schedule.OK || schedule.Kind != kindUnknown {
+		t.Fatalf("schedule = %+v", schedule)
+	}
+	spain := judge(anchorByID("worldcup"), "最终答案: 西班牙夺冠，费兰·托雷斯进球")
+	if !spain.OK {
+		t.Fatalf("spain = %+v", spain)
+	}
+	argentina := judge(anchorByID("worldcup"), "最终答案: 冠军是阿根廷")
+	if argentina.OK || argentina.Unsure || argentina.Kind != kindWrong {
+		t.Fatalf("argentina = %+v", argentina)
+	}
+	norway := judge(anchorByID("olympics"), "最终答案: 已经闭幕，奖牌榜第一是挪威")
+	if !norway.OK {
+		t.Fatalf("norway = %+v", norway)
+	}
+	truncated := judge(p, "马姆达尼当选纽约市长。\n最")
+	if !truncated.OK {
+		t.Fatalf("truncated = %+v", truncated)
+	}
+	browsed := judge(p, "我刚刚联网查了，马姆达尼当选。\n最终答案: 马姆达尼当选")
+	if browsed.Kind != kindInvalid {
+		t.Fatalf("browsed = %+v", browsed)
+	}
+	bare := judge(p, "最终答案: 是")
+	if bare.Kind != kindWrong {
+		t.Fatalf("bare yes = %+v", bare)
+	}
 }
 
-func TestSummarizeUsesLatestCorrectQuarter(t *testing.T) {
-	rows := make([]Row, len(Ladder))
-	for i, p := range Ladder {
-		rows[i] = Row{ID: p.ID, Quarter: p.Quarter, HappenedAt: p.HappenedAt, Event: p.Event, Unsure: true}
+func TestBinaryPaths(t *testing.T) {
+	cases := []struct {
+		name  string
+		ans   map[string]string
+		label string
+		order []string
+	}{
+		{"world cup", map[string]string{"mamdani": kindKnow, "olympics": kindKnow, "worldcup": kindKnow}, "知识≥2026-07-19", []string{"mamdani", "olympics", "worldcup"}},
+		{"between olympics and cup", map[string]string{"mamdani": kindKnow, "olympics": kindKnow, "worldcup": kindUnknown}, "知识≈2026-02-22 至 2026-07-19（3 问）", []string{"mamdani", "olympics", "worldcup"}},
+		{"bulgaria inside", map[string]string{"mamdani": kindKnow, "olympics": kindUnknown, "bulgaria": kindKnow}, "知识≈2026-01-01 至 2026-02-22（3 问）", []string{"mamdani", "olympics", "bulgaria"}},
+		{"before bulgaria", map[string]string{"mamdani": kindKnow, "olympics": kindUnknown, "bulgaria": kindUnknown}, "知识≈2025-11-04 至 2026-01-01（3 问）", []string{"mamdani", "olympics", "bulgaria"}},
+		{"takaichi window", map[string]string{"mamdani": kindUnknown, "leo": kindKnow, "japan": kindKnow, "kirk": kindKnow, "takaichi_ldp": kindKnow, "takaichi_pm": kindKnow}, "知识≈2025-10-21 至 2025-11-04（6 问）", []string{"mamdani", "leo", "japan", "kirk", "takaichi_ldp", "takaichi_pm"}},
+		{"lee split", map[string]string{"mamdani": kindUnknown, "leo": kindKnow, "japan": kindUnknown, "lee": kindKnow}, "知识≈2025-06-03 至 2025-07-20（4 问）", []string{"mamdani", "leo", "japan", "lee"}},
+		{"before lee", map[string]string{"mamdani": kindUnknown, "leo": kindKnow, "japan": kindUnknown, "lee": kindUnknown}, "知识≈2025-05-08 至 2025-06-03（4 问）", []string{"mamdani", "leo", "japan", "lee"}},
+		{"francis window", map[string]string{"mamdani": kindUnknown, "leo": kindUnknown, "germany": kindKnow, "yoon": kindKnow, "francis": kindKnow}, "知识≈2025-04-21 至 2025-05-08（5 问）", []string{"mamdani", "leo", "germany", "yoon", "francis"}},
+		{"carney split", map[string]string{"mamdani": kindUnknown, "leo": kindUnknown, "germany": kindKnow, "yoon": kindUnknown, "carney": kindKnow}, "知识≈2025-03-14 至 2025-04-04（5 问）", []string{"mamdani", "leo", "germany", "yoon", "carney"}},
+		{"trump window", map[string]string{"mamdani": kindUnknown, "leo": kindUnknown, "germany": kindUnknown, "trump": kindKnow}, "知识≈2025-01-20 至 2025-02-23（4 问）", []string{"mamdani", "leo", "germany", "trump"}},
+		{"before trump", map[string]string{"mamdani": kindUnknown, "leo": kindUnknown, "germany": kindUnknown, "trump": kindUnknown}, "知识＜2025-01-20", []string{"mamdani", "leo", "germany", "trump"}},
 	}
-	for _, id := range []string{"K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08"} {
-		i := indexOf(id)
-		rows[i].OK = true
-		rows[i].Unsure = false
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v, order := walk(tc.ans)
+			if v.Label != tc.label {
+				t.Fatalf("label %q want %q order %v", v.Label, tc.label, order)
+			}
+			if strings.Join(order, ",") != strings.Join(tc.order, ",") {
+				t.Fatalf("order %v want %v", order, tc.order)
+			}
+			if v.Total != len(tc.order) {
+				t.Fatalf("total %d", v.Total)
+			}
+		})
 	}
-	rows[indexOf("K01")].OK = false
-	rows[indexOf("K01")].Unsure = false
-	rows[indexOf("K03")].OK = false
-	rows[indexOf("K03")].Unsure = false
-	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	got := Summarize(rows, now)
-	if got.Cutoff != "2025Q4" || got.Correct != 6 || got.Label != "知识≈2025Q4（6/13）" {
-		t.Fatalf("summary = %+v", got)
+}
+
+func TestWrongMamdaniDoesNotMoveBound(t *testing.T) {
+	v, order := walk(map[string]string{
+		"mamdani":     kindWrong,
+		"takaichi_pm": kindKnow,
+		"olympics":    kindUnknown,
+		"bulgaria":    kindUnknown,
+	})
+	if len(order) == 0 || order[0] != "mamdani" {
+		t.Fatalf("order %v", order)
 	}
-	if got.WebSuspect != "" {
-		t.Fatalf("old quarter flagged as web: %s", got.WebSuspect)
+	if order[1] != "takaichi_pm" {
+		t.Fatalf("fallback order %v", order)
 	}
-	if got.GapNote == "" {
+	if strings.Contains(v.Label, "2025-11-04") {
+		t.Fatalf("wrong answer moved the november bound: %s", v.Label)
+	}
+	if v.GapNote == "" {
 		t.Fatal("expected gap note")
 	}
-	rows[indexOf("K13")].OK = true
-	rows[indexOf("K13")].Unsure = false
-	recent := Summarize(rows, now)
-	if recent.Cutoff != "2026Q3" || recent.WebSuspect == "" {
-		t.Fatalf("recent = %+v", recent)
-	}
 }
 
-func TestCheckRunsLadderAndIgnoresAdvertisedDate(t *testing.T) {
+func TestCheckIsSerialAndSkipsHTTPFailure(t *testing.T) {
+	var inflight int32
+	var maxSeen int32
+	var order []string
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		text := "最终答案: 不知道"
-		q := string(body)
-		switch {
-		case strings.Contains(q, "OpenAI 董事会"):
-			text = "最终答案: Altman"
-		case strings.Contains(q, "文生视频"):
-			text = "最终答案: Sora"
-		case strings.Contains(q, "旗舰多模态"):
-			text = "知识截止 2025-02\n最终答案: GPT-4o"
-		case strings.Contains(q, "2024 年诺贝尔"):
-			text = "最终答案: Hinton"
-		case strings.Contains(q, "英伟达"):
-			text = "最终答案: DeepSeek"
-		case strings.Contains(q, "GPT-5 是在"):
-			text = "最终答案: 8"
-		case strings.Contains(q, "宏观量子"):
-			text = "最终答案: Clarke"
-		case strings.Contains(q, "Gemini 3"):
-			text = "最终答案: 11"
+		n := atomic.AddInt32(&inflight, 1)
+		defer atomic.AddInt32(&inflight, -1)
+		for {
+			old := atomic.LoadInt32(&maxSeen)
+			if n <= old || atomic.CompareAndSwapInt32(&maxSeen, old, n) {
+				break
+			}
 		}
+		body, _ := io.ReadAll(r.Body)
+		q := string(body)
+		text := "最终答案: 不知道"
+		switch {
+		case strings.Contains(q, "纽约市长"):
+			text = "最终答案: 马姆达尼当选"
+		case strings.Contains(q, "冬奥会"):
+			w.WriteHeader(500)
+			_, _ = w.Write([]byte(`{"error":{"message":"upstream"}}`))
+			return
+		case strings.Contains(q, "世界杯"):
+			text = "最终答案: 西班牙夺冠"
+		}
+		order = append(order, text)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"content": []any{map[string]any{"type": "text", "text": text}},
 			"usage":   map[string]int{"input_tokens": 20, "output_tokens": 4},
@@ -132,26 +150,34 @@ func TestCheckRunsLadderAndIgnoresAdvertisedDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Cutoff != "2025Q4" || v.Correct != 8 || v.Total != 13 || v.Label != "知识≈2025Q4（8/13）" {
-		t.Fatalf("verdict = %+v", v)
+	if atomic.LoadInt32(&maxSeen) != 1 {
+		t.Fatalf("concurrent requests: %d", maxSeen)
 	}
-	if v.Cutoff == "2025-02" || strings.Contains(v.Label, "2025-02") {
-		t.Fatalf("self-report leaked: %+v", v)
+	if v.Label != "知识≥2026-07-19" {
+		t.Fatalf("label %s rows %+v", v.Label, v.Rows)
 	}
-	if v.Status != "estimated" {
-		t.Fatalf("status = %s", v.Status)
+	if v.Rows[1].Kind != kindError {
+		t.Fatalf("olympics = %+v", v.Rows[1])
+	}
+	if strings.Contains(v.Label, "2026-02-22") {
+		t.Fatal("http failure moved the olympics bound")
 	}
 }
 
-func find(id string) Probe {
-	return Ladder[indexOf(id)]
-}
-
-func indexOf(id string) int {
-	for i, p := range Ladder {
-		if p.ID == id {
-			return i
+func walk(answers map[string]string) (Verdict, []string) {
+	s := newSearch()
+	var order []string
+	for {
+		p, ok := s.next()
+		if !ok {
+			break
 		}
+		order = append(order, p.ID)
+		kind := answers[p.ID]
+		if kind == "" {
+			kind = kindUnknown
+		}
+		s.apply(p, kind, kind)
 	}
-	panic(id)
+	return s.verdict(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)), order
 }

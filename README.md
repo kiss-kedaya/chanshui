@@ -11,6 +11,7 @@ Go服务端 + Next.js静态前端 + SQLite。填接口、密钥、模型，提�
 - 思维链回传：只测claude-前缀；非Claude不发送Anthropic thinking、不测不展示摘要/签名。
 - IQ：参数化题库、百分制、逐题证据；新报告扩展至 Q1～Q8，旧报告分值不重算。错误不冒充模型答错。
 - 接口完整性：单独统计协议、缓存、工具、联网、流式和思维链证据，未知项显示覆盖率，不混入 IQ。
+- 知识截止：2025–2026 串行二分，最多 10 问，第一问固定是 2025-11-04 纽约市长选举。只认结果，不认日程；结果说错不移动边界。不进 IQ、完整性和指纹分。
 - IQ 扩展题库：保留原题，新增洗车、球拍与球、船锚水位三类可验证题型；新评分版本不改旧报告。
 - Job进度、全站历史、ID查询、当前域名分享、停止、失败重跑、单问单答。
 - 搜索式模型下拉、统一输入样式、清楚的错误卡；无代理入口或代理兜底。
@@ -73,6 +74,6 @@ Claude→Messages；GPT→Responses（只在404/405时预算内回退Chat）；G
 - `CodeQL`：Go 与 TypeScript/JavaScript 周期扫描。
 - `Release`：推送 `v*` 标签或手动输入标签后，构建 Linux、Windows、macOS 的 amd64/arm64 包，附静态前端、运行说明、`VERSION` 和校验文件，再创建 GitHub Release。
 - 本地准备发布包：`./scripts/build-server.ps1`。它只构建到 `.artifacts/`，不上传。
-- 发布声明：`docs/release-notes/v0.1.3.md`。
+- 发布声明：`docs/release-notes/v0.1.5.md`。
 
 Release 工作流、SEO 元数据和 `chanshui.dev` 反代配置已准备；远程发布与服务器切换需以实际验收结果为准。
