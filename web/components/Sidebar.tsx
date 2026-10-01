@@ -118,7 +118,7 @@ export default function Sidebar() {
       <div className="sidebar-list">
         {error ? (
           <p className="sidebar-empty">{error}</p>
-        ) : !items.length ? (
+        ) : !items.filter((x) => (x.total_score ?? x.iq_score) !== 0).length ? (
           <div className="sidebar-empty">
             <div className="empty-lines">
               <i />
@@ -130,7 +130,7 @@ export default function Sidebar() {
             <small>所有访客的检测报告都会出现在这里</small>
           </div>
         ) : (
-          items.map((x) => (
+          items.filter((x) => (x.total_score ?? x.iq_score) !== 0).map((x) => (
             <Link
               className="hist-item"
               key={x.id}

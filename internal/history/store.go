@@ -176,7 +176,8 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 	}
 	query := `SELECT id, report_id, status, expires_at, created_at, base_url, model,
 		family, thinking_pass, iq_score, total_score
-		FROM detections WHERE expires_at > ?`
+		FROM detections WHERE expires_at > ?
+		AND COALESCE(total_score, iq_score, -1) != 0`
 	args := []any{time.Now().Unix()}
 	if before > 0 {
 		query += " AND id < ?"

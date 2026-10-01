@@ -214,3 +214,43 @@ func TestOpenCreatesFile(t *testing.T) {
 		t.Errorf("db file not created: %v", err)
 	}
 }
+
+func TestListHidesZeroScoresButKeepsOpenAndLookup(t *testing.T) {
+	s := tempDB(t)
+	zero := sampleRecord(0)
+	zero.IQScore = intPtr(0)
+	zeroID, err := s.Save(zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := sampleRecord(1)
+	open.IQScore = nil
+	openID, err := s.Save(open)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := sampleRecord(2)
+	good.IQScore = intPtr(80)
+	goodID, err := s.Save(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec("UPDATE detections SET total_score=0 WHERE id=?", zeroID); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List(50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]bool{}
+	for _, item := range list {
+		got[item.ID] = true
+	}
+	if got[zeroID] || !got[openID] || !got[goodID] {
+		t.Fatalf("list ids = %v, want open %d and good %d only", got, openID, goodID)
+	}
+	rec, err := s.Get(zeroID)
+	if err != nil || rec.IQScore == nil || *rec.IQScore != 0 {
+		t.Fatalf("zero report lookup = %+v %v", rec, err)
+	}
+}
