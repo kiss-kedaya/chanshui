@@ -304,6 +304,15 @@ func (s *search) afterMamdani() (string, int) {
 			return "worldcup", modeAsk
 		case gateBad:
 			return "", modeFallback
+		case gateUnknown:
+			switch s.gate("us250") {
+			case gateAsk:
+				return "us250", modeAsk
+			case gateBad:
+				return "", modeFallback
+			default:
+				return "", modeStop
+			}
 		default:
 			return "", modeStop
 		}

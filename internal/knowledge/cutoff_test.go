@@ -40,6 +40,18 @@ func TestFinalLineBeatsEarlierMentionAndEcho(t *testing.T) {
 	if !norway.OK {
 		t.Fatalf("norway = %+v", norway)
 	}
+	held := judge(anchorByID("us250"), "最终答案: 已经举行，白宫举行了国庆庆典")
+	if !held.OK || held.Kind != kindKnow {
+		t.Fatalf("us250 held = %+v", held)
+	}
+	sched := judge(anchorByID("us250"), "最终答案: 只知道日程，不知道结果")
+	if sched.OK || sched.Kind != kindUnknown {
+		t.Fatalf("us250 schedule = %+v", sched)
+	}
+	cancelled := judge(anchorByID("us250"), "最终答案: 庆典取消")
+	if cancelled.Kind != kindWrong {
+		t.Fatalf("us250 cancelled = %+v", cancelled)
+	}
 	truncated := judge(p, "马姆达尼当选纽约市长。\n最")
 	if !truncated.OK {
 		t.Fatalf("truncated = %+v", truncated)
@@ -62,7 +74,9 @@ func TestBinaryPaths(t *testing.T) {
 		order []string
 	}{
 		{"world cup", map[string]string{"mamdani": kindKnow, "olympics": kindKnow, "worldcup": kindKnow}, "知识≥2026-07-19", []string{"mamdani", "olympics", "worldcup"}},
-		{"between olympics and cup", map[string]string{"mamdani": kindKnow, "olympics": kindKnow, "worldcup": kindUnknown}, "知识≈2026-02-22 至 2026-07-19（3 问）", []string{"mamdani", "olympics", "worldcup"}},
+		{"between olympics and semiquincentennial", map[string]string{"mamdani": kindKnow, "olympics": kindKnow, "worldcup": kindUnknown, "us250": kindUnknown}, "知识≈2026-02-22 至 2026-07-04（4 问）", []string{"mamdani", "olympics", "worldcup", "us250"}},
+		{"between semiquincentennial and cup", map[string]string{"mamdani": kindKnow, "olympics": kindKnow, "worldcup": kindUnknown, "us250": kindKnow}, "知识≈2026-07-04 至 2026-07-19（4 问）", []string{"mamdani", "olympics", "worldcup", "us250"}},
+		{"wrong semiquincentennial stays wide", map[string]string{"mamdani": kindKnow, "olympics": kindKnow, "worldcup": kindUnknown, "us250": kindWrong}, "知识≈2026-02-22 至 2026-07-19（4 问）", []string{"mamdani", "olympics", "worldcup", "us250"}},
 		{"bulgaria inside", map[string]string{"mamdani": kindKnow, "olympics": kindUnknown, "bulgaria": kindKnow}, "知识≈2026-01-01 至 2026-02-22（3 问）", []string{"mamdani", "olympics", "bulgaria"}},
 		{"before bulgaria", map[string]string{"mamdani": kindKnow, "olympics": kindUnknown, "bulgaria": kindUnknown}, "知识≈2025-11-04 至 2026-01-01（3 问）", []string{"mamdani", "olympics", "bulgaria"}},
 		{"takaichi window", map[string]string{"mamdani": kindUnknown, "leo": kindKnow, "japan": kindKnow, "kirk": kindKnow, "takaichi_ldp": kindKnow, "takaichi_pm": kindKnow}, "知识≈2025-10-21 至 2025-11-04（6 问）", []string{"mamdani", "leo", "japan", "kirk", "takaichi_ldp", "takaichi_pm"}},
@@ -133,6 +147,8 @@ func TestCheckIsSerialAndSkipsHTTPFailure(t *testing.T) {
 			w.WriteHeader(500)
 			_, _ = w.Write([]byte(`{"error":{"message":"upstream"}}`))
 			return
+		case strings.Contains(q, "建国250") || strings.Contains(q, "250周年"):
+			text = "最终答案: 已经举行，白宫举行了庆典"
 		case strings.Contains(q, "世界杯"):
 			text = "最终答案: 西班牙夺冠"
 		}
