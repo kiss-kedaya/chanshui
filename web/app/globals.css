@@ -310,6 +310,23 @@ code {
   font-size: 11px;
   padding: 12px 10px 0;
 }
+.sidebar-admin {
+  display: inline-flex;
+  margin: 12px 10px 0;
+  color: #a8a596;
+  font-size: 12px;
+}
+.sidebar-admin:hover { color: #ffdac1; }
+.admin-feedback { max-width: 760px; }
+.admin-list { display: flex; flex-direction: column; gap: 14px; }
+.admin-list article {
+  border-top: 1px solid var(--line, #e7e1d4);
+  padding-top: 12px;
+}
+.admin-list header { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.admin-contact { font-weight: 650; margin: 6px 0; }
+.admin-list p { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 .feedback-trigger {
   display: flex;
   align-items: center;

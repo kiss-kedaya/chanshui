@@ -35,6 +35,9 @@ type Server struct {
 	bankMu         sync.RWMutex
 	feedbackMu     sync.Mutex
 	feedbackLimits map[string]feedbackWindow
+	adminMu        sync.Mutex
+	adminHits      map[string]feedbackWindow
+	adminToken     string
 	ctx            context.Context
 	stop           context.CancelFunc
 	wg             sync.WaitGroup
@@ -137,6 +140,8 @@ func New(store *history.Store, opts Options) (*Server, error) {
 	ctx, stop := context.WithCancel(context.Background())
 	s := &Server{tasks: map[string]*Task{}, store: store, bank: b, opts: opts, ctx: ctx, stop: stop, queue: make(chan queuedJob, opts.QueueSize), globalSem: make(chan struct{}, opts.MaxRequests)}
 	s.feedbackLimits = map[string]feedbackWindow{}
+	s.adminHits = map[string]feedbackWindow{}
+	s.loadAdminToken()
 	s.loadCachedBank()
 	s.initTransport()
 	if !opts.SkipRecover {
@@ -176,6 +181,9 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /api/models", s.models)
 	m.HandleFunc("POST /api/ask", s.ask)
 	m.HandleFunc("POST /api/feedback", s.feedback)
+	m.HandleFunc("POST /api/admin/login", s.adminLogin)
+	m.HandleFunc("POST /api/admin/logout", s.adminLogout)
+	m.HandleFunc("GET /api/admin/feedback", s.adminFeedback)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

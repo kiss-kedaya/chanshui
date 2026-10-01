@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS feedback(id TEXT PRIMARY KEY,created_at INTEGER NOT N
 CREATE INDEX IF NOT EXISTS feedback_created_at ON feedback(created_at);
 `
 
-// Feedback remains private; only the local administrative export reads contacts.
+// Feedback contacts stay off public APIs. The admin token route and the local export are the only readers.
 type Feedback struct {
 	ID        string `json:"id"`
 	CreatedAt int64  `json:"created_at"`
