@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getDetection, getReport, SavedReport } from "@/lib/api";
+import { getDetection, getHistory, getReport, HistorySummary, SavedReport } from "@/lib/api";
 import { parseReportID, reportPath } from "@/lib/report-view";
 import { getJobControl, reconcileJobControl } from "@/lib/job-controls";
 import { watchResource } from "@/lib/polling";
@@ -31,6 +31,48 @@ function ReportBoot() {
     </div>
   );
 }
+
+function ReportIndex() {
+  const [items, setItems] = useState<HistorySummary[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getHistory(12)
+      .then((rows) => {
+        if (alive) setItems(rows);
+      })
+      .catch(() => {
+        if (alive) setItems([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const rows = (items || []).filter((row) => (row.total_score ?? row.iq_score) !== 0);
+  return (
+    <section className="report-index" aria-label="最近检测">
+      {items === null
+        ? [0, 1, 2].map((n) => <i className="report-index-wait" key={n} />)
+        : rows.map((row) => {
+            const score = row.total_score ?? row.iq_score;
+            return (
+              <Link key={row.report_id} href={reportPath(row.report_id)} prefetch={false}>
+                <b>{score == null ? "—" : score}</b>
+                <span>{row.model}</span>
+                <time dateTime={row.created_at}>
+                  {new Date(row.created_at).toLocaleString("zh-CN", {
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </time>
+              </Link>
+            );
+          })}
+    </section>
+  );
+}
+
 function HistoryDetailInner() {
   const search = useSearchParams(),
     router = useRouter();
@@ -154,9 +196,7 @@ function HistoryDetailInner() {
             重试失败项
           </Link>
         )}
-        {!data && !error && !loading && (
-          <p className="muted">粘贴 Job ID，或从左侧历史选择报告。</p>
-        )}
+        {!data && !error && !loading && <ReportIndex />}
         {error && <ErrorFold text={error} />}
       </section>
       {loading && !data && !error ? <ReportStage /> : null}
