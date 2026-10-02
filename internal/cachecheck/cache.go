@@ -82,10 +82,13 @@ func absInt(n int) int {
 	return n
 }
 
-// FromMetrics checks a serial conversation. The pass condition is the last
-// round's cache read versus the previous round's read+write, within 64 tokens.
-// third_read_ratio is that last read divided by the previous read+write.
-// Equal values are 100%. It is not read divided by total input.
+// FromMetrics checks a serial conversation. When every sample reports cache
+// read and none reports cache write, the last-round rate is read divided by
+// that round's total input. A positive last read passes. A zero last read is
+// 0% and does not pass. Missing write is never treated as zero in a mixed
+// chain. When writes are reported, the pass condition stays the last read
+// versus the previous read+write, within 64 tokens, and that ratio is 100%
+// only when the two sides match.
 func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retriesObserved bool) Result {
 	r := Result{Status: "unknown", Protocol: protocol, PrefixHash: prefixHash, RetriesObserved: retriesObserved, Samples: []Sample{}, Transitions: []Transition{}}
 	for i, m := range metrics {
@@ -120,6 +123,9 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	if len(r.Samples) < 2 {
 		r.Reason = "缓存对话不足两轮，无法验证衔接。"
 		return r
+	}
+	if readOnlySamples(r.Samples) {
+		return finishReadOnly(r)
 	}
 	prev := r.Samples[len(r.Samples)-2]
 	last := r.Samples[len(r.Samples)-1]
@@ -171,6 +177,57 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 	}
 	if r.RetriesObserved {
 		r.Reason += " 本组发生重试，首次成功样本可能不是冷缓存；重试用量未计入样本命中率。"
+	}
+	return r
+}
+
+func readOnlySamples(samples []Sample) bool {
+	if len(samples) < 2 {
+		return false
+	}
+	for _, s := range samples {
+		if s.Error != "" || !s.ReadReported || s.WriteReported {
+			return false
+		}
+	}
+	return true
+}
+
+func finishReadOnly(r Result) Result {
+	for i := range r.Samples {
+		s := &r.Samples[i]
+		if s.Total > 0 {
+			s.HitRate = chainRate(s.Read, s.Total)
+			continue
+		}
+		zero := 0.0
+		s.HitRate = &zero
+	}
+	r.First = &r.Samples[0]
+	if len(r.Samples) > 1 {
+		r.Second = &r.Samples[1]
+	}
+	if len(r.Samples) > 2 {
+		r.Third = &r.Samples[2]
+	}
+	last := r.Samples[len(r.Samples)-1]
+	if last.Total > 0 {
+		r.ThirdReadRatio = chainRate(last.Read, last.Total)
+	} else {
+		zero := 0.0
+		r.ThirdReadRatio = &zero
+	}
+	pass := last.Read > 0
+	r.Pass = &pass
+	if pass {
+		r.Status = "pass"
+		r.Reason = "上游没有回传缓存写入。末轮缓存率是末轮读取除以末轮总输入。"
+	} else {
+		r.Status = "mismatch"
+		r.Reason = "上游没有回传缓存写入，末轮读取为 0，缓存率按 0% 记，未通过。"
+	}
+	if r.RetriesObserved {
+		r.Reason += " 检测发生过重试，首次成功回包可能不再进缓存；缓存率未因重试被改写。"
 	}
 	return r
 }

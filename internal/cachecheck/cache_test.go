@@ -307,3 +307,39 @@ func TestReportedJobChainIsOneHundredOnTheLastLink(t *testing.T) {
 		t.Fatal("round 3 must stay a miss")
 	}
 }
+
+func TestReadOnlyCacheUsesLastReadOverTotal(t *testing.T) {
+	rows := [][2]int{{0, 6367}, {6144, 255}, {6272, 255}, {6272, 200}, {6272, 180}, {6272, 255}}
+	m := make([]gateway.Metrics, len(rows))
+	for i, row := range rows {
+		m[i] = cacheMetric(row[0], 0, row[1], 1)
+		m[i].CacheWriteReported = false
+		m[i].CacheCreation1h = 0
+		m[i].CacheCreation5m = 0
+	}
+	r := FromMetrics(m, "prefix", "messages", false)
+	if r.Status != "pass" || r.Pass == nil || !*r.Pass || ratioText(r.ThirdReadRatio) != "96.09" {
+		t.Fatalf("readonly pass = status %s ratio %s pass %v", r.Status, ratioText(r.ThirdReadRatio), r.Pass)
+	}
+	if r.ThirdReadBaseline != 0 {
+		t.Fatalf("baseline %d, want 0", r.ThirdReadBaseline)
+	}
+	if ratioText(r.Samples[0].HitRate) != "0.00" || ratioText(r.Samples[1].HitRate) != "96.02" || ratioText(r.Samples[5].HitRate) != "96.09" {
+		t.Fatalf("row rates %s %s %s", ratioText(r.Samples[0].HitRate), ratioText(r.Samples[1].HitRate), ratioText(r.Samples[5].HitRate))
+	}
+}
+
+func TestReadOnlyZeroReadIsZeroNotUnknown(t *testing.T) {
+	m := []gateway.Metrics{cacheMetric(0, 0, 100, 1), cacheMetric(0, 0, 80, 1)}
+	for i := range m {
+		m[i].CacheWriteReported = false
+		m[i].CacheCreation1h = 0
+	}
+	r := FromMetrics(m, "prefix", "chat", false)
+	if r.Status == "unknown" || r.Pass == nil || *r.Pass || ratioText(r.ThirdReadRatio) != "0.00" {
+		t.Fatalf("zero read = status %s ratio %s pass %v", r.Status, ratioText(r.ThirdReadRatio), r.Pass)
+	}
+	if r.ThirdReadBaseline != 0 || r.Samples[1].HitRate == nil || ratioText(r.Samples[1].HitRate) != "0.00" {
+		t.Fatal("zero read invented a write baseline")
+	}
+}

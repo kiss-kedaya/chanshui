@@ -81,6 +81,9 @@ export default function ResultCards({
     previousCache.read_reported !== false && previousCache.write_reported !== false
     ? (cache?.third_read_baseline ?? previousCache.read + previousCache.write) : null;
   const cacheKnown = cache?.status !== "unknown" && cache?.third_read_ratio != null;
+  const readOnlyCache =
+    cacheSamples.length > 1 &&
+    cacheSamples.every((row) => row.write_reported === false && row.read_reported !== false && !row.error);
   const cacheToken = (value?: number | null, reported?: boolean) =>
     reported === false || value == null || !Number.isFinite(value) ? "—" : value;
   const cacheRate = (value?: number | null) =>
@@ -498,12 +501,18 @@ export default function ResultCards({
                   </div>
                 </div>
                 <p className="muted">
-                  {cacheKnown && previousCacheTotal != null
+                  {cacheKnown && readOnlyCache
+                    ? `${cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ ${cacheToken(thirdTotal, thirdCache?.read_reported)}`
+                    : cacheKnown && previousCacheTotal != null
                     ? `${cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ ${cacheToken(previousCacheTotal)} × 100%`
                     : "—"}
                   <Hint
                     label="末轮缓存率说明"
-                    text="上一条缓存读 + 写 = 下一条缓存读，就是 100%。末轮缓存率 = 末轮读取 ÷ 上一轮读加写。缺字段或请求失败时不计算。"
+                    text={
+                      readOnlyCache
+                        ? "上游没有缓存写入时，末轮缓存率 = 末轮读取 ÷ 末轮总输入。上一轮读＋写保持为 —，缺写不当成 0。"
+                        : "上一条缓存读 + 写 = 下一条缓存读，就是 100%。末轮缓存率 = 末轮读取 ÷ 上一轮读加写。缺字段或请求失败时不计算。"
+                    }
                   />
                 </p>
                 {v.cache.third_read_ratio != null && v.cache.third_read_ratio > 100 && (
