@@ -19,6 +19,7 @@ type Signal struct {
 type Inputs struct {
 	Protocol        string
 	InjectionScore  *int
+	InjectionApply  bool
 	CachePass       *bool
 	CacheApplicable bool
 	ToolsPass       *bool
@@ -54,12 +55,12 @@ const (
 func Calculate(in Inputs) Result {
 	protocol := in.Protocol
 	signals := []Signal{
-		{Key: "injection", Label: "注入大小", Weight: weightInjection, MaxPoints: 10, Applicable: true, Known: in.InjectionScore != nil, Points: in.InjectionScore, Reason: "两次独立请求的线性估计"},
+		{Key: "injection", Label: "注入大小", Weight: weightInjection, MaxPoints: 10, Applicable: in.InjectionApply, Known: in.InjectionScore != nil, Points: in.InjectionScore, Reason: "两次独立请求的线性估计"},
 		boolSignal("cache", "缓存读写", weightCache, in.CacheApplicable, in.CachePass != nil, boolPoints(in.CachePass), "末轮读取衔接上一轮读加写"),
 		boolSignal("tools", "工具调用", weightTools, in.ToolsApplicable, in.ToolsPass != nil, boolPoints(in.ToolsPass), "结构化调用与结果回传"),
 		boolSignal("web", "联网证据", weightWeb, in.WebApplicable, in.WebPass != nil, boolPoints(in.WebPass), "搜索工具与来源"),
 		boolSignal("stream", "流式完整性", weightStream, in.StreamPass != nil, in.StreamPass != nil, boolPoints(in.StreamPass), "结束事件与响应完整"),
-		{Key: "thinking", Label: "思维链回传", Weight: weightThinking, MaxPoints: 10, Applicable: in.ThinkingApply, Known: in.ThinkingScore != nil, Points: in.ThinkingScore, Reason: "思维摘要 5 分，signature 5 分"},
+		{Key: "thinking", Label: "思维链回传", Weight: weightThinking, MaxPoints: 5, Applicable: in.ThinkingApply, Known: in.ThinkingScore != nil, Points: in.ThinkingScore, Reason: "有思维摘要记 5 分"},
 	}
 
 	applicable, available, earned := 0, 0, 0

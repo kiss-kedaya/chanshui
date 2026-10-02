@@ -84,10 +84,13 @@ function HistoryDetailInner() {
   const [data, setData] = useState<SavedReport | null>(null),
     [error, setError] = useState(""),
     [entry, setEntry] = useState(id),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(!!id),
     [entryError, setEntryError] = useState(""),
     [canRetry, setCanRetry] = useState(false);
+  const [loadedID, setLoadedID] = useState(id);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
+    setLoadedID(id);
     setData(null);
     setError("");
     setEntry(id);
@@ -135,7 +138,8 @@ function HistoryDetailInner() {
         setLoading(false);
       },
     });
-  }, [id]);
+  }, [id, reload]);
+  if (loadedID !== id) return <ReportBoot />;
   return (
     <div className="page-shell history-page">
       <section className="hero-card">
@@ -201,16 +205,16 @@ function HistoryDetailInner() {
           </Link>
         )}
         {!data && !error && !loading && <ReportIndex />}
-        {error && <ErrorFold text={error} />}
+        {error && (
+          <div className="report-load-error">
+            <ErrorFold text={error} />
+            <button type="button" className="btn-secondary" onClick={() => setReload((n) => n + 1)}>
+              {tr("重新加载")}
+            </button>
+          </div>
+        )}
       </section>
       {loading && !data && !error ? <ReportStage /> : null}
-      {data && (
-        <ProbeTimeline
-          probes={data.probes || []}
-          status={data.status}
-          timing={data.verdict_json.timing}
-        />
-      )}
       {data && (
         <ResultCards
           verdict={data.verdict_json}
@@ -219,11 +223,17 @@ function HistoryDetailInner() {
           showCache={data.probes?.some((p) => p.id === "cache")}
         />
       )}
+      {data && (
+        <ProbeTimeline
+          probes={data.probes || []}
+          status={data.status}
+          timing={data.verdict_json?.timing}
+        />
+      )}
     </div>
   );
 }
 export default function HistoryDetail() {
-  const { t: tr } = useI18n();
   return (
     <Suspense fallback={<ReportBoot />}>
       <HistoryDetailInner />

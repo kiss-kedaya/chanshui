@@ -53,7 +53,7 @@ func main() {
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		if r.URL.Path == "/history" || r.URL.Path == "/admin" {
+		if r.URL.Path == "/history" || r.URL.Path == "/admin" || r.URL.Path == "/docs" {
 			copy := r.Clone(r.Context())
 			copy.URL.Path = r.URL.Path + ".html"
 			static.ServeHTTP(w, copy)

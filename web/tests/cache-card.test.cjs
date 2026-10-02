@@ -14,7 +14,7 @@ function loadModule(filename, imports = {}) {
   }).outputText;
   const scope = {
     exports: {},
-    require: (name) => imports[name] || require(name),
+    require: (name) => imports[name] || require("./app-require.cjs")(name),
   };
   vm.runInNewContext(compiled, scope);
   return scope.exports;

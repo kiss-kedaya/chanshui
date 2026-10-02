@@ -11,6 +11,7 @@ const auxiliarySchema = `
 CREATE TABLE IF NOT EXISTS runtime_state(name TEXT PRIMARY KEY,value BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS feedback(id TEXT PRIMARY KEY,created_at INTEGER NOT NULL,kind TEXT NOT NULL,contact TEXT NOT NULL,message TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS feedback_created_at ON feedback(created_at);
+CREATE TABLE IF NOT EXISTS public_audits(id INTEGER PRIMARY KEY CHECK (id=1), total INTEGER NOT NULL DEFAULT 0);
 `
 
 // Feedback contacts stay off public APIs. The admin token route and the local export are the only readers.

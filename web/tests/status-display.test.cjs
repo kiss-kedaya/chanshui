@@ -14,7 +14,7 @@ function loadModule(filename, imports = {}) {
   }).outputText;
   const scope = {
     exports: {},
-    require: (name) => imports[name] || require(name),
+    require: (name) => imports[name] || require("./app-require.cjs")(name),
   };
   vm.runInNewContext(compiled, scope);
   return scope.exports;
@@ -51,8 +51,8 @@ test("thinking card does not render delivery status summaries", () => {
     },
   }));
   assert.match(html, /思维链回传/);
-  assert.match(html, /思维摘要/);
-  assert.match(html, /signature/);
+  assert.match(html, /5 \/ 5/);
+  assert.doesNotMatch(html, /signature/);
   assert.doesNotMatch(html, /已回传|未回传|思考待定|摘要已回传|摘要未回传/);
 });
 

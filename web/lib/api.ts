@@ -221,12 +221,6 @@ export interface DetectVerdict {
     answer: string;
     error?: string;
     err?: string;
-    audit?: {
-      status: string;
-      pass: boolean | null;
-      bound_model: string;
-      reason: string;
-    };
   } | null;
   iq: {
     score: number | null;

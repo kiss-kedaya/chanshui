@@ -285,16 +285,6 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			if e != nil {
 				return map[string]string{"error": e.Error(), "reason": "请求失败，不能据此判定思考被清空"}, e
 			}
-			if strings.TrimSpace(v.Signature) != "" {
-				audit := thinking.AuditSignature(q.Model, v.Signature)
-				v.Audit = &audit
-				if audit.Pass != nil && !*audit.Pass {
-					v.SignatureScore = 0
-					v.Score = v.SummaryScore
-					v.Pass = false
-					v.Reason = audit.Reason
-				}
-			}
 			return v, nil
 		})
 	}
@@ -399,14 +389,20 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		lines = append(lines, v)
 		items = append(items, iq.QItem{ID: v.ID, Title: v.Title, Max: v.Max, Earned: v.Earned, Half: v.Half, Tags: v.Tags})
 	}
-	score := iq.Score(items)
-	var validScore any
-	if complete {
-		validScore = score.Score
+	if len(t.questions) > 0 {
+		score := iq.Score(items)
+		var validScore any
+		if complete {
+			validScore = score.Score
+		}
+		t.Verdict.IQ = map[string]any{"score": validScore, "max": 100, "paper_max": score.Max, "complete": complete, "per_question": lines, "note": fmt.Sprintf("当前卷面 %d；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，不伪装为模型答错。", score.Max)}
 	}
-	t.Verdict.IQ = map[string]any{"score": validScore, "max": 100, "paper_max": score.Max, "complete": complete, "per_question": lines, "note": fmt.Sprintf("当前卷面 %d；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，不伪装为模型答错。", score.Max)}
-	t.Verdict.Integrity = buildIntegrity(t.Verdict, lines, q.Model)
-	t.Verdict.Total = buildTotal(t.Verdict, q.Model)
+	sections := selected
+	if t.Source != "api" {
+		sections = nil
+	}
+	t.Verdict.Integrity = buildIntegrity(t.Verdict, lines, q.Model, sections)
+	t.Verdict.Total = buildTotalFor(t.Verdict, q.Model, sections)
 	t.Status = "done"
 	if ctx.Err() != nil {
 		t.Status = "cancelled"
@@ -424,8 +420,12 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	s.persist(t)
 }
 
-func buildIntegrity(v Verdict, results []QuestionResult, model string) any {
-	input := integrity.Inputs{Protocol: gateway.Protocol(model), ThinkingApply: gateway.IsClaude(model)}
+func buildIntegrity(v Verdict, results []QuestionResult, model string, selected map[string]bool) any {
+	input := integrity.Inputs{Protocol: gateway.Protocol(model), ThinkingApply: gateway.IsClaude(model), InjectionApply: true}
+	if selected != nil {
+		input.InjectionApply = selected["injection"]
+		input.ThinkingApply = input.ThinkingApply && selected["thinking"]
+	}
 	if m, ok := v.Injection.(map[string]any); ok {
 		if n, ok := asInt(m["score"]); ok {
 			input.InjectionScore = &n
@@ -492,6 +492,10 @@ func iqThinking(model string) *gateway.ThinkingConfig {
 }
 
 func buildTotal(v Verdict, model string) integrity.Total {
+	return buildTotalFor(v, model, nil)
+}
+
+func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.Total {
 	fpPoints, fpKnown := 0, false
 	if m, ok := v.Fingerprint.(map[string]any); ok {
 		errText, _ := m["error"].(string)
@@ -545,13 +549,35 @@ func buildTotal(v Verdict, model string) integrity.Total {
 	if cacheApply {
 		cachePoints, cacheKnown = boolPart(v.Cache)
 	}
+	want := func(id string) bool { return selected == nil || selected[id] }
+	if !want("fingerprint") {
+		fpKnown, fpPoints = false, 0
+	}
+	if !want("iq") {
+		iqKnown, iqPoints = false, 0
+	}
+	if !want("injection") {
+		injKnown, injPoints = false, 0
+	}
+	if !want("tools") {
+		toolKnown, toolPoints = false, 0
+	}
+	if !want("web") {
+		webApply = false
+	}
+	if !want("thinking") {
+		thinkApply = false
+	}
+	if selected != nil {
+		cacheApply = selected["cache"]
+	}
 	return integrity.Compose([]integrity.Part{
-		{Key: "fingerprint", Label: "模型指纹归因", Applicable: true, Known: fpKnown, Points: fpPoints, MaxPoints: 10},
-		{Key: "iq", Label: "推理表现", Applicable: true, Known: iqKnown, Points: iqPoints, MaxPoints: 100},
-		{Key: "injection", Label: "注入大小", Applicable: true, Known: injKnown, Points: injPoints, MaxPoints: 10},
-		{Key: "tools", Label: "工具调用", Applicable: true, Known: toolKnown, Points: toolPoints, MaxPoints: 1},
+		{Key: "fingerprint", Label: "模型指纹归因", Applicable: want("fingerprint"), Known: fpKnown, Points: fpPoints, MaxPoints: 10},
+		{Key: "iq", Label: "推理表现", Applicable: want("iq"), Known: iqKnown, Points: iqPoints, MaxPoints: 100},
+		{Key: "injection", Label: "注入大小", Applicable: want("injection"), Known: injKnown, Points: injPoints, MaxPoints: 10},
+		{Key: "tools", Label: "工具调用", Applicable: want("tools"), Known: toolKnown, Points: toolPoints, MaxPoints: 1},
 		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},
-		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: 10},
+		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: 5},
 		{Key: "cache", Label: "缓存读写", Applicable: cacheApply, Known: cacheKnown, Points: cachePoints, MaxPoints: 1},
 	})
 }

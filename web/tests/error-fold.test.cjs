@@ -12,7 +12,7 @@ function load(filename) {
   const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  const scope = { exports: {}, require };
+  const scope = { exports: {}, require: require("./app-require.cjs") };
   vm.runInNewContext(compiled, scope);
   return scope.exports;
 }

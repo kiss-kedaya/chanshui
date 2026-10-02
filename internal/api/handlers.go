@@ -35,6 +35,8 @@ type Server struct {
 	bankMu         sync.RWMutex
 	feedbackMu     sync.Mutex
 	feedbackLimits map[string]feedbackWindow
+	publicMu       sync.Mutex
+	publicHits     map[string]time.Time
 	adminMu        sync.Mutex
 	adminHits      map[string]feedbackWindow
 	adminToken     string
@@ -96,6 +98,7 @@ type Task struct {
 	HistoryID   int64   `json:"history_id,omitempty"`
 	Warning     string  `json:"warning,omitempty"`
 	ExpiresAt   int64   `json:"expires_at"`
+	Source      string  `json:"-"`
 	persistMu   sync.Mutex
 	controlHash string
 	finished    time.Time
@@ -146,6 +149,7 @@ func New(store *history.Store, opts Options) (*Server, error) {
 	}
 	s := &Server{tasks: map[string]*Task{}, store: store, bank: b, opts: opts, ctx: ctx, stop: stop, queue: make(chan queuedJob, opts.QueueSize), globalSem: make(chan struct{}, opts.MaxRequests), keys: keys}
 	s.feedbackLimits = map[string]feedbackWindow{}
+	s.publicHits = map[string]time.Time{}
 	s.adminHits = map[string]feedbackWindow{}
 	s.loadAdminToken()
 	s.loadCachedBank()
@@ -179,6 +183,10 @@ func (s *Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /api/bank/stats", s.stats)
 	m.HandleFunc("POST /api/detect", s.start)
+	m.HandleFunc("GET /api/v1", s.publicIndex)
+	m.HandleFunc("GET /api/v1/openapi.json", s.publicOpenAPI)
+	m.HandleFunc("POST /api/v1/audits", s.publicCreate)
+	m.HandleFunc("GET /api/v1/audits/{id}", s.publicGet)
 	m.HandleFunc("GET /api/detect/{id}", s.get)
 	m.HandleFunc("POST /api/detect/{id}/cancel", s.cancel)
 	m.HandleFunc("POST /api/detect/{id}/retry", s.retry)
@@ -360,6 +368,9 @@ func (s *Server) find(id string) *Task { s.mu.Lock(); defer s.mu.Unlock(); retur
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	id := strings.ToLower(r.PathValue("id"))
 	t := s.find(id)
+	if t != nil && t.Source == "api" {
+		t = nil
+	}
 	if t == nil {
 		if rec, e := s.store.GetByReportID(id); e == nil {
 			t = s.fromRecord(rec)
@@ -630,7 +641,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		reply(w, 400, map[string]string{"error": "检测 ID 无效"})
 		return
 	}
-	if t := s.find(id); t != nil {
+	if t := s.find(id); t != nil && t.Source != "api" {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		if t.ExpiresAt <= time.Now().Unix() {

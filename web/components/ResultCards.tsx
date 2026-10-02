@@ -115,7 +115,7 @@ export default function ResultCards({
             <b className="score-chip">{scored.total.score} / 100</b>
           </div>
           <div className="metric-line">
-            <strong className={scored.total.score === 100 ? "good" : "warn"}>
+            <strong className={scored.total.score >= 90 ? "good" : scored.total.score >= 60 ? "score-mid" : "bad"}>
               <AnimatedNumber value={scored.total.score} />
             </strong>
             <span>/ 100</span>
@@ -327,29 +327,11 @@ export default function ResultCards({
           ) : (
             <>
               <div className="metric-line">
-                <strong className={(t.score ?? ((t.think_len > 0 ? 5 : 0) + (t.sig_len > 0 ? 5 : 0))) === 10 ? "good" : "warn"}>
-                  {(t.score ?? ((t.think_len > 0 ? 5 : 0) + (t.sig_len > 0 ? 5 : 0)))} / 10
+                <strong className={(t.summary_score ?? (t.think_len > 0 ? 5 : 0)) === 5 ? "good" : "warn"}>
+                  {(t.summary_score ?? (t.think_len > 0 ? 5 : 0))} / 5
                 </strong>
               </div>
-              <div className="mini-stats">
-                <span>
-                  {tr("思维摘要")} <b>{t.summary_score ?? (t.think_len > 0 ? 5 : 0)} / 5</b>
-                </span>
-                <span>
-                  signature <b>{t.signature_score ?? (t.sig_len > 0 ? 5 : 0)} / 5</b>
-                </span>
-              </div>
-              {t.audit && (
-                <div className="mini-stats">
-                  <span>
-                    {tr("签名模型")}{" "}
-                    <b className={t.audit.pass ? "good" : "bad"}>{t.audit.bound_model || tr("读不出")}</b>
-                  </span>
-                  <span className={t.audit.pass ? "good" : "bad"}>{t.audit.pass ? tr("与声称模型一致") : tr("与声称模型不一致")}</span>
-                </div>
-              )}
               <Details label={tr("查看思维链全文")} value={t.thinking_text} />
-              <Details label={tr("查看完整 signature 签名")} value={t.signature} />
               <Details label={tr("探针回答")} value={t.answer} />
             </>
           )}

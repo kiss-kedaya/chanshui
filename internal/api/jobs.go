@@ -88,12 +88,19 @@ func (s *Server) cleanup() {
 	for id, t := range s.tasks {
 		t.mu.Lock()
 		expired := now.Unix() >= t.ExpiresAt
+		apiTask := t.Source == "api"
 		finished := t.Status != "running" && t.Status != "queued"
 		old := now.Sub(t.finished) > time.Minute
 		if expired && t.cancel != nil {
 			t.cancel()
 		}
 		t.mu.Unlock()
+		if apiTask {
+			if expired {
+				delete(s.tasks, id)
+			}
+			continue
+		}
 		if expired || finished && old {
 			delete(s.tasks, id)
 		}
@@ -102,6 +109,9 @@ func (s *Server) cleanup() {
 }
 func (s *Server) Close() { s.stop(); s.wg.Wait(); s.transport.CloseIdleConnections() }
 func (s *Server) persist(t *Task) {
+	if t.Source == "api" {
+		return
+	}
 	t.persistMu.Lock()
 	defer t.persistMu.Unlock()
 	t.mu.Lock()

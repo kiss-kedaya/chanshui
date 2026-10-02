@@ -136,6 +136,12 @@ export default function Sidebar() {
       >
         <Icon name="scan" /> {tr("新建检测")}
       </Link>
+      <Link
+        className={"nav-home" + (pathname === "/docs" ? " active" : "")}
+        href="/docs"
+      >
+        <Icon name="scan" /> {tr("接口文档")}
+      </Link>
       <button
         className="mobile-history"
         aria-expanded={mobileOpen}

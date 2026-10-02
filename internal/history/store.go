@@ -97,6 +97,10 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if _, err := db.Exec(`INSERT OR IGNORE INTO public_audits(id, total) VALUES (1, 0)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("history: public audit counter: %w", err)
+	}
 	if err := migrateReportIDs(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("history: report ID migration: %w", err)

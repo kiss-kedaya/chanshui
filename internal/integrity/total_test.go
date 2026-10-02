@@ -25,7 +25,7 @@ func TestComposeFullClaudeWithCacheIs100(t *testing.T) {
 		got[p.Key] = p.Coefficient
 		sum += p.Contribution
 	}
-	if sum != 100 || got["fingerprint"] != 30 || got["iq"] != 25 || got["injection"] != 15 || got["tools"] != 10 || got["web"] != 8 || got["thinking"] != 7 || got["cache"] != 5 {
+	if sum != 100 || got["fingerprint"] != 32 || got["iq"] != 25 || got["injection"] != 15 || got["tools"] != 10 || got["web"] != 8 || got["thinking"] != 5 || got["cache"] != 5 {
 		t.Fatalf("coeffs %+v sum %d", got, sum)
 	}
 }
@@ -72,7 +72,7 @@ func TestComposeFingerprintMissAndPartialInjection(t *testing.T) {
 	for _, p := range r.Parts {
 		if p.Key == "fingerprint" {
 			fp = p.Contribution
-			if p.Coefficient != 30 {
+			if p.Coefficient != 32 {
 				t.Fatalf("fingerprint coeff %d", p.Coefficient)
 			}
 		}
@@ -80,7 +80,7 @@ func TestComposeFingerprintMissAndPartialInjection(t *testing.T) {
 			inj = p.Contribution
 		}
 	}
-	if fp != 0 || inj != 12 || r.Score != 100-30-(15-12) {
+	if fp != 0 || inj != 12 || r.Score != 100-32-(15-12) {
 		t.Fatalf("score %d fp %d inj %d", r.Score, fp, inj)
 	}
 }

@@ -1,4 +1,5 @@
 import "./globals.css";
+import DocsLink from "@/components/DocsLink";
 import LanguageMenu, { SkipLink } from "@/components/LanguageMenu";
 import ThemeMenu from "@/components/ThemeMenu";
 import Sidebar from "@/components/Sidebar";
@@ -58,6 +59,7 @@ export default function RootLayout({
           <Sidebar />
           <main className="main" id="main-content">
             <div className="top-tools">
+              <DocsLink />
               <LanguageMenu />
               <ThemeMenu />
             </div>

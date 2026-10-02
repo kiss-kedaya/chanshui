@@ -10,20 +10,18 @@ export default function ReportStage({
   return (
     <section className="report-stage" role="status" aria-live="polite" aria-label={text}>
       <div className="report-stage-hero">
-        <div className="hero-glow" aria-hidden="true" />
-        <div className="hero-grid" aria-hidden="true" />
-        <div className="hero-scan" aria-hidden="true" />
+        <div className="stage-emblem" aria-hidden="true"><span>?</span><i /><i /></div>
         <div className="stage-status">
           <i className="stage-spin" aria-hidden="true" />
           <span>{text}</span>
         </div>
-        <div className="stage-ghost lg" aria-hidden="true" />
-        <div className="stage-ghost sm" aria-hidden="true" />
+        <h2 className="stage-title">{t("全站检测报告")}</h2>
+        <div className="stage-track" aria-hidden="true"><i /></div>
       </div>
       <div className="stage-grid" aria-hidden="true">
-        {["a", "b", "c", "d"].map((key) => (
+        {["模型指纹归因", "注入大小", "推理表现", "接口完整性"].map((key, index) => (
           <article className="stage-card" key={key}>
-            <i />
+            <header><span>{t(key)}</span><small>0{index + 1}</small></header>
             <b />
             <i />
           </article>

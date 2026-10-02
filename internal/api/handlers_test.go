@@ -33,7 +33,10 @@ func testSetup(t *testing.T) (*Server, *httptest.Server, *atomic.Bool, *atomic.I
 			Stream   bool
 		}
 		json.NewDecoder(r.Body).Decode(&q)
-		prompt := q.Messages[0].Content
+		prompt := ""
+		if len(q.Messages) > 0 {
+			prompt = q.Messages[0].Content
+		}
 		if fail.Load() && strings.Contains(prompt, "医嘱") {
 			w.WriteHeader(503)
 			fmt.Fprint(w, `{"error":{"type":"busy","message":"busy"}}`)
