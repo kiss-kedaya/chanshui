@@ -1,6 +1,8 @@
 import "./globals.css";
+import LanguageMenu, { SkipLink } from "@/components/LanguageMenu";
 import ThemeMenu from "@/components/ThemeMenu";
 import Sidebar from "@/components/Sidebar";
+import { I18nProvider } from "@/lib/i18n";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -51,14 +53,17 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <a href="#main-content" className="skip-link">
-          跳到主内容
-        </a>
-        <Sidebar />
-        <main className="main" id="main-content">
-          <ThemeMenu />
-          {children}
-        </main>
+        <I18nProvider>
+          <SkipLink />
+          <Sidebar />
+          <main className="main" id="main-content">
+            <div className="top-tools">
+              <LanguageMenu />
+              <ThemeMenu />
+            </div>
+            {children}
+          </main>
+        </I18nProvider>
       </body>
     </html>
   );

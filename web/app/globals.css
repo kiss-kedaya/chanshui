@@ -2341,11 +2341,18 @@ tr:hover td {
   }
 }
 
-.theme-menu {
+.top-tools {
   position: absolute;
   top: 21px;
   right: 38px;
   z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.theme-menu,
+.lang-menu {
+  position: relative;
 }
 .theme-trigger {
   display: flex;
@@ -2680,12 +2687,12 @@ html[data-mode="dark"] .hint-button:focus {
   color: var(--accent);
 }
 @media (max-width: 760px) {
-  .theme-menu {
+  .top-tools {
     top: 87px;
     right: 16px;
   }
   .page-top {
-    padding-right: 93px;
+    padding-right: 196px;
   }
   .page-top .breadcrumb {
     display: none;
@@ -3088,7 +3095,7 @@ html[data-mode="dark"] .report-boot-card .stage-input::after {
 .page-top {
   height: 58px;
 }
-.theme-menu {
+.top-tools {
   top: 11px;
   right: 38px;
 }
@@ -3097,7 +3104,7 @@ html[data-mode="dark"] .report-boot-card .stage-input::after {
 }
 .history-page > .hero-card:first-child .section-heading {
   min-height: 36px;
-  padding-right: 112px;
+  padding-right: 220px;
 }
 .report-stage {
   min-height: 0;
@@ -3143,19 +3150,19 @@ html[data-mode="dark"][data-accent="mint"] .hero-points li {
   }
 }
 @media (max-width: 760px) {
-  .theme-menu {
+  .top-tools {
     top: 12px;
     right: 16px;
   }
   .page-top {
     height: 52px;
-    padding-right: 96px;
+    padding-right: 196px;
   }
   .history-page {
     padding-top: 0;
   }
   .history-page > .hero-card:first-child .section-heading {
-    padding-right: 92px;
+    padding-right: 180px;
   }
   .opening {
     border-radius: 14px;
@@ -3287,4 +3294,27 @@ html[data-accent="mint"] .opening .connection-card {
   .opening > .connection-card {
     animation: none;
   }
+}
+
+.lang-popover {
+  width: 168px;
+  padding: 8px;
+}
+.lang-popover button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+.lang-popover button[aria-pressed="true"],
+.lang-popover button:hover {
+  background: var(--accent-light);
+  color: var(--accent);
 }

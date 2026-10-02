@@ -11,16 +11,18 @@ import ProbeTimeline from "@/components/ProbeTimeline";
 import ErrorFold from "@/components/ErrorFold";
 import ReportShare from "@/components/ReportShare";
 import ReportStage from "@/components/ReportStage";
+import { useI18n } from "@/lib/i18n";
 function ReportBoot() {
+  const { t: tr } = useI18n();
   return (
     <div className="page-shell history-page">
       <section className="hero-card report-boot-card">
         <div className="section-heading">
           <div>
-            <span className="step">报告</span>
-            <h2>按检测 ID 查看</h2>
+            <span className="step">{tr("报告")}</span>
+            <h2>{tr("按检测 ID 查看")}</h2>
           </div>
-          <span className="muted">全站报告</span>
+          <span className="muted">{tr("全站报告")}</span>
         </div>
         <div className="report-lookup" aria-hidden="true">
           <span className="stage-input" />
@@ -33,6 +35,7 @@ function ReportBoot() {
 }
 
 function ReportIndex() {
+  const { t: tr, locale } = useI18n();
   const [items, setItems] = useState<HistorySummary[] | null>(null);
   useEffect(() => {
     let alive = true;
@@ -49,7 +52,7 @@ function ReportIndex() {
   }, []);
   const rows = (items || []).filter((row) => (row.total_score ?? row.iq_score) !== 0);
   return (
-    <section className="report-index" aria-label="最近检测">
+    <section className="report-index" aria-label={tr("最近检测")}>
       {items === null
         ? [0, 1, 2].map((n) => <i className="report-index-wait" key={n} />)
         : rows.map((row) => {
@@ -59,7 +62,7 @@ function ReportIndex() {
                 <b>{score == null ? "—" : score}</b>
                 <span>{row.model}</span>
                 <time dateTime={row.created_at}>
-                  {new Date(row.created_at).toLocaleString("zh-CN", {
+                  {new Date(row.created_at).toLocaleString(locale, {
                     month: "2-digit",
                     day: "2-digit",
                     hour: "2-digit",
@@ -74,6 +77,7 @@ function ReportIndex() {
 }
 
 function HistoryDetailInner() {
+  const { t: tr } = useI18n();
   const search = useSearchParams(),
     router = useRouter();
   const id = search.get("id") || "";
@@ -97,7 +101,7 @@ function HistoryDetailInner() {
     const legacy = /^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id));
     if (!publicID && !legacy) {
       setLoading(false);
-      setError("检测 ID 无效，请粘贴完整 ID 或报告链接");
+      setError(tr("检测 ID 无效，请粘贴完整 ID 或报告链接"));
       return;
     }
     setLoading(true);
@@ -137,10 +141,10 @@ function HistoryDetailInner() {
       <section className="hero-card">
         <div className="section-heading">
           <div>
-            <span className="step">报告</span>
-            <h2>按检测 ID 查看</h2>
+            <span className="step">{tr("报告")}</span>
+            <h2>{tr("按检测 ID 查看")}</h2>
           </div>
-          <span className="muted">全站报告</span>
+          <span className="muted">{tr("全站报告")}</span>
         </div>
         <form
           className="report-lookup"
@@ -148,7 +152,7 @@ function HistoryDetailInner() {
             e.preventDefault();
             const parsed = parseReportID(entry);
             if (!parsed) {
-              setEntryError("请填写完整的 32 位检测 ID 或报告链接");
+              setEntryError(tr("请填写完整的 32 位检测 ID 或报告链接"));
               return;
             }
             setEntryError("");
@@ -156,24 +160,24 @@ function HistoryDetailInner() {
           }}
         >
           <label className="sr-only" htmlFor="report-id">
-            检测 ID 或报告链接
+            {tr("检测 ID 或报告链接")}
           </label>
           <input
             id="report-id"
             value={entry}
             onChange={(e) => setEntry(e.target.value)}
-            placeholder="粘贴检测 ID 或报告链接"
+            placeholder={tr("粘贴检测 ID 或报告链接")}
             spellCheck={false}
           />
           <button className="btn-primary" type="submit">
-            查看报告
+            {tr("查看报告")}
           </button>
         </form>
         {entryError && <ErrorFold text={entryError} />}
         {data ? <h1 className="hero-title">{data.model}</h1> : null}
-        {!data && error ? <h1 className="hero-title">报告不可用</h1> : null}
+        {!data && error ? <h1 className="hero-title">{tr("报告不可用")}</h1> : null}
         {!data && !error && !loading ? (
-          <h1 className="hero-title">全站检测报告</h1>
+          <h1 className="hero-title">{tr("全站检测报告")}</h1>
         ) : null}
         {data && (
           <p className="report-meta">
@@ -193,7 +197,7 @@ function HistoryDetailInner() {
             href={"/?job=" + encodeURIComponent(data.report_id)}
             prefetch={false}
           >
-            重试失败项
+            {tr("重试失败项")}
           </Link>
         )}
         {!data && !error && !loading && <ReportIndex />}
@@ -219,6 +223,7 @@ function HistoryDetailInner() {
   );
 }
 export default function HistoryDetail() {
+  const { t: tr } = useI18n();
   return (
     <Suspense fallback={<ReportBoot />}>
       <HistoryDetailInner />

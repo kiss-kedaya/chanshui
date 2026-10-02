@@ -1,6 +1,7 @@
 "use client";
 import Icon from "@/components/Icon";
 import { FormEvent, useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
 type Item = {
   id: string;
@@ -10,13 +11,13 @@ type Item = {
   message: string;
 };
 
-const kinds: Record<string, string> = {
-  bug: "问题反馈",
-  method: "检测方法",
-  suggestion: "改进建议",
-};
-
 export default function AdminFeedbackPage() {
+  const { t: tr } = useI18n();
+  const kinds: Record<string, string> = {
+    bug: tr("问题反馈"),
+    method: tr("检测方法"),
+    suggestion: tr("改进建议"),
+  };
   const [token, setToken] = useState(""),
     [show, setShow] = useState(false),
     [items, setItems] = useState<Item[] | null>(null),
@@ -30,7 +31,7 @@ export default function AdminFeedbackPage() {
       return;
     }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Error(data.error || "读取失败");
+    if (!res.ok) throw Error(data.error || tr("读取失败"));
     setItems(data.items || []);
   }
 
@@ -50,7 +51,7 @@ export default function AdminFeedbackPage() {
         body: JSON.stringify({ token }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw Error(data.error || "登录失败");
+      if (!res.ok) throw Error(data.error || tr("登录失败"));
       setToken("");
       await load();
     } catch (err) {
@@ -68,17 +69,17 @@ export default function AdminFeedbackPage() {
   return (
     <section className="result-card admin-feedback">
       <div className="rc-head">
-        <h3>反馈记录</h3>
+        <h3>{tr("反馈记录")}</h3>
         {items && (
           <button className="btn-secondary" type="button" onClick={logout}>
-            退出
+            {tr("退出")}
           </button>
         )}
       </div>
       {items === null ? (
         <form onSubmit={submit}>
           <div className="field">
-            <label htmlFor="admin-token">管理员口令</label>
+            <label htmlFor="admin-token">{tr("管理员口令")}</label>
             <div className="input-action">
               <input
                 id="admin-token"
@@ -88,18 +89,18 @@ export default function AdminFeedbackPage() {
                 onChange={(e) => setToken(e.target.value)}
                 required
               />
-              <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "隐藏口令" : "显示口令"}>
+              <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? tr("隐藏口令") : tr("显示口令")}>
                 <Icon name={show ? "eyeOff" : "eye"} />
               </button>
             </div>
           </div>
           {error && <div className="error-box">{error}</div>}
           <button className="btn-primary" disabled={busy || token.length < 24}>
-            {busy ? "正在核对…" : "进入"}
+            {busy ? tr("正在核对…") : tr("进入")}
           </button>
         </form>
       ) : items.length === 0 ? (
-        <p className="muted">还没有反馈</p>
+        <p className="muted">{tr("还没有反馈")}</p>
       ) : (
         <div className="admin-list">
           {items.map((item) => (

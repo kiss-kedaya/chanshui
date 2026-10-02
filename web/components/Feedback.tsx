@@ -3,7 +3,9 @@ import { useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import Select from "@/components/Select";
 import { submitFeedback } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 export default function Feedback() {
+  const { t: tr } = useI18n();
   const dialog = useRef<HTMLDialogElement>(null),
     trigger = useRef<HTMLButtonElement>(null),
     pending = useRef(false);
@@ -48,11 +50,11 @@ export default function Feedback() {
         type="button"
         ref={trigger}
         className="feedback-trigger"
-        aria-label="提交反馈"
+        aria-label={tr("提交反馈")}
         onClick={open}
       >
         <Icon name="feedback" />
-        <span>提交反馈</span>
+        <span>{tr("提交反馈")}</span>
         <Icon name="arrow" />
       </button>
       <dialog
@@ -83,21 +85,21 @@ export default function Feedback() {
           <button
             type="button"
             className="icon-button"
-            aria-label="关闭反馈"
+            aria-label={tr("关闭反馈")}
             onClick={close}
             disabled={busy}
           >
             <Icon name="close" />
           </button>
         </div>
-        <h2 id="feedback-title">{success ? "反馈已收到" : "让检测更好一点"}</h2>
+        <h2 id="feedback-title">{success ? tr("反馈已收到") : tr("让检测更好一点")}</h2>
         {success ? (
           <div className="feedback-success">
-            <p>感谢反馈，我们会根据你留下的方式联系。</p>
-            <span className="muted">反馈编号</span>
+            <p>{tr("感谢反馈，我们会根据你留下的方式联系。")}</p>
+            <span className="muted">{tr("反馈编号")}</span>
             <code>{success}</code>
             <button className="btn-primary" onClick={close}>
-              完成
+              {tr("完成")}
             </button>
           </div>
         ) : (
@@ -108,23 +110,23 @@ export default function Feedback() {
             }}
           >
             <p className="feedback-description">
-              分享更好的检测方法，或告诉我们哪里出了问题。
+              {tr("分享更好的检测方法，或告诉我们哪里出了问题。")}
             </p>
             <div className="field">
-              <label htmlFor="feedback-kind">反馈类型</label>
+              <label htmlFor="feedback-kind">{tr("反馈类型")}</label>
               <Select
                 id="feedback-kind"
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
                 disabled={busy}
               >
-                <option value="bug">问题反馈</option>
-                <option value="method">检测方法</option>
-                <option value="suggestion">改进建议</option>
+                <option value="bug">{tr("问题反馈")}</option>
+                <option value="method">{tr("检测方法")}</option>
+                <option value="suggestion">{tr("改进建议")}</option>
               </Select>
             </div>
             <div className="field">
-              <label htmlFor="feedback-contact">联系方式</label>
+              <label htmlFor="feedback-contact">{tr("联系方式")}</label>
               <input
                 id="feedback-contact"
                 value={contact}
@@ -133,12 +135,12 @@ export default function Feedback() {
                 minLength={2}
                 maxLength={200}
                 disabled={busy}
-                placeholder="邮箱 / Telegram / QQ"
+                placeholder={tr("邮箱 / Telegram / QQ")}
                 autoComplete="off"
               />
             </div>
             <div className="field">
-              <label htmlFor="feedback-message">问题或建议</label>
+              <label htmlFor="feedback-message">{tr("问题或建议")}</label>
               <textarea
                 id="feedback-message"
                 value={message}
@@ -147,7 +149,7 @@ export default function Feedback() {
                 minLength={5}
                 maxLength={4000}
                 disabled={busy}
-                placeholder="描述现象或检测方法，请勿填写 API 密钥。"
+                placeholder={tr("描述现象或检测方法，请勿填写 API 密钥。")}
               />
             </div>
             {error && (
@@ -156,7 +158,7 @@ export default function Feedback() {
               </p>
             )}
             <div className="feedback-footer">
-              <span>联系方式仅用于反馈处理</span>
+              <span>{tr("联系方式仅用于反馈处理")}</span>
               <button
                 className="btn-primary"
                 type="submit"
@@ -164,7 +166,7 @@ export default function Feedback() {
                 aria-busy={busy}
               >
                 {busy && <Icon name="spinner" className="icon-spin" />}
-                {busy ? "提交中…" : "提交反馈"}
+                {busy ? tr("提交中…") : tr("提交反馈")}
               </button>
             </div>
           </form>

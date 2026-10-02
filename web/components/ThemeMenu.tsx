@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
+import { useI18n } from "@/lib/i18n";
 type Theme = { accent: "orange" | "mint"; mode: "light" | "dark" };
 export default function ThemeMenu() {
+  const { t: tr } = useI18n();
   const [theme, setTheme] = useState<Theme>({
       accent: "orange",
       mode: "light",
@@ -47,17 +49,17 @@ export default function ThemeMenu() {
         type="button"
         aria-expanded={open}
         aria-controls="theme-options"
-        aria-label="切换主题样式"
-        title="切换主题样式"
+        aria-label={tr("切换主题样式")}
+        title={tr("切换主题样式")}
         onClick={() => setOpen(!open)}
       >
         <span className={"theme-dot theme-dot-" + theme.accent} />
-        <span>外观</span>
+        <span>{tr("外观")}</span>
         <Icon name="chevron" width="12" height="12" />
       </button>
       {open && (
         <div id="theme-options" className="theme-popover">
-          <span className="theme-label">配色</span>
+          <span className="theme-label">{tr("配色")}</span>
           <div className="theme-choices">
             <button
               type="button"
@@ -65,7 +67,7 @@ export default function ThemeMenu() {
               onClick={() => change({ ...theme, accent: "orange" })}
             >
               <i className="theme-dot theme-dot-orange" />
-              暖橙
+              {tr("暖橙")}
             </button>
             <button
               type="button"
@@ -73,10 +75,10 @@ export default function ThemeMenu() {
               onClick={() => change({ ...theme, accent: "mint" })}
             >
               <i className="theme-dot theme-dot-mint" />
-              薄荷绿
+              {tr("薄荷绿")}
             </button>
           </div>
-          <span className="theme-label">明暗</span>
+          <span className="theme-label">{tr("明暗")}</span>
           <div className="theme-choices">
             <button
               type="button"
@@ -84,7 +86,7 @@ export default function ThemeMenu() {
               onClick={() => change({ ...theme, mode: "light" })}
             >
               <Icon name="sun" width="16" height="16" />
-              日间
+              {tr("日间")}
             </button>
             <button
               type="button"
@@ -92,7 +94,7 @@ export default function ThemeMenu() {
               onClick={() => change({ ...theme, mode: "dark" })}
             >
               <Icon name="moon" width="16" height="16" />
-              夜间
+              {tr("夜间")}
             </button>
           </div>
         </div>

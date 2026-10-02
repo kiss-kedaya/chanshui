@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
 export function splitError(text: string) {
   const index = text.indexOf("\n");
@@ -8,12 +9,13 @@ export function splitError(text: string) {
 }
 
 export default function ErrorFold({ text, compact = false }: { text: string; compact?: boolean }) {
+  const { t: tr } = useI18n();
   const { summary, detail } = splitError(text);
   const [open, setOpen] = useState(false);
   if (!detail) {
     return (
       <div className={compact ? "error-box error-compact" : "error-box"} role="alert">
-        {summary}
+        {tr(summary)}
       </div>
     );
   }
@@ -32,12 +34,12 @@ export default function ErrorFold({ text, compact = false }: { text: string; com
             <path d="M12 17h.01" />
           </svg>
         </span>
-        <span className="error-summary">{summary}</span>
+        <span className="error-summary">{tr(summary)}</span>
         <svg className="error-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
           <path d="m8 10 4 4 4-4" />
         </svg>
       </button>
-      {open && <p className="error-detail">{detail}</p>}
+      {open && <p className="error-detail">{tr(detail)}</p>}
     </div>
   );
 }

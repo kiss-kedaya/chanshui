@@ -2,6 +2,7 @@
 import { ReactNode, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Icon from "@/components/Icon";
+import { useI18n } from "@/lib/i18n";
 export default function Hint({
   text,
   label = "功能说明",
@@ -11,6 +12,7 @@ export default function Hint({
   label?: string;
   children?: ReactNode;
 }) {
+  const { t: tr } = useI18n();
   const id = useId(),
     ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false),
@@ -34,7 +36,7 @@ export default function Hint({
         ref={ref}
         type="button"
         className="hint-button"
-        aria-label={label}
+        aria-label={tr(label)}
         aria-describedby={open ? id : undefined}
         onFocus={show}
         onBlur={() => setOpen(false)}
@@ -53,7 +55,7 @@ export default function Hint({
             className="hint-popover"
             style={position}
           >
-            {text}
+            {tr(text)}
           </span>,
           document.body,
         )}

@@ -6,10 +6,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { reportPath } from "@/lib/report-view";
 import { getHistory, HistorySummary } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 const HISTORY_REFRESH_MS = 45000;
 
 export default function Sidebar() {
+  const { t: tr, locale } = useI18n();
   const [items, setItems] = useState<HistorySummary[]>([]),
     [error, setError] = useState("");
   const pathname = usePathname();
@@ -124,25 +126,25 @@ export default function Sidebar() {
       <Link href="/" className="sidebar-logo">
         <span className="logo-symbol">?</span>
         <span>
-          掺水<span className="logo-punct">？</span>
+          {tr("掺水")}<span className="logo-punct">？</span>
         </span>
       </Link>
-      <div className="sidebar-sub">模型检测台</div>
+      <div className="sidebar-sub">{tr("模型检测台")}</div>
       <Link
         className={"nav-home " + (pathname === "/" ? "active" : "")}
         href="/"
       >
-        <Icon name="scan" /> 新建检测
+        <Icon name="scan" /> {tr("新建检测")}
       </Link>
       <button
         className="mobile-history"
         aria-expanded={mobileOpen}
         onClick={() => setMobileOpen(!mobileOpen)}
       >
-        {mobileOpen ? "收起历史" : "历史记录"}
+        {mobileOpen ? tr("收起历史") : tr("历史记录")}
       </button>
       <div className="sidebar-title">
-        <span>全站检测历史</span>
+        <span>{tr("全站检测历史")}</span>
         <span>{ready ? items.filter((x) => (x.total_score ?? x.iq_score) !== 0).length : "·"}</span>
       </div>
       <div className="sidebar-list">
@@ -161,9 +163,9 @@ export default function Sidebar() {
               <i />
               <i />
             </div>
-            还没有检测记录
+            {tr("还没有检测记录")}
             <br />
-            <small>所有访客的检测报告都会出现在这里</small>
+            <small>{tr("所有访客的检测报告都会出现在这里")}</small>
           </div>
         ) : (
           items.filter((x) => (x.total_score ?? x.iq_score) !== 0).map((x) => (
@@ -175,13 +177,13 @@ export default function Sidebar() {
             >
               <div className="history-model">{x.model}</div>
               <div className="history-meta">
-                <b className="hist-badge" title={x.total_score == null ? "旧报告只有推理分" : "总分"}>
+                <b className="hist-badge" title={x.total_score == null ? tr("旧报告只有推理分") : tr("总分")}>
                   {(x.total_score ?? x.iq_score) == null
-                    ? "待完成"
-                    : (x.total_score ?? x.iq_score) + " 分"}
+                    ? tr("待完成")
+                    : tr("{n} 分", { n: (x.total_score ?? x.iq_score) ?? 0 })}
                 </b>
                 <time className="history-time" dateTime={x.created_at}>
-                  {new Date(x.created_at).toLocaleString("zh-CN", {
+                  {new Date(x.created_at).toLocaleString(locale, {
                     month: "2-digit",
                     day: "2-digit",
                     hour: "2-digit",
@@ -198,7 +200,7 @@ export default function Sidebar() {
             onClick={more}
             disabled={loadingMore}
           >
-            {loadingMore ? "正在加载…" : "加载更多全站记录"}
+            {loadingMore ? tr("正在加载…") : tr("加载更多全站记录")}
           </button>
         )}
       </div>
@@ -206,7 +208,7 @@ export default function Sidebar() {
         <Feedback />
         <span className="sidebar-retention">
           <Icon name="clock" width="14" height="14" />
-          报告保留 24 小时
+          {tr("报告保留 24 小时")}
         </span>
       </div>
     </aside>

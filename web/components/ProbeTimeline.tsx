@@ -4,6 +4,7 @@ import { Probe } from "@/lib/api";
 import Icon from "@/components/Icon";
 import ErrorFold from "@/components/ErrorFold";
 import ElapsedTime, { DetectionTiming } from "@/components/ElapsedTime";
+import { useI18n } from "@/lib/i18n";
 export default function ProbeTimeline({
   probes,
   status,
@@ -15,6 +16,7 @@ export default function ProbeTimeline({
   children?: ReactNode;
   timing?: DetectionTiming;
 }) {
+  const { t: tr } = useI18n();
   const questionProbes = probes.filter((p) => /^Q\d+$/.test(p.id));
   const finished = probes.filter(
     (p) => !["queued", "running"].includes(p.status),
@@ -23,22 +25,22 @@ export default function ProbeTimeline({
   const ratio = probes.length ? finished / probes.length : 0;
   const title =
     status === "queued"
-      ? "任务已排队"
+      ? tr("任务已排队")
       : status === "running"
-        ? "正在收集证据"
+        ? tr("正在收集证据")
         : status === "cancelled"
-          ? "检测已停止"
+          ? tr("检测已停止")
           : status === "partial"
-            ? "报告已生成，部分请求失败"
+            ? tr("报告已生成，部分请求失败")
             : status === "interrupted"
-              ? "检测已中断"
-              : "检测报告已生成";
+              ? tr("检测已中断")
+              : tr("检测报告已生成");
   return (
     <section
       className={
         "timeline " + (active ? "timeline-active" : "timeline-settled")
       }
-      aria-label="检测进度"
+      aria-label={tr("检测进度")}
     >
       <div className="section-heading">
         <div>
@@ -50,7 +52,7 @@ export default function ProbeTimeline({
           <div>
             <h2>{title}</h2>
             <p className="timeline-caption">
-              {timing ? <ElapsedTime timing={timing} active={active} /> : active ? "Job 已创建，可以分享。" : ""}
+              {timing ? <ElapsedTime timing={timing} active={active} /> : active ? tr("Job 已创建，可以分享。") : ""}
             </p>
           </div>
         </div>
@@ -62,7 +64,7 @@ export default function ProbeTimeline({
       <div
         className="progress-track"
         role="progressbar"
-        aria-label="已完成探针"
+        aria-label={tr("已完成探针")}
         aria-valuemin={0}
         aria-valuemax={probes.length}
         aria-valuenow={finished}
@@ -81,26 +83,26 @@ export default function ProbeTimeline({
                   (questionProbes.findIndex((q) => q.id === p.id) + 1) +
                   " · "
                 : ""}
-              {p.name}
+              {tr(p.name)}
             </span>
             <small className="probe-state">
               <span className="probe-dot" />
               {p.status === "queued"
-                ? "等待中"
+                ? tr("等待中")
                 : p.status === "running"
-                  ? "检测中"
+                  ? tr("检测中")
                   : p.status === "done"
                     ? (p.ms / 1000).toFixed(1) + "s"
                     : p.status === "cancelled"
-                      ? "已停止"
-                      : "请求失败"}
+                      ? tr("已停止")
+                      : tr("请求失败")}
             </small>
             {p.error && <ErrorFold text={p.error} compact />}
           </div>
         ))}
       </div>
       <span className="sr-only" role="status">
-        {title}，已完成 {finished} 项，共 {probes.length} 项
+        {tr("{title}，已完成 {done} 项，共 {total} 项", { title, done: finished, total: probes.length })}
       </span>
       {children}
     </section>

@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/lib/i18n";
 import {
   Children,
   isValidElement,
@@ -25,6 +26,7 @@ export default function Select({
   disabled?: boolean;
   loading?: boolean;
 }) {
+  const { t: tr } = useI18n();
   const generated = useId(),
     name = id || generated,
     root = useRef<HTMLDivElement>(null),
@@ -102,7 +104,7 @@ export default function Select({
         }}
       >
         <span className={value ? "" : "select-placeholder"}>
-          {current?.label || "请选择"}
+          {current?.label || tr("请选择")}
         </span>
         <span className="select-chevron" aria-hidden="true">
           {loading ? (
@@ -117,8 +119,8 @@ export default function Select({
           {!loading && opts.length > 6 && (
             <input
               autoFocus
-              aria-label="搜索模型"
-              placeholder="输入名称筛选模型…"
+              aria-label={tr("搜索模型")}
+              placeholder={tr("输入名称筛选模型…")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -137,7 +139,7 @@ export default function Select({
                   width="28"
                   height="28"
                 />
-                <span>正在获取模型…</span>
+                <span>{tr("正在获取模型…")}</span>
               </div>
             ) : visible.length ? (
               visible.map((o) => (
@@ -174,7 +176,7 @@ export default function Select({
                 </button>
               ))
             ) : (
-              <p className="select-empty">没有匹配的模型</p>
+              <p className="select-empty">{tr("没有匹配的模型")}</p>
             )}
           </div>
         </div>
