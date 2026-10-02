@@ -56,9 +56,6 @@ export default function Select({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
-  useEffect(() => {
-    if (loading) setOpen(true);
-  }, [loading]);
   function choose(o: Option) {
     onChange({ target: { value: o.value } });
     setOpen(false);
@@ -105,7 +102,7 @@ export default function Select({
         }}
       >
         <span className={value ? "" : "select-placeholder"}>
-          {loading ? "正在获取模型…" : current?.label || "请选择"}
+          {current?.label || "请选择"}
         </span>
         <span className="select-chevron" aria-hidden="true">
           {loading ? (

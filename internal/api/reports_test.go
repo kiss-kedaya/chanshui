@@ -22,7 +22,7 @@ func TestSavedReportShareIndependentFromTask(t *testing.T) {
 	s, up, fail, calls := testSetup(t)
 	fail.Store(true)
 	q := Request{BaseURL: up.URL + "/v1", Key: "do-not-share-this-key", Model: "claude-opus-5", Timeout: 10}
-	w := post(t, s.Handler(), "/api/detect", q)
+	w := post(t, s, "/api/detect", q)
 	var started map[string]string
 	json.Unmarshal(w.Body.Bytes(), &started)
 	task := waitTask(t, s, started["task_id"])
@@ -44,7 +44,7 @@ func TestSavedReportShareIndependentFromTask(t *testing.T) {
 	}
 	fail.Store(false)
 	before := calls.Load()
-	postToken(t, s.Handler(), "/api/detect/"+task.ID+"/retry", q, started["control_token"])
+	postToken(t, s, "/api/detect/"+task.ID+"/retry", q, started["control_token"])
 	waitTask(t, s, task.ID)
 	if task.ReportID != oldID || calls.Load()-before != 1 {
 		t.Fatal("retry replaced shared snapshot or repeated successful probes")
@@ -70,7 +70,7 @@ func TestSavedReportShareIndependentFromTask(t *testing.T) {
 		t.Fatal("global history missing newest report")
 	}
 	// Public IDs do not allow someone to cancel or retry the private task.
-	if r := post(t, restarted.Handler(), "/api/detect/"+oldID+"/cancel", map[string]any{}); r.Code != 403 {
+	if r := post(t, restarted, "/api/detect/"+oldID+"/cancel", map[string]any{}); r.Code != 403 {
 		t.Fatal("public ID permitted mutation")
 	}
 }

@@ -97,10 +97,15 @@ func (s *Server) client(q Request) (gateway.Client, error) {
 	return gateway.Client{BaseURL: q.BaseURL, Key: q.Key, HTTP: &copy, Mode: q.Protocol}, nil
 }
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
-	var q Request
-	if !decode(w, r, &q) {
+	var listed struct {
+		Protocol string `json:"protocol,omitempty"`
+		BaseURL  string `json:"base_url"`
+		Key      string `json:"key"`
+	}
+	if !s.readJSON(w, r, &listed, true, false) {
 		return
 	}
+	q := Request{Protocol: listed.Protocol, BaseURL: listed.BaseURL, Key: listed.Key}
 	if e := s.validate(&q, false); e != nil {
 		reply(w, 400, map[string]string{"error": e.Error()})
 		return
@@ -131,7 +136,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 		Thinking *gateway.ThinkingConfig `json:"thinking"`
 		Effort   string                  `json:"effort,omitempty"`
 	}
-	if !decode(w, r, &q) {
+	if !s.readJSON(w, r, &q, true, true) {
 		return
 	}
 	if e := s.validate(&q.Request, true); e != nil {

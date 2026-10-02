@@ -20,7 +20,7 @@ func (s *Server) feedback(w http.ResponseWriter, r *http.Request) {
 		Message string `json:"message"`
 		Kind    string `json:"kind"`
 	}
-	if !decode(w, r, &f) {
+	if !s.readJSON(w, r, &f, false, true) {
 		return
 	}
 	f.Contact = strings.TrimSpace(f.Contact)

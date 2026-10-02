@@ -183,7 +183,11 @@ export default function DetectPage() {
     setModelBusy(true);
     setError("");
     try {
-      const d = await getModels(settings());
+      const d = await getModels({
+        base_url: baseUrl.trim(),
+        key: key.trim(),
+        protocol,
+      });
       setModels(d.models);
       if (!d.models.includes(model)) setModel(d.models[0] || "");
       if (!d.models.length)
@@ -230,21 +234,13 @@ export default function DetectPage() {
 
   return (
     <div className="page-shell">
-      <header className="page-top">
-        <div className="eyebrow breadcrumb">
-          <Icon name="scan" />
-          <span>掺水？</span>
-          <Icon name="chevron" />
-          <b>模型审计</b>
-        </div>
+      <div className="opening">
+      <header className="opening-bar">
+        <span className="opening-mark">掺水？</span>
         <Link className="report-query-link" href="/history">
           按 ID 查报告
         </Link>
-        <span className="local-badge">
-          <i /> 提交即分享 · 报告保留24小时
-        </span>
       </header>
-      <div className="opening">
       <AuditHero />
       <section className="hero-card connection-card" id="connection">
         <div className="section-heading">

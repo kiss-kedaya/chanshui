@@ -10,7 +10,6 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"io"
 	mathrand "math/rand"
 	"net/http"
 	"net/url"
@@ -51,6 +50,7 @@ type Server struct {
 	store          *history.Store
 	bank           *fingerprint.Bank
 	opts           Options
+	keys           *sealer
 	draining       atomic.Bool
 }
 type Request struct {
@@ -139,7 +139,12 @@ func New(store *history.Store, opts Options) (*Server, error) {
 		return nil, fmt.Errorf("worker/queue/request 配置超过上限")
 	}
 	ctx, stop := context.WithCancel(context.Background())
-	s := &Server{tasks: map[string]*Task{}, store: store, bank: b, opts: opts, ctx: ctx, stop: stop, queue: make(chan queuedJob, opts.QueueSize), globalSem: make(chan struct{}, opts.MaxRequests)}
+	keys, e := newSealer()
+	if e != nil {
+		stop()
+		return nil, e
+	}
+	s := &Server{tasks: map[string]*Task{}, store: store, bank: b, opts: opts, ctx: ctx, stop: stop, queue: make(chan queuedJob, opts.QueueSize), globalSem: make(chan struct{}, opts.MaxRequests), keys: keys}
 	s.feedbackLimits = map[string]feedbackWindow{}
 	s.adminHits = map[string]feedbackWindow{}
 	s.loadAdminToken()
@@ -160,6 +165,7 @@ func New(store *history.Store, opts Options) (*Server, error) {
 }
 func (s *Server) Handler() http.Handler {
 	m := http.NewServeMux()
+	m.HandleFunc("GET /api/seal", s.sealKey)
 	m.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		queued, running := s.runtimeCounts()
 		reply(w, 200, map[string]any{"status": "ok", "mode": "local", "draining": s.draining.Load(), "queued_jobs": queued, "active_jobs": running})
@@ -206,23 +212,6 @@ func reply(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
-}
-func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		reply(w, 415, map[string]string{"error": "请求必须是 JSON"})
-		return false
-	}
-	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
-	d.DisallowUnknownFields()
-	if e := d.Decode(v); e != nil {
-		reply(w, 400, map[string]string{"error": "请求 JSON 或字段无效"})
-		return false
-	}
-	if d.Decode(new(any)) != io.EOF {
-		reply(w, 400, map[string]string{"error": "只接受一个 JSON 对象"})
-		return false
-	}
-	return true
 }
 func (s *Server) validate(q *Request, model bool) error {
 	q.BaseURL = strings.TrimRight(strings.TrimSpace(q.BaseURL), "/")
@@ -305,7 +294,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var q Request
-	if !decode(w, r, &q) {
+	if !s.readJSON(w, r, &q, true, true) {
 		return
 	}
 	if e := s.validate(&q, true); e != nil {
@@ -436,10 +425,6 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"error": "任务已过期，请新建检测"})
 		return
 	}
-	var q Request
-	if !decode(w, r, &q) {
-		return
-	}
 	t.mu.Lock()
 	if t.ExpiresAt <= time.Now().Unix() {
 		t.mu.Unlock()
@@ -449,6 +434,17 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 	if !s.authorize(r, t) {
 		t.mu.Unlock()
 		reply(w, 403, map[string]string{"error": "只有任务创建者可重跑检测"})
+		return
+	}
+	t.mu.Unlock()
+	var q Request
+	if !s.readJSON(w, r, &q, true, true) {
+		return
+	}
+	t.mu.Lock()
+	if t.ExpiresAt <= time.Now().Unix() {
+		t.mu.Unlock()
+		reply(w, 410, map[string]string{"error": "任务已超过24小时有效期"})
 		return
 	}
 	q.BaseURL, q.Model = t.BaseURL, t.Model

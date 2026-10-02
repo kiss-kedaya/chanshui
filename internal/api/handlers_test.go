@@ -91,10 +91,14 @@ func testSetup(t *testing.T) (*Server, *httptest.Server, *atomic.Bool, *atomic.I
 	t.Cleanup(s.Close)
 	return s, up, fail, calls
 }
-func post(t *testing.T, h http.Handler, path string, v any) *httptest.ResponseRecorder {
+func post(t *testing.T, s *Server, path string, v any) *httptest.ResponseRecorder {
 	t.Helper()
-	b, _ := json.Marshal(v)
+	b, e := s.keys.seal(v)
+	if e != nil {
+		t.Fatal(e)
+	}
 	r := httptest.NewRequest("POST", path, bytes.NewReader(b))
+	h := s.Handler()
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -120,7 +124,7 @@ func TestDetectHistoryIsolationRetry(t *testing.T) {
 	s, up, fail, calls := testSetup(t)
 	fail.Store(true)
 	q := Request{BaseURL: up.URL + "/v1", Key: "secret-never-persist", Model: "claude-opus-5", Timeout: 10}
-	w := post(t, s.Handler(), "/api/detect", q)
+	w := post(t, s, "/api/detect", q)
 	if w.Code != 202 {
 		t.Fatal(w.Body.String())
 	}
@@ -141,7 +145,7 @@ func TestDetectHistoryIsolationRetry(t *testing.T) {
 	}
 	before := calls.Load()
 	fail.Store(false)
-	w = postToken(t, s.Handler(), "/api/detect/"+task.ID+"/retry", q, d["control_token"])
+	w = postToken(t, s, "/api/detect/"+task.ID+"/retry", q, d["control_token"])
 	if w.Code != 202 {
 		t.Fatal(w.Body.String())
 	}
@@ -156,16 +160,23 @@ func TestDetectHistoryIsolationRetry(t *testing.T) {
 func TestValidationAndModels(t *testing.T) {
 	s, up, _, calls := testSetup(t)
 	for _, q := range []Request{{BaseURL: up.URL, Key: "secret", Model: "unknown"}, {BaseURL: "file:///tmp", Key: "secret", Model: "claude-opus-5"}, {BaseURL: up.URL + "?key=oops", Key: "secret", Model: "claude-opus-5"}} {
-		if w := post(t, s.Handler(), "/api/detect", q); w.Code != 400 {
+		if w := post(t, s, "/api/detect", q); w.Code != 400 {
 			t.Fatal(w.Code)
 		}
 	}
 	if calls.Load() != 0 {
 		t.Fatal("invalid request called upstream")
 	}
-	w := post(t, s.Handler(), "/api/models", Request{BaseURL: up.URL, Key: "secret"})
+	w := post(t, s, "/api/models", Request{BaseURL: up.URL, Key: "secret"})
 	if w.Code != 200 || strings.Contains(w.Body.String(), "unlisted-model") {
 		t.Fatal(w.Body.String())
+	}
+	plain := httptest.NewRequest("POST", "/api/models", strings.NewReader(`{"base_url":"`+up.URL+`","key":"secret","model":"claude-opus-5","protocol":"auto","concurrency":0,"timeout":360,"cache":false}`))
+	plain.Header.Set("Content-Type", "application/json")
+	pw := httptest.NewRecorder()
+	s.Handler().ServeHTTP(pw, plain)
+	if pw.Code != 400 || !strings.Contains(pw.Body.String(), "加密") {
+		t.Fatal(pw.Body.String())
 	}
 	r := httptest.NewRequest("POST", "/api/detect", strings.NewReader("{}"))
 	r.Header.Set("Origin", "https://untrusted.invalid")
@@ -191,12 +202,16 @@ func TestRedactionAndCancelledTransport(t *testing.T) {
 	_ = gateway.DefaultUA
 }
 
-func postToken(t *testing.T, h http.Handler, path string, v any, token string) *httptest.ResponseRecorder {
-	b, _ := json.Marshal(v)
+func postToken(t *testing.T, s *Server, path string, v any, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, e := s.keys.seal(v)
+	if e != nil {
+		t.Fatal(e)
+	}
 	r := httptest.NewRequest("POST", path, bytes.NewReader(b))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-Job-Token", token)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
+	s.Handler().ServeHTTP(w, r)
 	return w
 }

@@ -94,7 +94,7 @@ func TestAutomaticSyncValidatedSwapAndPersistence(t *testing.T) {
 func TestFeedbackStoredPrivatelyAndRateLimited(t *testing.T) {
 	s, _, _, _ := testSetup(t)
 	payload := map[string]string{"kind": "method", "contact": "fixture-contact@example.invalid", "message": "建议补充模型测试对照样本。"}
-	w := post(t, s.Handler(), "/api/feedback", payload)
+	w := post(t, s, "/api/feedback", payload)
 	if w.Code != 201 || strings.Contains(w.Body.String(), payload["contact"]) {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -106,15 +106,15 @@ func TestFeedbackStoredPrivatelyAndRateLimited(t *testing.T) {
 		t.Fatal("private feedback exposed", r.Code)
 	}
 	for i := 0; i < 4; i++ {
-		if r := post(t, s.Handler(), "/api/feedback", payload); r.Code != 201 {
+		if r := post(t, s, "/api/feedback", payload); r.Code != 201 {
 			t.Fatal(r.Code)
 		}
 	}
-	if r := post(t, s.Handler(), "/api/feedback", payload); r.Code != 429 {
+	if r := post(t, s, "/api/feedback", payload); r.Code != 429 {
 		t.Fatal("rate limit absent", r.Code)
 	}
 	payload["message"] = "密钥 sk-should-not-be-persisted"
-	if r := post(t, s.Handler(), "/api/feedback", payload); r.Code != 400 {
+	if r := post(t, s, "/api/feedback", payload); r.Code != 400 {
 		t.Fatal("secret accepted")
 	}
 }

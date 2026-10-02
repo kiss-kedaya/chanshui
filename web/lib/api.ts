@@ -1,3 +1,5 @@
+import { resetSealKey, sealJSON } from "@/lib/seal";
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 export interface DetectRequest {
   protocol?: "auto" | "chat" | "anthropic" | "openai";
@@ -219,6 +221,14 @@ export interface DetectVerdict {
     answer: string;
     error?: string;
     err?: string;
+    audit?: {
+      status: string;
+      pass: boolean | null;
+      http: number;
+      related: boolean;
+      recovered: string;
+      reason: string;
+    };
   } | null;
   iq: {
     score: number | null;
@@ -277,6 +287,7 @@ async function request<T>(
   body?: unknown,
   token?: string,
   signal?: AbortSignal,
+  retried = false,
 ): Promise<T> {
   const publicRead = body === undefined && /^\/api\/(detect\/|reports\/|history(?:\?|\/))/.test(path);
   // A capability-bearing read is private. Keep its validator separate from
@@ -300,7 +311,7 @@ async function request<T>(
             "content-type": "application/json",
             ...(token ? { "X-Job-Token": token } : {}),
           },
-          body: JSON.stringify(body),
+          body: await sealJSON(API_BASE, body),
           signal,
         },
   );
@@ -313,6 +324,10 @@ async function request<T>(
   }
   if (!res.ok) {
     if (cacheableRead) readSnapshots.delete(snapshotKey);
+    if (!retried && typeof data.error === "string" && data.error.includes("加密密钥已更新")) {
+      resetSealKey();
+      return request<T>(path, body, token, signal, true);
+    }
     throw Error(data.error || "请求失败 HTTP " + res.status);
   }
   const etag = res.headers.get("ETag");
@@ -355,8 +370,12 @@ export const getDetection = (id: number, signal?: AbortSignal, token?: string) =
   request<SavedReport>("/api/history/" + id, undefined, token, signal);
 export const getReport = (id: string, signal?: AbortSignal, token?: string) =>
   request<SavedReport>("/api/reports/" + encodeURIComponent(id), undefined, token, signal);
-export const getModels = (q: DetectRequest) =>
-  request<{ models: string[]; upstream_count: number }>("/api/models", q);
+export const getModels = (q: Pick<DetectRequest, "base_url" | "key" | "protocol">) =>
+  request<{ models: string[]; upstream_count: number }>("/api/models", {
+    base_url: q.base_url,
+    key: q.key,
+    protocol: q.protocol || "auto",
+  });
 export const ask = (
   q: DetectRequest,
   prompt: string,

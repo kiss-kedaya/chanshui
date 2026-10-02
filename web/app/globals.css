@@ -1080,7 +1080,7 @@ code {
 }
 .select-popover {
   position: absolute;
-  z-index: 65;
+  z-index: 120;
   left: 0;
   right: 0;
   top: calc(100% + 6px);
@@ -3016,6 +3016,8 @@ html[data-mode="dark"] .report-boot-card .stage-input::after {
   position: relative;
 }
 .opening {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(280px, 0.84fr) minmax(460px, 1.16fr);
   align-items: stretch;
@@ -3025,6 +3027,13 @@ html[data-mode="dark"] .report-boot-card .stage-input::after {
   border-radius: 18px;
   background: var(--card);
   box-shadow: 0 22px 50px #2a24120e;
+}
+.opening:has(.custom-select > button[aria-expanded="true"]) {
+  z-index: 100;
+  overflow: visible;
+}
+.custom-select:has(> button[aria-expanded="true"]) {
+  z-index: 8;
 }
 .opening .audit-hero {
   display: flex;
@@ -3159,5 +3168,133 @@ html[data-mode="dark"][data-accent="mint"] .hero-points li {
   }
   .hero-points {
     margin-top: 18px;
+  }
+}
+
+.opening > .opening-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  height: 52px;
+  margin: 0;
+  padding: 0 112px 0 26px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 86%, var(--bg));
+}
+.opening-mark {
+  font:
+    600 15px Georgia,
+    "Noto Serif SC",
+    "Songti SC",
+    serif;
+  letter-spacing: 0.08em;
+}
+.opening-bar .report-query-link {
+  margin-left: auto;
+  font-size: 13px;
+}
+.opening .hero-content h1 {
+  font-size: clamp(40px, 4.2vw, 56px);
+  line-height: 1.08;
+  letter-spacing: -1.8px;
+  max-width: 6.2em;
+}
+.opening .hero-content h1 span {
+  display: block;
+  margin: 6px 0 0;
+}
+.hero-points {
+  display: grid;
+  gap: 7px;
+  margin-top: 34px;
+}
+.hero-points li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #e6d5c2;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+.hero-points b {
+  font:
+    500 12px Consolas,
+    monospace;
+  color: #e7b17d;
+}
+.opening .step {
+  display: none;
+}
+.opening .section-heading {
+  margin-bottom: 14px;
+}
+.opening .section-heading h2 {
+  font-size: 20px;
+  letter-spacing: -0.45px;
+}
+.opening .detect-button {
+  min-width: 196px;
+  min-height: 48px;
+}
+.theme-menu {
+  top: 8px;
+  right: max(38px, calc((100% - 1160px) / 2));
+}
+.history-page > .hero-card:first-child {
+  margin-top: 10px;
+}
+html[data-accent="mint"] .hero-points li {
+  border: 0;
+  background: transparent;
+  color: #3c684f;
+}
+html[data-accent="mint"] .hero-points b {
+  color: #247e68;
+}
+html[data-mode="dark"] .opening > .opening-bar {
+  background: #1b1d18;
+}
+html[data-mode="dark"] .hero-points li {
+  color: #eadcc8;
+}
+html[data-mode="dark"] .hero-points b,
+html[data-mode="dark"][data-accent="mint"] .hero-points b {
+  color: var(--accent);
+}
+@media (max-width: 1100px) {
+  .opening > .opening-bar {
+    grid-column: 1;
+  }
+  .opening .hero-content h1 {
+    max-width: 8em;
+    font-size: 44px;
+  }
+  .theme-menu {
+    right: 24px;
+  }
+}
+@media (max-width: 760px) {
+  .opening > .opening-bar {
+    height: 48px;
+    padding: 0 92px 0 16px;
+  }
+  .opening .hero-content h1 {
+    font-size: 34px;
+    max-width: none;
+  }
+  .hero-points {
+    margin-top: 20px;
+    grid-template-columns: 1fr 1fr;
+  }
+  .theme-menu {
+    top: 14px;
+    right: 16px;
+  }
+  .opening .detect-button {
+    min-width: 0;
   }
 }

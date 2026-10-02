@@ -46,17 +46,17 @@ func TestRetryCapabilityIsJobScopedAndExpiredKeysFail(t *testing.T) {
 	s.mu.Unlock()
 	q := Request{BaseURL: up.URL, Model: task.Model, Key: "upstream-fixture"}
 	for _, token := range []string{"", otherKey, key + "x"} {
-		if w := postToken(t, s.Handler(), "/api/detect/"+id+"/retry", q, token); w.Code != 403 {
+		if w := postToken(t, s, "/api/detect/"+id+"/retry", q, token); w.Code != 403 {
 			t.Fatalf("unrelated or invalid key accepted: HTTP %d", w.Code)
 		}
 	}
-	if w := postToken(t, s.Handler(), "/api/detect/"+otherID+"/retry", q, key); w.Code != 403 {
+	if w := postToken(t, s, "/api/detect/"+otherID+"/retry", q, key); w.Code != 403 {
 		t.Fatalf("key for another job accepted: HTTP %d", w.Code)
 	}
-	if w := post(t, s.Handler(), "/api/detect/"+id+"/retry?control_token="+key, q); w.Code != 403 {
+	if w := post(t, s, "/api/detect/"+id+"/retry?control_token="+key, q); w.Code != 403 {
 		t.Fatal("key in URL accepted")
 	}
-	if w := postToken(t, s.Handler(), "/api/detect/"+id+"/cancel", map[string]any{}, key); w.Code != 403 {
+	if w := postToken(t, s, "/api/detect/"+id+"/cancel", map[string]any{}, key); w.Code != 403 {
 		t.Fatal("retry capability permitted cancellation")
 	}
 	for _, path := range []string{"/api/detect/" + id, "/api/reports/" + id} {
@@ -68,7 +68,7 @@ func TestRetryCapabilityIsJobScopedAndExpiredKeysFail(t *testing.T) {
 	task.mu.Lock()
 	task.ExpiresAt = time.Now().Add(-time.Second).Unix()
 	task.mu.Unlock()
-	if w := postToken(t, s.Handler(), "/api/detect/"+id+"/retry", q, key); w.Code != 410 {
+	if w := postToken(t, s, "/api/detect/"+id+"/retry", q, key); w.Code != 410 {
 		t.Fatalf("expired key accepted: HTTP %d", w.Code)
 	}
 	if calls.Load() != 0 {
@@ -97,7 +97,7 @@ func TestAllCompletedJobRevokesRetryCapability(t *testing.T) {
 		t.Fatal("completed database job retained capability", err)
 	}
 	q := Request{BaseURL: up.URL, Key: "upstream-fixture", Model: task.Model}
-	if w := postToken(t, s.Handler(), "/api/detect/"+id+"/retry", q, key); w.Code != 403 {
+	if w := postToken(t, s, "/api/detect/"+id+"/retry", q, key); w.Code != 403 {
 		t.Fatal("completed job accepted a revoked key")
 	}
 	if calls.Load() != 0 {
@@ -115,7 +115,7 @@ func TestRetryCannotChangeTargetOrForwardJobKey(t *testing.T) {
 	defer foreign.Close()
 	fail.Store(true)
 	q := Request{BaseURL: up.URL, Key: "upstream-fixture", Model: "claude-opus-5", Protocol: "anthropic", Timeout: 10}
-	w := post(t, s.Handler(), "/api/detect", q)
+	w := post(t, s, "/api/detect", q)
 	var created struct {
 		ID    string `json:"task_id"`
 		Token string `json:"control_token"`
@@ -128,7 +128,7 @@ func TestRetryCannotChangeTargetOrForwardJobKey(t *testing.T) {
 	fail.Store(false)
 	q.BaseURL, q.Model, q.Protocol = foreign.URL, "gemini-3.1-pro-preview", "chat"
 	before := calls.Load()
-	w = postToken(t, s.Handler(), "/api/detect/"+task.ID+"/retry", q, created.Token)
+	w = postToken(t, s, "/api/detect/"+task.ID+"/retry", q, created.Token)
 	if w.Code != 202 {
 		t.Fatal(w.Body.String())
 	}

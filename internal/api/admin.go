@@ -62,7 +62,7 @@ func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Token string `json:"token"`
 	}
-	if !decode(w, r, &body) {
+	if !s.readJSON(w, r, &body, false, true) {
 		return
 	}
 	host := adminClient(r)

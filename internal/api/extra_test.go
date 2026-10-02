@@ -12,7 +12,7 @@ import (
 func TestJobRetryKeyCannotCancel(t *testing.T) {
 	s, up, _, _ := testSetup(t)
 	q := Request{BaseURL: up.URL, Key: "cancel-fixture", Model: "claude-opus-5", Concurrency: 1, Timeout: 10}
-	w := post(t, s.Handler(), "/api/detect", q)
+	w := post(t, s, "/api/detect", q)
 	if w.Code != 202 {
 		t.Fatal(w.Body.String())
 	}
@@ -24,7 +24,7 @@ func TestJobRetryKeyCannotCancel(t *testing.T) {
 		task = v
 	}
 	s.mu.Unlock()
-	w = postToken(t, s.Handler(), "/api/detect/"+task.ID+"/cancel", map[string]any{}, started["control_token"])
+	w = postToken(t, s, "/api/detect/"+task.ID+"/cancel", map[string]any{}, started["control_token"])
 	if w.Code != 403 {
 		t.Fatal(w.Code)
 	}
@@ -39,7 +39,7 @@ func TestJobRetryKeyCannotCancel(t *testing.T) {
 func TestJSONSSEAndThinkingModes(t *testing.T) {
 	s, up, _, _ := testSetup(t)
 	for _, mode := range []any{nil, map[string]any{"type": "disabled"}, map[string]any{"type": "adaptive"}, map[string]any{"type": "adaptive", "display": "summarized"}, map[string]any{"type": "enabled", "budget_tokens": 2048}} {
-		w := post(t, s.Handler(), "/api/ask", map[string]any{"base_url": up.URL, "key": "ephemeral-fixture", "model": "claude-opus-5", "prompt": "hi", "thinking": mode, "effort": "medium"})
+		w := post(t, s, "/api/ask", map[string]any{"base_url": up.URL, "key": "ephemeral-fixture", "model": "claude-opus-5", "prompt": "hi", "thinking": mode, "effort": "medium"})
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "Answer") {
 			t.Fatal(w.Body.String())
 		}
@@ -49,7 +49,7 @@ func TestJSONSSEAndThinkingModes(t *testing.T) {
 		payload["key"] = "fixture"
 		payload["model"] = "claude-opus-5"
 		payload["prompt"] = "hi"
-		w := post(t, s.Handler(), "/api/ask", payload)
+		w := post(t, s, "/api/ask", payload)
 		if w.Code != 400 {
 			t.Fatal(w.Body.String())
 		}
