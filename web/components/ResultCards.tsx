@@ -333,11 +333,13 @@ export default function ResultCards({
               </div>
               {t.audit && (
                 <div className="mini-stats">
-                  <span>解出的思考 <b className={t.audit.related ? "good" : t.audit.pass === false ? "bad" : ""}>{t.audit.related ? "与题目相关" : t.audit.pass === false ? "不能确认" : "未完成"}</b></span>
+                  <span>
+                    签名模型{" "}
+                    <b className={t.audit.pass ? "good" : "bad"}>{t.audit.bound_model || "读不出"}</b>
+                  </span>
+                  <span className={t.audit.pass ? "good" : "bad"}>{t.audit.pass ? "与声称模型一致" : "与声称模型不一致"}</span>
                 </div>
               )}
-              {t.audit?.reason && <p className={t.audit.pass === false ? "bad" : "muted"}>{t.audit.reason}</p>}
-              {t.audit?.recovered && <Details label="查看解出的思考" value={t.audit.recovered} />}
               <Details label="查看思维链全文" value={t.thinking_text} />
               <Details label="查看完整 signature 签名" value={t.signature} />
               <Details label="探针回答" value={t.answer} />

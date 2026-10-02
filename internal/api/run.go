@@ -286,15 +286,13 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 				return map[string]string{"error": e.Error(), "reason": "请求失败，不能据此判定思考被清空"}, e
 			}
 			if strings.TrimSpace(v.Signature) != "" {
-				audit, _ := thinking.Audit(ctx, adapter, q.Model, thinking.ProbePrompt(), v.Signature)
+				audit := thinking.AuditSignature(q.Model, v.Signature)
 				v.Audit = &audit
 				if audit.Pass != nil && !*audit.Pass {
 					v.SignatureScore = 0
 					v.Score = v.SummaryScore
 					v.Pass = false
 					v.Reason = audit.Reason
-				} else if audit.Reason != "" {
-					v.Reason = v.Reason + "。" + audit.Reason
 				}
 			}
 			return v, nil

@@ -224,9 +224,7 @@ export interface DetectVerdict {
     audit?: {
       status: string;
       pass: boolean | null;
-      http: number;
-      related: boolean;
-      recovered: string;
+      bound_model: string;
       reason: string;
     };
   } | null;
