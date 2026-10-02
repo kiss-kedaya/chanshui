@@ -2860,3 +2860,153 @@ html[data-mode="dark"] .score-chip.is-zero {
   color: #ffc7b8;
   border-color: #6a3a30;
 }
+
+.report-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: calc(100vh - 148px);
+  margin: 0 0 22px;
+}
+.report-stage-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 188px;
+  padding: 34px 40px 32px;
+  border-radius: 12px;
+  background: #111110;
+  color: #f4efe6;
+  contain: paint;
+}
+.stage-status {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  color: #d9c3ab;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+.stage-spin {
+  width: 15px;
+  height: 15px;
+  border: 2px solid #ffffff24;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.stage-ghost,
+.stage-card i,
+.stage-card b,
+.stage-input,
+.stage-button {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.stage-ghost,
+.stage-card i,
+.stage-card b {
+  background: #2c2b26;
+}
+.stage-ghost::after,
+.stage-card i::after,
+.stage-card b::after,
+.stage-input::after,
+.stage-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 28%, #ffffff1f 50%, transparent 72%);
+  transform: translateX(-120%);
+  animation: history-shimmer 1.2s ease-in-out infinite;
+}
+.stage-ghost {
+  position: relative;
+  z-index: 1;
+}
+.stage-ghost.lg {
+  width: min(460px, 82%);
+  height: 40px;
+  margin-top: 26px;
+}
+.stage-ghost.sm {
+  width: 168px;
+  height: 14px;
+  margin-top: 16px;
+  opacity: 0.72;
+}
+.stage-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  flex: 1;
+}
+.stage-card {
+  min-height: 168px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--card);
+}
+.stage-card i,
+.stage-card b {
+  background: #efece3;
+}
+.stage-card i::after,
+.stage-card b::after,
+.stage-input::after {
+  background: linear-gradient(100deg, transparent 28%, #fff 50%, transparent 72%);
+}
+.stage-card i {
+  height: 11px;
+  width: 34%;
+  margin-bottom: 18px;
+}
+.stage-card b {
+  height: 34px;
+  width: 48%;
+  margin-bottom: 16px;
+}
+.stage-card i:last-child {
+  width: 76%;
+  margin-bottom: 0;
+}
+.stage-card:nth-child(2) i:first-child { width: 46%; }
+.stage-card:nth-child(3) b { width: 36%; }
+.stage-card:nth-child(4) i:last-child { width: 58%; }
+.report-boot-card .stage-input,
+.report-boot-card .stage-button {
+  background: #efece3;
+}
+.report-boot-card .stage-input {
+  flex: 1;
+  height: 47px;
+}
+.report-boot-card .stage-button {
+  width: 112px;
+  height: 47px;
+  background: var(--accent);
+  opacity: 0.82;
+}
+html[data-mode="dark"] .stage-card i,
+html[data-mode="dark"] .stage-card b,
+html[data-mode="dark"] .report-boot-card .stage-input {
+  background: #32362c;
+}
+html[data-mode="dark"] .stage-card i::after,
+html[data-mode="dark"] .stage-card b::after,
+html[data-mode="dark"] .report-boot-card .stage-input::after {
+  background: linear-gradient(100deg, transparent 28%, #ffffff18 50%, transparent 72%);
+}
+@media (max-width: 760px) {
+  .report-stage { min-height: 0; }
+  .report-stage-hero { padding: 26px 22px 24px; min-height: 156px; }
+  .stage-grid { grid-template-columns: 1fr; }
+  .stage-card { min-height: 132px; }
+  .report-boot-card .stage-button { width: 84px; }
+}

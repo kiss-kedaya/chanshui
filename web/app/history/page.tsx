@@ -10,6 +10,27 @@ import ResultCards from "@/components/ResultCards";
 import ProbeTimeline from "@/components/ProbeTimeline";
 import ErrorFold from "@/components/ErrorFold";
 import ReportShare from "@/components/ReportShare";
+import ReportStage from "@/components/ReportStage";
+function ReportBoot() {
+  return (
+    <div className="page-shell history-page">
+      <section className="hero-card report-boot-card">
+        <div className="section-heading">
+          <div>
+            <span className="step">报告</span>
+            <h2>按检测 ID 查看</h2>
+          </div>
+          <span className="muted">全站报告</span>
+        </div>
+        <div className="report-lookup" aria-hidden="true">
+          <span className="stage-input" />
+          <span className="stage-button" />
+        </div>
+      </section>
+      <ReportStage />
+    </div>
+  );
+}
 function HistoryDetailInner() {
   const search = useSearchParams(),
     router = useRouter();
@@ -107,15 +128,11 @@ function HistoryDetailInner() {
           </button>
         </form>
         {entryError && <ErrorFold text={entryError} />}
-        <h1 className="hero-title">
-          {data
-            ? data.model
-            : loading
-              ? "正在加载报告…"
-              : error
-                ? "报告不可用"
-                : "全站检测报告"}
-        </h1>
+        {data ? <h1 className="hero-title">{data.model}</h1> : null}
+        {!data && error ? <h1 className="hero-title">报告不可用</h1> : null}
+        {!data && !error && !loading ? (
+          <h1 className="hero-title">全站检测报告</h1>
+        ) : null}
         {data && (
           <p className="report-meta">
             <time dateTime={data.created_at}>{new Date(data.created_at).toLocaleString("zh-CN")}</time>
@@ -142,6 +159,7 @@ function HistoryDetailInner() {
         )}
         {error && <ErrorFold text={error} />}
       </section>
+      {loading && !data && !error ? <ReportStage /> : null}
       {data && (
         <ProbeTimeline
           probes={data.probes || []}
@@ -162,7 +180,7 @@ function HistoryDetailInner() {
 }
 export default function HistoryDetail() {
   return (
-    <Suspense fallback={<div className="hero-card">正在加载报告…</div>}>
+    <Suspense fallback={<ReportBoot />}>
       <HistoryDetailInner />
     </Suspense>
   );
