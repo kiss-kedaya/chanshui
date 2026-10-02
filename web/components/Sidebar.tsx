@@ -189,9 +189,6 @@ export default function Sidebar() {
                   })}
                 </time>
               </div>
-              <div className="history-report-id" title={x.report_id}>
-                ID {x.report_id.slice(0, 12)}…
-              </div>
             </Link>
           ))
         )}

@@ -384,8 +384,10 @@ export default function ResultCards({
       <section className="result-card">
         <div className="rc-head">
           <CardTitle title="推理表现" label="评分说明" text={q?.note} />
-          <ScoreShare verdict={scored} part="iq" />
-          <span className="card-number">04</span>
+          <span className="rc-score">
+            <ScoreShare verdict={scored} part="iq" />
+            <span className="card-number">04</span>
+          </span>
         </div>
         {!q ? (
           <ResultSkeleton label={loading ? "推理测试中…" : "暂无结果"} />
@@ -454,8 +456,10 @@ export default function ResultCards({
       {(showCache || cache) && <section className="result-card cache-card">
         <div className="rc-head">
           <h3>缓存读写验证</h3>
-          <ScoreShare verdict={scored} part="cache" />
-          <span className="card-number">CACHE</span>
+          <span className="rc-score">
+            <ScoreShare verdict={scored} part="cache" />
+            <span className="card-number">CACHE</span>
+          </span>
         </div>
         {!v.cache ? (
           <ResultSkeleton label={loading ? "缓存验证中…" : "暂无结果"} />

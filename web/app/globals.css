@@ -252,13 +252,6 @@ code {
     monospace;
   white-space: nowrap;
 }
-.history-report-id {
-  font:
-    10px/1.7 Consolas,
-    monospace;
-  color: #aaa89b;
-  margin-top: 6px;
-}
 .history-time {
   font-size: 16px;
   color: #c8c6ba;
