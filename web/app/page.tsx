@@ -244,6 +244,7 @@ export default function DetectPage() {
           <i /> 提交即分享 · 报告保留24小时
         </span>
       </header>
+      <div className="opening">
       <AuditHero />
       <section className="hero-card connection-card" id="connection">
         <div className="section-heading">
@@ -436,6 +437,7 @@ export default function DetectPage() {
           {error && <ErrorFold text={error} />}
         </form>
       </section>
+      </div>
       <div className="bank-strip">
         <span>
           <Icon name="layers" /> <b>{stats?.fingerprint_count ?? "—"}</b>{" "}

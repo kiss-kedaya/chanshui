@@ -55,8 +55,8 @@ export default function RootLayout({
           跳到主内容
         </a>
         <Sidebar />
-        <ThemeMenu />
         <main className="main" id="main-content">
+          <ThemeMenu />
           {children}
         </main>
       </body>
