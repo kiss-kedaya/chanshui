@@ -690,9 +690,10 @@ code {
   color: #373a32;
   font-size: 15px;
   transition:
-    border-color 0.18s,
-    box-shadow 0.18s,
-    background 0.18s;
+    border-color var(--t-base) ease,
+    box-shadow var(--t-base) var(--ease-out),
+    background var(--t-base) ease,
+    transform var(--t-base) var(--ease-out);
 }
 .field input:hover,
 .field textarea:hover {
@@ -703,8 +704,9 @@ code {
 .report-lookup > input:focus {
   outline: 0;
   border-color: #b19b83;
-  box-shadow: 0 0 0 3px #b1998020;
+  box-shadow: 0 0 0 4px #b1998026;
   background: #fff;
+  transform: translateY(-1px);
 }
 .field input::placeholder,
 .field textarea::placeholder,
@@ -835,6 +837,20 @@ code {
 }
 .icon-button:hover {
   background: #f6f4ed;
+  border-color: #cbc8b8;
+  transform: translateY(var(--lift));
+  box-shadow: var(--shadow-hover);
+}
+.icon-button:active {
+  transform: translateY(1px) scale(var(--press));
+  box-shadow: none;
+  transition-duration: var(--t-press);
+}
+.icon-button svg {
+  transition: transform var(--t-base) var(--ease-out);
+}
+.icon-button:hover svg {
+  transform: scale(1.1);
 }
 .model-refresh {
   height: 47px;
@@ -1079,11 +1095,19 @@ code {
   color: #363a31;
   font-size: 15px;
   transition:
-    border-color 0.18s,
-    box-shadow 0.18s;
+    border-color var(--t-base) ease,
+    box-shadow var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out);
 }
 .custom-select > button:hover:not(:disabled) {
   border-color: #c8c5b8;
+  transform: translateY(var(--lift));
+  box-shadow: var(--shadow-hover);
+}
+.custom-select > button:active:not(:disabled) {
+  transform: translateY(1px) scale(var(--press));
+  box-shadow: none;
+  transition-duration: var(--t-press);
 }
 .custom-select > button[aria-expanded="true"] {
   border-color: #a7b7bd;
@@ -1099,7 +1123,7 @@ code {
 }
 .select-chevron > svg:not(.icon-spin) {
   transform: rotate(90deg);
-  transition: transform 0.2s;
+  transition: transform var(--t-base) var(--ease-out);
 }
 .custom-select
   > button[aria-expanded="true"]
@@ -4026,10 +4050,21 @@ html[data-mode="dark"] .report-lookup > input:focus {
   border-radius: 8px;
   background: var(--card);
   font-size: 13px;
+  transition:
+    border-color var(--t-fast) ease,
+    background var(--t-fast) ease,
+    transform var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out);
+}
+.api-status-tabs button:hover {
+  border-color: #cbc8b8;
+  transform: translateY(var(--lift));
+  box-shadow: var(--shadow-hover);
 }
 .api-status-tabs button[aria-selected="true"] {
   border-color: var(--accent);
   background: var(--accent-light);
+  box-shadow: 0 0 0 3px #bd502f1f;
 }
 .api-status-tabs .ok { color: var(--ok); font-weight: 700; }
 .api-status-tabs .bad { color: var(--bad); font-weight: 700; }
