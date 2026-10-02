@@ -11,6 +11,15 @@
   --warn: #906727;
   --ok: #43785c;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* 统一动效令牌：快起慢收，按下用短时长，和 .agent-onboard 同一套手感 */
+  --ease-press: cubic-bezier(0.3, 0, 0.2, 1);
+  --t-fast: 120ms;
+  --t-press: 90ms;
+  --t-base: 240ms;
+  --lift: -1px;
+  --press: 0.97;
+  --shadow-rest: 0 1px 2px rgba(23, 23, 22, 0.05), 0 0 0 1px rgba(23, 23, 22, 0.07);
+  --shadow-hover: 0 8px 16px rgba(23, 23, 22, 0.09), 0 0 0 1px rgba(23, 23, 22, 0.12);
 }
 * {
   box-sizing: border-box;
@@ -224,14 +233,20 @@ code {
   text-decoration: none;
   border: 1px solid transparent;
   transition:
-    background 0.18s,
-    border-color 0.18s,
-    transform 0.18s;
+    background var(--t-base) ease,
+    border-color var(--t-base) ease,
+    transform var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out);
 }
 .hist-item:hover {
   background: #282821;
   border-color: #3b3930;
-  transform: translateX(2px);
+  transform: translateX(3px);
+  box-shadow: 0 4px 12px #0000002e;
+}
+.hist-item:active {
+  transform: translateX(3px) scale(var(--press));
+  transition-duration: var(--t-press);
 }
 .history-model {
   font-size: 13px;
@@ -756,20 +771,16 @@ code {
   text-decoration: none;
   white-space: nowrap;
   transition:
-    background 0.15s,
-    transform 0.15s,
-    box-shadow 0.18s,
-    border-color 0.15s;
-}
-.btn-secondary {
-  border: 1px solid #e2e1d6;
-  background: #fff;
-  color: #646354;
-  padding: 10px 15px;
+    background var(--t-base) ease,
+    transform var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out),
+    border-color var(--t-base) ease;
 }
 .btn-secondary:hover:not(:disabled) {
   background: #f6f4ed;
   border-color: #cbc8b8;
+  transform: translateY(var(--lift));
+  box-shadow: var(--shadow-hover);
 }
 .btn-primary {
   border: 1px solid #b4512f;
@@ -780,16 +791,29 @@ code {
 }
 .btn-primary:hover:not(:disabled) {
   background: #a54427;
-  box-shadow: 0 6px 14px #8e412e1f;
-  transform: translateY(-1px);
+  box-shadow:
+    0 8px 18px #8e412e26,
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transform: translateY(var(--lift));
 }
 .btn-primary:active:not(:disabled),
 .btn-secondary:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(var(--press));
+  box-shadow: 0 2px 4px #8e412e14;
+  transition-duration: var(--t-press);
 }
-.btn-primary svg {
-  width: 17px;
-  height: 17px;
+.btn-primary svg,
+.btn-secondary svg {
+  transition: transform var(--t-base) var(--ease-out);
+}
+.btn-primary:hover:not(:disabled) svg,
+.btn-secondary:hover:not(:disabled) svg {
+  transform: scale(1.08);
+}
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, #fff);
+  outline-offset: 2px;
 }
 .detect-button {
   min-width: 163px;
@@ -1005,11 +1029,20 @@ code {
   background: transparent;
   color: #9b9785;
   cursor: help;
+  transition:
+    color var(--t-fast) ease,
+    background var(--t-fast) ease,
+    transform var(--t-base) var(--ease-out);
 }
 .hint-button:hover,
 .hint-button:focus {
   color: #a75c3b;
   background: #f5f0e7;
+  transform: translateY(var(--lift)) scale(1.06);
+}
+.hint-button:active {
+  transform: scale(var(--press));
+  transition-duration: var(--t-press);
 }
 .hint-popover {
   position: fixed;
@@ -1307,8 +1340,9 @@ code {
   position: relative;
   animation: appear 0.42s var(--ease-out) both;
   transition:
-    border-color 0.18s,
-    box-shadow 0.18s;
+    border-color var(--t-base) ease,
+    box-shadow var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out);
 }
 .result-card:nth-child(2) {
   animation-delay: 0.05s;
@@ -1324,7 +1358,8 @@ code {
 }
 .result-card:hover {
   border-color: #d8d2c1;
-  box-shadow: 0 6px 20px #51401f04;
+  box-shadow: 0 10px 26px #51401f14;
+  transform: translateY(-2px);
 }
 .rc-head {
   display: flex;
@@ -3841,9 +3876,22 @@ html[data-mode="dark"] .report-lookup > input:focus {
   color: var(--ink);
   text-align: left;
   font-size: 13px;
+  transition:
+    background var(--t-fast) ease,
+    transform var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out);
+}
+.api-tree button:hover {
+  background: #f2efe7;
+  transform: translateX(3px);
+}
+.api-tree button:active {
+  transform: translateX(3px) scale(var(--press));
+  transition-duration: var(--t-press);
 }
 .api-tree button[aria-current="page"] {
   background: var(--accent-light);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .api-tree .verb,
 .verb-pill {
@@ -3891,6 +3939,10 @@ html[data-mode="dark"] .report-lookup > input:focus {
   border: 0;
   background: transparent;
   color: inherit;
+  transition:
+    color var(--t-fast) ease,
+    background var(--t-fast) ease,
+    transform var(--t-base) var(--ease-out);
 }
 .api-url button,
 .api-block-head button {
@@ -3899,7 +3951,10 @@ html[data-mode="dark"] .report-lookup > input:focus {
   font-size: 12px;
 }
 .api-url button:hover,
-.api-block-head button:hover { color: var(--accent); }
+.api-block-head button:hover { color: var(--accent); background: var(--accent-light); }
+.api-url button:active,
+.api-block-head button:active,
+.api-status-tabs button:active { transform: scale(var(--press)); transition-duration: var(--t-press); }
 .api-summary {
   margin: 12px 0 0;
   color: var(--muted);
