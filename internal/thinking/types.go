@@ -43,18 +43,20 @@ type Replay struct {
 // Metrics mirrors gateway.Metrics (subset of fields needed for the
 // thinking check plus the shared bookkeeping fields).
 type Metrics struct {
-	Status         int
-	Ms             int64
-	Err            string
-	Answer         string
-	Blocks         string
-	ThinkLen       int
-	SigLen         int
-	ThinkingText   string
-	Signature      string
-	InputTokens    int
-	OutputTokens   int
-	ThinkingTokens int
+	Status          int
+	Ms              int64
+	Err             string
+	Answer          string
+	Blocks          string
+	ThinkLen        int
+	SigLen          int
+	ThinkingText    string
+	Signature       string
+	InputTokens     int
+	OutputTokens    int
+	ThinkingTokens  int
+	StopReason      string
+	RefusalCategory string
 }
 
 // Caller mirrors the gateway client surface used by Check.

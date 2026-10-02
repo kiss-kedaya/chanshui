@@ -63,7 +63,7 @@ func (a thinkAdapter) CallMessages(ctx context.Context, q thinking.CallRequest) 
 		}
 	}
 	m, e := a.g.CallMessages(ctx, req)
-	return thinking.Metrics{Status: m.Status, Ms: m.Ms, Err: m.Err, Answer: m.Answer, ThinkLen: m.ThinkLen, SigLen: m.SigLen, ThinkingTokens: m.ThinkingTokens, ThinkingText: m.ThinkingText, Signature: m.Signature}, e
+	return thinking.Metrics{Status: m.Status, Ms: m.Ms, Err: m.Err, Answer: m.Answer, ThinkLen: m.ThinkLen, SigLen: m.SigLen, ThinkingTokens: m.ThinkingTokens, ThinkingText: m.ThinkingText, Signature: m.Signature, StopReason: m.StopReason, RefusalCategory: m.RefusalCategory}, e
 }
 
 type behaviorAdapter struct {

@@ -52,6 +52,13 @@ func Audit(ctx context.Context, c Caller, model, priorUser, signature string) (S
 			out.Reason = "签名解出请求没有完成"
 			continue
 		}
+		if extractionRefused(got) {
+			fail := false
+			out.Pass = &fail
+			out.Status = "fail"
+			out.Reason = "上游拒绝复述封存思考，不能确认与题目相关"
+			return out, nil
+		}
 		text := unsealedText(got.Answer, got.ThinkingText)
 		out.Recovered = clip(text, 800)
 		if text == "" || (refused(text) && !relatedToProbe(text)) {
@@ -67,12 +74,12 @@ func Audit(ctx context.Context, c Caller, model, priorUser, signature string) (S
 			out.Reason = "解出的思考与当前题目不相关"
 			continue
 		}
-		pass := true
-		out.Pass = &pass
-		out.Status = "pass"
-		out.Related = true
-		out.Reason = "解出的思考与当前题目相关"
-		return out, nil
+		fail := false
+		out.Pass = &fail
+		out.Status = "fail"
+		out.Related = false
+		out.Reason = "只得到题目本身就能算出的结果，没有带出封存思考"
+		continue
 	}
 	fail := false
 	out.Pass = &fail
@@ -139,6 +146,13 @@ func refused(text string) bool {
 		if strings.Contains(l, marker) {
 			return true
 		}
+	}
+	return false
+}
+
+func extractionRefused(m Metrics) bool {
+	if strings.EqualFold(m.StopReason, "refusal") || m.RefusalCategory != "" {
+		return true
 	}
 	return false
 }

@@ -16,7 +16,7 @@ func (s *scriptCaller) CallMessages(ctx context.Context, req CallRequest) (Metri
 	return s.reply(req), nil
 }
 
-func TestAuditRelatedThinkingPasses(t *testing.T) {
+func TestAuditRecomputedAnswerDoesNotProveUnseal(t *testing.T) {
 	s := &scriptCaller{reply: func(req CallRequest) Metrics {
 		if req.Replay == nil || req.Replay.PriorUser != probePrompt || req.Replay.Signature != "real" || req.Thinking != nil || req.Stream {
 			t.Fatalf("replay shape %+v", req)
@@ -24,7 +24,7 @@ func TestAuditRelatedThinkingPasses(t *testing.T) {
 		return Metrics{Status: 200, Answer: "17 19 23 n=7417"}
 	}}
 	got, err := Audit(context.Background(), s, "claude-sonnet-4-5", probePrompt, "real")
-	if err != nil || got.Pass == nil || !*got.Pass || !got.Related {
+	if err != nil || got.Pass == nil || *got.Pass || got.Reason != "只得到题目本身就能算出的结果，没有带出封存思考" {
 		t.Fatalf("%v %+v", err, got)
 	}
 	if strings.Contains(got.Recovered, "real") {
@@ -59,5 +59,18 @@ func TestAuditRefusalIsNotRelated(t *testing.T) {
 	got, err := Audit(context.Background(), s, "claude-sonnet-4-5", probePrompt, "real")
 	if err != nil || got.Pass == nil || *got.Pass || got.Reason != "签名没有解出思考，不能确认与题目相关" {
 		t.Fatalf("%v %+v", err, got)
+	}
+}
+
+func TestAuditExtractionRefusal(t *testing.T) {
+	s := &scriptCaller{reply: func(req CallRequest) Metrics {
+		return Metrics{Status: 200, StopReason: "refusal", RefusalCategory: "reasoning_extraction"}
+	}}
+	got, err := Audit(context.Background(), s, "claude-sonnet-4-6", probePrompt, "real")
+	if err != nil || got.Pass == nil || *got.Pass || got.Reason != "上游拒绝复述封存思考，不能确认与题目相关" {
+		t.Fatalf("%v %+v", err, got)
+	}
+	if len(s.calls) != 1 {
+		t.Fatalf("refusal should stop, calls=%d", len(s.calls))
 	}
 }

@@ -80,6 +80,7 @@ type Metrics struct {
 	Answer             string
 	Blocks             []string
 	StopReason         string
+	RefusalCategory    string
 	InputTokens        int
 	OutputTokens       int
 	OutputReported     bool
@@ -347,10 +348,14 @@ type apiErrorInner struct {
 }
 
 type messagesResponse struct {
-	Content    []contentBlock `json:"content"`
-	Model      string         `json:"model"`
-	StopReason string         `json:"stop_reason"`
-	Usage      usageBlock     `json:"usage"`
+	Content     []contentBlock `json:"content"`
+	Model       string         `json:"model"`
+	StopReason  string         `json:"stop_reason"`
+	StopDetails *struct {
+		Type     string `json:"type"`
+		Category string `json:"category"`
+	} `json:"stop_details"`
+	Usage usageBlock `json:"usage"`
 }
 
 type contentBlock struct {
@@ -435,6 +440,13 @@ func parseMessagesBody(raw []byte, m *Metrics) error {
 		}
 	}
 	m.StopReason = resp.StopReason
+	if resp.StopDetails != nil {
+		if resp.StopDetails.Category != "" {
+			m.RefusalCategory = resp.StopDetails.Category
+		} else if resp.StopDetails.Type == "refusal" {
+			m.RefusalCategory = "refusal"
+		}
+	}
 	m.InputTokens = resp.Usage.InputTokens
 	m.OutputTokens = resp.Usage.OutputTokens
 	if resp.Usage.CacheCreation != nil {
