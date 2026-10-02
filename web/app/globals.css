@@ -2093,25 +2093,31 @@ tr:hover td {
     max-height: 270px;
     overflow: auto;
   }
+  .sidebar {
+    min-height: 118px;
+  }
   .sidebar-bottom {
-    position: fixed;
-    left: 14px;
-    bottom: 14px;
-    z-index: 35;
-    margin: 0;
+    position: static;
+    z-index: 1;
+    margin: 12px 0 0;
     padding: 0;
     border: 0;
+    width: auto;
+    align-self: flex-start;
   }
   .feedback-trigger {
     width: auto;
-    min-width: 43px;
-    min-height: 43px;
-    padding: 11px;
-    background: #27261ef5;
-    border-color: #4b4534;
-    box-shadow: 0 4px 15px #0002;
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 12px;
+    background: transparent;
+    border-color: #474232;
+    border-radius: 7px;
+    box-shadow: none;
   }
-  .feedback-trigger > span,
+  .feedback-trigger > span {
+    display: inline;
+  }
   .feedback-trigger > svg:last-child {
     display: none;
   }
@@ -2322,7 +2328,7 @@ tr:hover td {
     padding: 17px 19px;
   }
   .page-shell {
-    padding-bottom: 76px;
+    padding-bottom: 28px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
