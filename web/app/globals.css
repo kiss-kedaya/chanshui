@@ -3049,8 +3049,12 @@ html[data-mode="dark"] .report-boot-card .stage-input::after {
   padding: 32px 34px 28px;
 }
 .opening .hero-content h1 {
-  max-width: 9em;
-  margin: 16px 0 12px;
+  max-width: none;
+  margin: 12px 0 10px;
+}
+.opening .hero-content h1 span {
+  display: block;
+  margin: 2px 0 0;
 }
 .opening .hero-content > p {
   max-width: 24em;
@@ -3059,7 +3063,7 @@ html[data-mode="dark"] .report-boot-card .stage-input::after {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 28px 0 0;
+  margin: 18px 0 0;
   padding: 0;
   list-style: none;
 }
