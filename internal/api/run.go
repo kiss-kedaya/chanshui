@@ -7,6 +7,7 @@ import (
 	"chanzhushui/internal/gateway"
 
 	"chanzhushui/internal/inject"
+	"chanzhushui/internal/injection"
 	"chanzhushui/internal/integrity"
 	"chanzhushui/internal/iq"
 	"chanzhushui/internal/knowledge"
@@ -228,6 +229,8 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 				t.Verdict.Cache = result
 			case "injection":
 				t.Verdict.Injection = result
+			case "hidden":
+				t.Verdict.Hidden = result
 			case "fingerprint":
 				t.Verdict.Fingerprint = result
 			case "thinking":
@@ -257,6 +260,13 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		v, e := inject.Measure(ctx, g, q.Model, q.Timeout)
 		if e != nil {
 			return map[string]any{"error": e.Error(), "points": v.Points}, e
+		}
+		return v, nil
+	})
+	job("hidden", func() (any, error) {
+		v, e := injection.Detect(ctx, &g, q.Model, q.Timeout)
+		if e != nil {
+			return map[string]any{"error": e.Error(), "score": v.Score}, e
 		}
 		return v, nil
 	})
@@ -530,6 +540,21 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		}
 	}
 	toolPoints, toolKnown := boolPart(v.Tools)
+	hiddenPoints, hiddenKnown := 0, false
+	if m, ok := v.Hidden.(map[string]any); ok {
+		errText, _ := m["error"].(string)
+		if errText == "" {
+			// 只有拿到明确判定（injected/suspect/clean）才计入分数；
+			// unknown/error 视为未完成，按 0 分计入，不伪装通过。
+			switch status, _ := m["status"].(string); status {
+			case "clean", "suspect", "injected":
+				hiddenKnown = true
+				if n, ok := asInt(m["score"]); ok {
+					hiddenPoints = n
+				}
+			}
+		}
+	}
 	webApply, webPoints, webKnown := webPart(v.Web)
 	thinkApply := gateway.IsClaude(model)
 	thinkPoints, thinkKnown := 0, false
@@ -575,6 +600,7 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		{Key: "fingerprint", Label: "模型指纹归因", Applicable: want("fingerprint"), Known: fpKnown, Points: fpPoints, MaxPoints: 10},
 		{Key: "iq", Label: "推理表现", Applicable: want("iq"), Known: iqKnown, Points: iqPoints, MaxPoints: 100},
 		{Key: "injection", Label: "注入大小", Applicable: want("injection"), Known: injKnown, Points: injPoints, MaxPoints: 10},
+		{Key: "hidden", Label: "隐藏指令检测", Applicable: want("hidden"), Known: hiddenKnown, Points: hiddenPoints, MaxPoints: 10},
 		{Key: "tools", Label: "工具调用", Applicable: want("tools"), Known: toolKnown, Points: toolPoints, MaxPoints: 1},
 		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},
 		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: 5},

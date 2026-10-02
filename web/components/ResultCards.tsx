@@ -75,6 +75,7 @@ export default function ResultCards({
     f = v.fingerprint,
     t = v.thinking,
     q = v.iq;
+  const hidden = v.hidden;
   const knowledge = v.knowledge;
   const integrity = v.integrity;
   const claude = (model || "").toLowerCase().startsWith("claude-");
@@ -201,6 +202,75 @@ export default function ResultCards({
               </>
             )}
             <Details label={tr("数字挑战原始证据")} value={f.evidence} />
+          </>
+        )}
+      </section>
+      <section className="result-card">
+        <div className="rc-head">
+          <CardTitle
+            title={tr("隐藏指令检测")}
+            label={tr("隐藏指令检测说明")}
+            text={tr("按多种问法的自述一致性与自报知识截止日期判断上游是否在用户消息前注入了隐藏指令。不依赖上游上报的 token 数，因此不受计数抹平影响。")}
+          />
+          <span className="rc-score">
+            <ScoreShare verdict={scored} part="hidden" />
+            <span className="card-number">02</span>
+          </span>
+        </div>
+        {!hidden ? (
+          <ResultSkeleton label={loading ? tr("追问中…") : tr("暂无结果")} />
+        ) : hidden.error ? (
+          <ErrorFold text={hidden.error} />
+        ) : (
+          <>
+            <div className="metric-line">
+              <strong>{hidden.status === "injected" ? tr("检出隐藏指令") : hidden.status === "clean" ? tr("未检出") : hidden.status === "suspect" ? tr("存疑") : tr("无法判定")}</strong>
+              <b className="score-chip">{hidden.score + " / " + hidden.max_score}</b>
+            </div>
+            <div className="mini-stats">
+              <span>
+                {tr("承认存在前置指令")} <b>{hidden.ack_count}</b>
+              </span>
+              <span>
+                {tr("否认")} <b>{hidden.deny_count}</b>
+              </span>
+              {hidden.identity?.claimed_cutoff ? (
+                <span>
+                  {tr("自报截止")} <b>{hidden.identity.claimed_cutoff}</b>
+                  {hidden.identity.cutoff_mismatch ? <> {tr("≠ 官方 {v}", { v: hidden.identity.expected_cutoff || "?" })}</> : null}
+                </span>
+              ) : null}
+            </div>
+            {hidden.signals.length ? (
+              <ul className="mini-list">
+                {hidden.signals.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            ) : null}
+            <details className="fold">
+              <summary>{tr("各问法原始回答")}</summary>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{tr("问法")}</th>
+                      <th>{tr("判读")}</th>
+                      <th>{tr("回答")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hidden.asks.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.id}</td>
+                        <td>{row.stance}</td>
+                        <td>{row.error ? row.error : row.answer}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </>
         )}
       </section>

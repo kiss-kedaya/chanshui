@@ -16,7 +16,7 @@ import (
 
 const publicRate = time.Minute
 
-var publicSectionOrder = []string{"fingerprint", "injection", "cache", "tools", "web", "knowledge", "thinking", "iq"}
+var publicSectionOrder = []string{"fingerprint", "injection", "hidden", "cache", "tools", "web", "knowledge", "thinking", "iq"}
 
 func clientHost(r *http.Request) string {
 	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("CF-Connecting-IP"))); ip != nil {
@@ -217,7 +217,7 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 	t.Verdict.Protocol = q.Protocol
 	t.Verdict.ScoringVersion = "2026-10-02-v6-total"
 	names := map[string]string{
-		"fingerprint": "模型指纹归因", "injection": "注入大小", "cache": "缓存读写验证",
+		"fingerprint": "模型指纹归因", "injection": "注入大小", "hidden": "隐藏指令检测", "cache": "缓存读写验证",
 		"tools": "工具调用检测", "web": "联网检测", "knowledge": "知识截止日期", "thinking": "思维链回传",
 	}
 	for _, section := range orderedSections(selected) {
@@ -289,7 +289,7 @@ func (s *Server) publicGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func publicOpenAPI() map[string]any {
-	sectionEnum := []any{"fingerprint", "injection", "cache", "tools", "web", "knowledge", "thinking", "iq"}
+	sectionEnum := []any{"fingerprint", "injection", "hidden", "cache", "tools", "web", "knowledge", "thinking", "iq"}
 	return map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{

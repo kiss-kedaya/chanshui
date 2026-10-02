@@ -185,6 +185,34 @@ export interface DetectVerdict {
     } | null;
     error?: string;
   } | null;
+  hidden: {
+    status: "clean" | "suspect" | "injected" | "unknown" | "error";
+    injected: boolean;
+    score: number;
+    max_score: number;
+    reason: string;
+    protocol: string;
+    attempts: number;
+    ack_count: number;
+    deny_count: number;
+    asks: {
+      id: string;
+      kind: string;
+      prompt: string;
+      answer: string;
+      stance: string;
+      error?: string;
+    }[];
+    identity?: {
+      claimed_cutoff?: string;
+      expected_cutoff?: string;
+      cutoff_mismatch: boolean;
+      family?: string;
+      self_introduces: boolean;
+    } | null;
+    signals: string[];
+    error?: string;
+  } | null;
   fingerprint: {
     family: string;
     family_name: string;

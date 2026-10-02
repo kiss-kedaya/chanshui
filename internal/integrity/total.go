@@ -28,13 +28,14 @@ type Total struct {
 // Raw weights. Fingerprint is the largest share. The seven weights sum to 100
 // when cache and thinking both apply; otherwise they are rescaled.
 var sectionWeight = map[string]int{
-	"fingerprint": 32,
+	"fingerprint": 30,
 	"iq":          25,
-	"injection":   15,
-	"tools":       10,
-	"web":         8,
+	"injection":   12,
+	"hidden":      10,
+	"tools":       8,
+	"web":         6,
 	"thinking":    5,
-	"cache":       5,
+	"cache":       4,
 }
 
 // Compose rescales applicable weights so they sum to 100, then scores each

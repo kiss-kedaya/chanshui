@@ -78,6 +78,7 @@ type Verdict struct {
 	Web            any     `json:"web"`
 	ScoringVersion string  `json:"scoring_version"`
 	Injection      any     `json:"injection"`
+	Hidden         any     `json:"hidden"`
 	Fingerprint    any     `json:"fingerprint"`
 	Thinking       any     `json:"thinking"`
 	Cache          any     `json:"cache"`
