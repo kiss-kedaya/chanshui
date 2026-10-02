@@ -1,7 +1,9 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
+import { reportPath } from "@/lib/report-view";
 import {
   startDetect,
   getDetect,
@@ -16,7 +18,6 @@ import {
 import {
   forgetJobControl,
   getJobControl,
-  getLastControlledJob,
   reconcileJobControl,
   saveJobControl,
 } from "@/lib/job-controls";
@@ -35,6 +36,7 @@ const ResultCards = dynamic(() => import("@/components/ResultCards"), {
 });
 export default function DetectPage() {
   const { t: tr } = useI18n();
+  const router = useRouter();
   const [baseUrl, setBaseUrl] = useState("");
   const [key, setKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -53,6 +55,9 @@ export default function DetectPage() {
   const [timeout, setTimeoutValue] = useState(360);
   const [cacheOn, setCacheOn] = useState(false);
   const [hasRetryKey, setHasRetryKey] = useState(false);
+  // 只有从报告页的“重试失败项”带 ?job= 跳回来时才显示重跑按钮；
+  // 首屏“新建检测”不显示旧任务内容，也不显示重跑。
+  const [retryMode, setRetryMode] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("summary");
   const [budget, setBudget] = useState(2048);
@@ -95,12 +100,13 @@ export default function DetectPage() {
         );
       }
     } catch {}
+    // 首页始终是“新建检测”的首屏。只有显式带 ?job= 时（从报告页的“重试失败项”
+    // 跳回来）才在工作区承载任务；否则不自动恢复上一次任务，避免首屏显示旧检测内容。
     const requestedID = new URLSearchParams(window.location.search).get("job");
-    const saved = getLastControlledJob();
-    const resumeID = requestedID && /^[a-f0-9]{32}$/.test(requestedID)
-      ? requestedID
-      : saved?.jobId;
-    if (resumeID) poll(resumeID, true);
+    if (requestedID && /^[a-f0-9]{32}$/.test(requestedID)) {
+      setRetryMode(true);
+      poll(requestedID, true);
+    }
     return () => {
       alive.current = false;
       stopPolling.current?.();
@@ -171,10 +177,11 @@ export default function DetectPage() {
         id = d.task_id;
         if (!saveJobControl({ jobId: id, token: d.control_token, expiresAt: d.expires_at }))
           setError(tr("浏览器未允许保存操作 key，刷新后将无法重试此任务"));
+        // 新建检测直接进入报告页：首屏保持“新建检测”的样子，结果在独立页展示。
+        router.push(reportPath(id));
+        return;
       }
-      const url = new URL(window.location.href);
-      url.searchParams.set("job", id);
-      window.history.replaceState(null, "", url);
+      // 重试失败项留在当前页继续轮询。
       poll(id);
     } catch (e) {
       setError((e as Error).message);
@@ -455,7 +462,7 @@ export default function DetectPage() {
         </div>
       </section>
       </div>
-      {task && failed > 0 && hasRetryKey && (
+      {task && retryMode && failed > 0 && hasRetryKey && (
         <button
           className="btn-retry btn-retry-block"
           onClick={() => run(true)}
