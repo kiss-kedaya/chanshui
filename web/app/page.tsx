@@ -441,17 +441,17 @@ export default function DetectPage() {
           </div>
           {error && <ErrorFold text={error} />}
         </form>
+        <div className="bank-strip">
+          <span>
+            <Icon name="layers" /> <b>{stats?.fingerprint_count ?? "—"}</b>{" "}
+            个可测模型
+          </span>
+          <Hint
+            label="模型库说明"
+            text="服务端定期同步模型基线。数字指纹仅对库内候选比较，行为参考不等于型号证明。"
+          />
+        </div>
       </section>
-      </div>
-      <div className="bank-strip">
-        <span>
-          <Icon name="layers" /> <b>{stats?.fingerprint_count ?? "—"}</b>{" "}
-          个可测模型
-        </span>
-        <Hint
-          label="模型库说明"
-          text="服务端定期同步模型基线。数字指纹仅对库内候选比较，行为参考不等于型号证明。"
-        />
       </div>
       {task && failed > 0 && hasRetryKey && (
         <button

@@ -3239,3 +3239,52 @@ html[data-accent="mint"] .opening .connection-card {
     font-size: 28px;
   }
 }
+
+/* First screen fills the viewport. Short pages end on a mark, not a blank cut. */
+.main {
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(880px 320px at 18% -40px, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
+    radial-gradient(640px 240px at 100% 100%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 68%),
+    var(--bg);
+}
+.page-shell {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  width: min(1160px, 100%);
+}
+.opening > .audit-hero,
+.opening > .connection-card {
+  animation: appear 0.55s var(--ease-out) both;
+}
+.opening > .connection-card {
+  animation-delay: 0.06s;
+}
+.connection-card .bank-strip {
+  justify-content: flex-start;
+  margin: 16px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+}
+.ask-panel:not([open]) {
+  margin-top: 2px;
+  padding: 11px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 46%, var(--bg));
+  box-shadow: none;
+}
+.timeline {
+  margin-bottom: 12px;
+}
+.history-page > .hero-card {
+  margin-top: 8px;
+  margin-bottom: 14px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .opening > .audit-hero,
+  .opening > .connection-card {
+    animation: none;
+  }
+}
