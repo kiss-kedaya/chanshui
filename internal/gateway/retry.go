@@ -71,6 +71,9 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 		if (m.Status == 400 || m.Status == 422) && !forceWasSet && (len(q.Tools) > 0 || q.WebSearch) {
 			break
 		}
+		if q.StopOnInvalidSignature && m.Status == 400 && strings.Contains(strings.ToLower(m.Err), "signature") {
+			break
+		}
 		if err == nil && m.Err == "" {
 			m.Ms = time.Since(start).Milliseconds()
 			return m, nil

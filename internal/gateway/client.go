@@ -35,22 +35,25 @@ type TextBlock struct {
 }
 
 type CallRequest struct {
-	Validate           func(Metrics) error
-	ToolReply          *ToolReply
-	Tools              []ToolDefinition
-	ForceTool          string
-	WebSearch          bool
-	protocolOverride   string
-	Effort             string
-	Model              string
-	MaxTokens          int
-	Prompt             string
-	PromptCacheControl *CacheControl
-	UserPrefix         []TextBlock
-	History            []ConversationMessage
-	System             []SystemBlock
-	Thinking           *ThinkingConfig
-	Stream             bool
+	Validate               func(Metrics) error
+	ToolReply              *ToolReply
+	Tools                  []ToolDefinition
+	ForceTool              string
+	WebSearch              bool
+	protocolOverride       string
+	Effort                 string
+	Model                  string
+	MaxTokens              int
+	Prompt                 string
+	PromptCacheControl     *CacheControl
+	UserPrefix             []TextBlock
+	History                []ConversationMessage
+	System                 []SystemBlock
+	Thinking               *ThinkingConfig
+	PriorUser              string
+	PriorSignature         string
+	StopOnInvalidSignature bool
+	Stream                 bool
 	// TimeoutSeconds overrides the per-request timeout when > 0. When 0 the
 	// request runs under the context deadline only.
 	TimeoutSeconds int
@@ -183,6 +186,15 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 	for _, message := range req.History {
 		wire.Messages = append(wire.Messages, wireMessage{Role: message.Role, Content: messageContent(message.Content, message.CacheControl)})
 	}
+	if req.PriorSignature != "" {
+		wire.Messages = append(wire.Messages,
+			wireMessage{Role: "user", Content: req.PriorUser},
+			wireMessage{Role: "assistant", Content: []any{
+				map[string]any{"type": "thinking", "thinking": "", "signature": req.PriorSignature},
+				map[string]any{"type": "text", "text": "Done."},
+			}},
+		)
+	}
 	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: userContent(req.UserPrefix, req.Prompt, req.PromptCacheControl)})
 	if req.ToolReply != nil {
 		reply := req.ToolReply
@@ -230,6 +242,9 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 	httpReq.Header.Set("content-type", "application/json")
 	httpReq.Header.Set("user-agent", c.ua())
+	if req.PriorSignature != "" {
+		httpReq.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	}
 
 	start := time.Now()
 	httpResp, err := c.http().Do(httpReq)

@@ -44,7 +44,25 @@ type thinkAdapter struct {
 }
 
 func (a thinkAdapter) CallMessages(ctx context.Context, q thinking.CallRequest) (thinking.Metrics, error) {
-	m, e := a.g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, MaxTokens: q.MaxTokens, Prompt: q.Messages[0].Content, Thinking: &gateway.ThinkingConfig{Type: q.Thinking.Type, Display: q.Thinking.Display}, Stream: true, TimeoutSeconds: a.timeout})
+	req := gateway.CallRequest{
+		Model: q.Model, MaxTokens: q.MaxTokens, Stream: q.Stream, Effort: q.Effort,
+		StopOnInvalidSignature: q.StopOnInvalidSignature, TimeoutSeconds: a.timeout,
+	}
+	if q.Replay != nil {
+		req.PriorUser = q.Replay.PriorUser
+		req.PriorSignature = q.Replay.Signature
+		req.Prompt = q.Replay.FollowUp
+	} else {
+		if len(q.Messages) == 0 {
+			return thinking.Metrics{}, fmt.Errorf("thinking request has no message")
+		}
+		req.Prompt = q.Messages[0].Content
+		req.Stream = true
+		if q.Thinking != nil {
+			req.Thinking = &gateway.ThinkingConfig{Type: q.Thinking.Type, Display: q.Thinking.Display}
+		}
+	}
+	m, e := a.g.CallMessages(ctx, req)
 	return thinking.Metrics{Status: m.Status, Ms: m.Ms, Err: m.Err, Answer: m.Answer, ThinkLen: m.ThinkLen, SigLen: m.SigLen, ThinkingTokens: m.ThinkingTokens, ThinkingText: m.ThinkingText, Signature: m.Signature}, e
 }
 
@@ -262,9 +280,22 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	})
 	if gateway.IsClaude(q.Model) {
 		job("thinking", func() (any, error) {
-			v, e := thinking.Check(ctx, thinkAdapter{g, q.Timeout}, q.Model)
+			adapter := thinkAdapter{g, q.Timeout}
+			v, e := thinking.Check(ctx, adapter, q.Model)
 			if e != nil {
 				return map[string]string{"error": e.Error(), "reason": "请求失败，不能据此判定思考被清空"}, e
+			}
+			if strings.TrimSpace(v.Signature) != "" {
+				audit, _ := thinking.Audit(ctx, adapter, q.Model, thinking.ProbePrompt(), v.Signature)
+				v.Audit = &audit
+				if audit.Pass != nil && !*audit.Pass {
+					v.SignatureScore = 0
+					v.Score = v.SummaryScore
+					v.Pass = false
+					v.Reason = audit.Reason
+				} else if audit.Reason != "" {
+					v.Reason = v.Reason + "。" + audit.Reason
+				}
 			}
 			return v, nil
 		})

@@ -25,6 +25,19 @@ type CallRequest struct {
 	System    string          `json:"system,omitempty"`
 	Messages  []Message       `json:"messages"`
 	Thinking  *ThinkingConfig `json:"thinking,omitempty"`
+	// Replay is set only by signature audit. Thinking stays nil.
+	Replay *Replay `json:"replay,omitempty"`
+	// StopOnInvalidSignature stops the transport on the expected forged-signature 400.
+	StopOnInvalidSignature bool   `json:"-"`
+	Stream                 bool   `json:"stream,omitempty"`
+	Effort                 string `json:"effort,omitempty"`
+}
+
+// Replay is one assistant thinking block followed by a short user turn.
+type Replay struct {
+	PriorUser string `json:"prior_user"`
+	Signature string `json:"signature"`
+	FollowUp  string `json:"follow_up"`
 }
 
 // Metrics mirrors gateway.Metrics (subset of fields needed for the
