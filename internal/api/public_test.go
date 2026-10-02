@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -124,7 +125,7 @@ func TestPublicAuditSectionsRateAndHistory(t *testing.T) {
 	if !foundSkip || !containsSection(all.Sections, "cache") || !containsSection(all.Sections, "iq") {
 		t.Fatalf("all sections %+v skipped %+v", all.Sections, all.Skipped)
 	}
-	count, err := s.store.PublicAuditCount(t.Context())
+	count, err := s.store.PublicAuditCount(context.Background())
 	if err != nil || count != 2 {
 		t.Fatalf("count %d %v", count, err)
 	}
