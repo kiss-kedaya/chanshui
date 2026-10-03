@@ -33,7 +33,12 @@ Write-Output '2/5 本机校验 sha256'
 $line = (Select-String -LiteralPath (Join-Path $work 'checksums.txt') -Pattern " $([regex]::Escape($archive))$").Line
 if (-not $line) { throw "checksums.txt 里没有 $archive" }
 $want = ($line -split '\s+')[0].ToLower()
-$got = (Get-FileHash -LiteralPath (Join-Path $work $archive) -Algorithm SHA256).Hash.ToLower()
+# 不依赖 Get-FileHash：某些精简环境里 Microsoft.PowerShell.Utility 没加载。
+# certutil 是系统自带，输出里取第一段十六进制即可。
+$certOut = & certutil -hashfile (Join-Path $work $archive) SHA256 2>&1
+$hexLine = $certOut | Where-Object { $_ -match '^[0-9a-fA-F\s]{32,}$' } | Select-Object -First 1
+if (-not $hexLine) { throw "certutil 没有返回哈希：$certOut" }
+$got = ($hexLine -replace '\s', '').ToLower()
 if ($want -ne $got) { throw "本机校验失败：期望 $want，实际 $got" }
 Write-Output "    OK $got"
 
