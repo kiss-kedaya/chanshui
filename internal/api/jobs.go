@@ -182,6 +182,7 @@ func (s *Server) persist(t *Task) {
 		t.mu.Unlock()
 	}
 }
+
 // authorize accepts either the per-job control token or the visitor identifier
 // of the browser that created the job. Retrying never escalates beyond the
 // job's own failed probes.

@@ -11,7 +11,7 @@ import (
 
 // fakeCaller 按 prompt 里的关键词返回预置回答，用来模拟不同上游行为。
 type fakeCaller struct {
-	answers map[string]string // 子串匹配 -> 回答
+	answers  map[string]string // 子串匹配 -> 回答
 	fallback string
 }
 
@@ -89,10 +89,10 @@ func TestFakeCutoffDetected(t *testing.T) {
 
 func TestExtractCutoff(t *testing.T) {
 	cases := map[string]string{
-		"我的知识截止到 2024 年 4 月。":        "2024-04",
-		"训练数据截止于2025年3月":            "2025-03",
-		"知识截止：2026 年 1 月":           "2026-01",
-		"我不知道。":                    "",
+		"我的知识截止到 2024 年 4 月。":            "2024-04",
+		"训练数据截止于2025年3月":                 "2025-03",
+		"知识截止：2026 年 1 月":                "2026-01",
+		"我不知道。":                          "",
 		"knowledge cutoff is 2024 April": "",
 	}
 	for in, want := range cases {
@@ -119,12 +119,12 @@ func TestCutoffCompatible(t *testing.T) {
 
 func TestClassifyStance(t *testing.T) {
 	cases := map[string]string{
-		"无":                    "deny",
-		"没有这样一份设定。":           "deny",
-		"有。那部分属于我的运行设定。":       "ack",
+		"无":         "deny",
+		"没有这样一份设定。": "deny",
+		"有。那部分属于我的运行设定。":        "ack",
 		"这个我不打印，我不会把这类设置文本倒出来。": "ack",
-		"有一份设定。":               "ack",
-		"有运行设定，但没有系统提示词。":      "partial",
+		"有一份设定。":          "ack",
+		"有运行设定，但没有系统提示词。": "partial",
 	}
 	for in, want := range cases {
 		if got := classifyStance(in); got != want {

@@ -31,18 +31,18 @@ type Caller interface {
 
 // Verdict 是隐藏指令检测的结果。它是信息性的，不参与智商/完整度评分。
 type Verdict struct {
-	Status    string     `json:"status"`             // clean / suspect / injected / unknown / error
-	Injected  bool       `json:"injected"`           // 是否有足够证据判定“有隐藏指令”
-	Score     int        `json:"score"`              // 0-10，越高越像被注入
-	MaxScore  int        `json:"max_score"`          //
-	Reason    string     `json:"reason"`             //
-	Protocol  string     `json:"protocol"`           //
-	Attempts  int        `json:"attempts"`           //
-	Asks      []Ask      `json:"asks"`               // 每种问法的原始结果
-	AckCount  int        `json:"ack_count"`          // 承认“存在前置指令”的次数
-	DenyCount int        `json:"deny_count"`         // 否认“存在前置指令”的次数
-	Identity  *Identity  `json:"identity,omitempty"` // 自报身份/截止日期
-	Signals   []string   `json:"signals"`            // 命中的证据
+	Status    string    `json:"status"`             // clean / suspect / injected / unknown / error
+	Injected  bool      `json:"injected"`           // 是否有足够证据判定“有隐藏指令”
+	Score     int       `json:"score"`              // 0-10，越高越像被注入
+	MaxScore  int       `json:"max_score"`          //
+	Reason    string    `json:"reason"`             //
+	Protocol  string    `json:"protocol"`           //
+	Attempts  int       `json:"attempts"`           //
+	Asks      []Ask     `json:"asks"`               // 每种问法的原始结果
+	AckCount  int       `json:"ack_count"`          // 承认“存在前置指令”的次数
+	DenyCount int       `json:"deny_count"`         // 否认“存在前置指令”的次数
+	Identity  *Identity `json:"identity,omitempty"` // 自报身份/截止日期
+	Signals   []string  `json:"signals"`            // 命中的证据
 }
 
 // Ask 是一次自述问法的结果。
@@ -57,11 +57,11 @@ type Ask struct {
 
 // Identity 是模型自报的身份信息。
 type Identity struct {
-	ClaimedCutoff   string `json:"claimed_cutoff,omitempty"`
-	ExpectedCutoff  string `json:"expected_cutoff,omitempty"`
-	CutoffMismatch  bool   `json:"cutoff_mismatch"`
-	Family          string `json:"family,omitempty"`
-	SelfIntroduces  bool   `json:"self_introduces"`
+	ClaimedCutoff  string `json:"claimed_cutoff,omitempty"`
+	ExpectedCutoff string `json:"expected_cutoff,omitempty"`
+	CutoffMismatch bool   `json:"cutoff_mismatch"`
+	Family         string `json:"family,omitempty"`
+	SelfIntroduces bool   `json:"self_introduces"`
 }
 
 // presenceProbes 是“你前面有没有别的指令”的多种问法。
