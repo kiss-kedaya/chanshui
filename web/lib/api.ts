@@ -203,7 +203,7 @@ export interface DetectVerdict {
       answer: string;
       stance: string;
       error?: string;
-    }[];
+    }[] | null;
     identity?: {
       claimed_cutoff?: string;
       expected_cutoff?: string;
@@ -211,7 +211,7 @@ export interface DetectVerdict {
       family?: string;
       self_introduces: boolean;
     } | null;
-    signals: string[];
+    signals: string[] | null;
     error?: string;
   } | null;
   fingerprint: {

@@ -76,6 +76,10 @@ export default function ResultCards({
     t = v.thinking,
     q = v.iq;
   const hidden = v.hidden;
+  // v0.1.27/28 落库的报告里 signals/asks 可能是 null（后端 nil 切片），
+  // 旧报告不会被重写，所以前端必须兜底。
+  const hiddenSignals = hidden?.signals ?? [];
+  const hiddenAsks = hidden?.asks ?? [];
   const knowledge = v.knowledge;
   const integrity = v.integrity;
   const claude = (model || "").toLowerCase().startsWith("claude-");
@@ -241,9 +245,9 @@ export default function ResultCards({
                 </span>
               ) : null}
             </div>
-            {hidden.signals.length ? (
+            {hiddenSignals.length ? (
               <ul className="mini-list">
-                {hidden.signals.map((s, i) => (
+                {hiddenSignals.map((s, i) => (
                   <li key={i}>{s}</li>
                 ))}
               </ul>
@@ -260,7 +264,7 @@ export default function ResultCards({
                     </tr>
                   </thead>
                   <tbody>
-                    {hidden.asks.map((row) => (
+                    {hiddenAsks.map((row) => (
                       <tr key={row.id}>
                         <td>{row.id}</td>
                         <td>{row.stance}</td>

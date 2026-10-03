@@ -2,6 +2,7 @@ package injection
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -84,6 +85,28 @@ func TestFakeCutoffDetected(t *testing.T) {
 	}
 	if !v.Injected {
 		t.Fatalf("假身份应至少使判定为注入，得到 %s score=%d", v.Status, v.Score)
+	}
+}
+
+// 线上报告页曾因 signals 为 null 读 .length 崩溃：没有命中证据时必须输出 []。
+func TestEmptyEvidenceSerializesAsArrays(t *testing.T) {
+	f := fakeCaller{fallback: "没有。"}
+	v, err := Detect(context.Background(), f, "some-unknown-model", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if strings.Contains(s, `"signals":null`) || strings.Contains(s, `"asks":null`) {
+		t.Fatalf("空证据被序列化成 null：%s", s)
+	}
+	errV, _ := Detect(context.Background(), errCaller{}, "claude-sonnet-4-5", 10)
+	raw, _ = json.Marshal(errV)
+	if strings.Contains(string(raw), `"signals":null`) {
+		t.Fatalf("全失败时 signals 仍是 null：%s", raw)
 	}
 }
 

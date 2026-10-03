@@ -132,7 +132,9 @@ var expectedCutoffs = []struct {
 
 // Detect 跑完两组探针并给出判定。
 func Detect(ctx context.Context, c Caller, model string, timeout int) (Verdict, error) {
-	v := Verdict{Status: "unknown", MaxScore: 10, Protocol: c.ProtocolFor(model)}
+	// Asks/Signals 必须初始化成空切片：nil 切片会被序列化成 null，
+	// 报告页读 .length 时直接崩。
+	v := Verdict{Status: "unknown", MaxScore: 10, Protocol: c.ProtocolFor(model), Asks: []Ask{}, Signals: []string{}}
 	v.Reason = "通过多问法自述一致性与自报知识截止日期检测隐藏指令；不依赖上游上报的 token 数。"
 
 	// ── 第一组：自述一致性 ──────────────────────────────────────────────
