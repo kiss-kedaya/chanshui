@@ -347,7 +347,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 						},
 						Prompt:         fmt.Sprintf("评分开始。标准答案是：%s。本题满分 %d。对照你上一轮的回答，完全符合只返回 %d，部分符合返回中间的整数，完全不对返回最低分。返回的是本题得分，不要把标准答案再写一遍。只返回一个整数。", item.Answer, item.MaxScore, item.MaxScore),
 						System:         []gateway.SystemBlock{{Text: "沿用上一轮对话。现在只给自己的上一轮回答打分，只返回一个整数。"}},
-						Thinking:       &gateway.ThinkingConfig{Type: "disabled"},
+						Thinking:       gradeThinking(q.Model),
 						MaxTokens:      256,
 						Stream:         true,
 						TimeoutSeconds: q.Timeout,
@@ -494,10 +494,24 @@ func asBoolPtr(v any) (*bool, bool) {
 	return &b, true
 }
 
+// iqThinking 给“答题”这一步挑 thinking 配置：Claude 走 adaptive+摘要。
 func iqThinking(model string) *gateway.ThinkingConfig {
 	if gateway.IsClaude(model) {
 		return &gateway.ThinkingConfig{Type: "adaptive", Display: "summarized"}
 	}
+	return nil
+}
+
+// gradeThinking 给“自评打分”这一步挑 thinking 配置。
+//
+// 以前这里固定发 thinking.type=disabled，但 claude-opus-5-5 明确拒绝该值
+// （400: "thinking.type.disabled" is not supported for this model），导致该题
+// 自评环节报错、分数拿不回来。实测 claude-sonnet-5 / sonnet-4-5 / opus-4-6 /
+// haiku-4-5 都接受 disabled，唯独 opus-5-5 不行。
+//
+// 打分只要一个整数，不需要思考。统一不传 thinking 字段，让上游用默认行为：
+// 实测五个模型“不传”全部 200，是最稳的一档。
+func gradeThinking(model string) *gateway.ThinkingConfig {
 	return nil
 }
 

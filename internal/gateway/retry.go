@@ -74,6 +74,12 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 		if q.StopOnInvalidSignature && m.Status == 400 && strings.Contains(strings.ToLower(m.Err), "signature") {
 			break
 		}
+		// 402 余额不足是终止性错误：账户没钱，重发同样的请求只会得到同样的
+		// 结果，还白烧 4 次重试。其它 4xx 各有安排（404/405 要留给协议回退，
+		// 400/422 要看工具参数），不在这里一并处理。
+		if m.Status == 402 {
+			break
+		}
 		if err == nil && m.Err == "" {
 			m.Ms = time.Since(start).Milliseconds()
 			return m, nil
