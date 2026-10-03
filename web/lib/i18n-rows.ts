@@ -102,6 +102,7 @@ export const rows: [string, string, string, string, string][] = [
 ["明确关闭","Explicitly off","明確關閉","明示的にオフ","명시적으로 끄기"],
 ["明确关闭（部分模型不支持）","Explicitly off (not supported by some models)","明確關閉（部分模型不支援）","明示的にオフ（一部モデルは非対応）","명시적으로 끄기(일부 모델 미지원)"],
 ["自适应 + 要点","Adaptive + highlights","自適應 + 要點","自動 + ハイライト","자동 + 하이라이트"],
+["自适应 + 进度更新（beta）","Adaptive + updates (beta)","自適應 + 進度更新（beta）","自動 + 進捗更新（beta）","자동 + 진행 업데이트(beta)"],
 ["思考预算 token","Thinking budget tokens","思考預算 token","思考予算 token","사고 예산 토큰"],
 ["推理努力（按上游支持）","Effort (if the upstream supports it)","推理努力（按上游支持）","推論努力（上流が対応する場合）","추론 노력(업스트림 지원 시)"],
 ["不传","Omit","不傳","送らない","생략"],

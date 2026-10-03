@@ -54,9 +54,44 @@ type CallRequest struct {
 	PriorSignature         string
 	StopOnInvalidSignature bool
 	Stream                 bool
+	// Betas are extra anthropic-beta flags the caller asked for. They are
+	// merged with the flags this client adds itself, never replaced.
+	Betas []string
 	// TimeoutSeconds overrides the per-request timeout when > 0. When 0 the
 	// request runs under the context deadline only.
 	TimeoutSeconds int
+}
+
+// thinkingDisplayUpdatesBeta gates thinking.display="updates". Without it the
+// API accepts only the generally available display values and returns 400.
+const thinkingDisplayUpdatesBeta = "thinking-display-updates-2026-08-18"
+
+// betaHeader builds one comma-separated anthropic-beta value. Caller flags are
+// kept as given; flags required by the request body are appended when missing.
+// Duplicates are dropped, order is preserved.
+func betaHeader(req CallRequest) string {
+	var flags []string
+	seen := map[string]bool{}
+	add := func(raw string) {
+		for _, f := range strings.Split(raw, ",") {
+			f = strings.TrimSpace(f)
+			if f == "" || seen[f] {
+				continue
+			}
+			seen[f] = true
+			flags = append(flags, f)
+		}
+	}
+	for _, b := range req.Betas {
+		add(b)
+	}
+	if req.PriorSignature != "" {
+		add("interleaved-thinking-2025-05-14")
+	}
+	if req.Thinking != nil && req.Thinking.Display == "updates" {
+		add(thinkingDisplayUpdatesBeta)
+	}
+	return strings.Join(flags, ",")
 }
 
 type ConversationMessage struct {
@@ -243,8 +278,8 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 	httpReq.Header.Set("content-type", "application/json")
 	httpReq.Header.Set("user-agent", c.ua())
-	if req.PriorSignature != "" {
-		httpReq.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	if beta := betaHeader(req); beta != "" {
+		httpReq.Header.Set("anthropic-beta", beta)
 	}
 
 	start := time.Now()

@@ -159,7 +159,8 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 			reply(w, 400, map[string]string{"error": "thinking 类型无效"})
 			return
 		}
-		if q.Thinking.Display != "" && q.Thinking.Display != "summarized" && q.Thinking.Display != "omitted" && q.Thinking.Display != "highlights" {
+		// updates 需要 anthropic-beta: thinking-display-updates-2026-08-18，网关会自动补上。
+		if q.Thinking.Display != "" && q.Thinking.Display != "summarized" && q.Thinking.Display != "omitted" && q.Thinking.Display != "highlights" && q.Thinking.Display != "updates" {
 			reply(w, 400, map[string]string{"error": "display 模式无效"})
 			return
 		}

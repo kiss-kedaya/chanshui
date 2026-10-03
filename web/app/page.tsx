@@ -145,6 +145,8 @@ export default function DetectPage() {
             ? { type: "disabled" }
             : mode === "highlights"
               ? { type: "adaptive", display: "highlights" }
+              : mode === "updates"
+                ? { type: "adaptive", display: "updates" }
               : mode === "budget"
               ? {
                   type: "enabled",
@@ -414,6 +416,7 @@ export default function DetectPage() {
                 <option value="summary">{tr("自适应 + 摘要")}</option>
                 <option value="adaptive">{tr("自适应（不传 display）")}</option>
                 <option value="highlights">{tr("自适应 + 要点")}</option>
+                <option value="updates">{tr("自适应 + 进度更新（beta）")}</option>
                 <option value="budget">{tr("指定预算")}</option>
                 <option value="omit">{tr("不传 thinking")}</option>
                 <option value="disabled">{tr("明确关闭（部分模型不支持）")}</option>
