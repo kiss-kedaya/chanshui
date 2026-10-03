@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"regexp"
 	"strings"
 	"time"
@@ -88,14 +89,10 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 			return m, ctx.Err()
 		}
 		if attempt < c.retries() {
-			delay := c.RetryDelay
-			if delay <= 0 {
-				delay = 250 * time.Millisecond
-			}
 			select {
 			case <-ctx.Done():
 				return m, ctx.Err()
-			case <-time.After(delay * time.Duration(1<<attempt)):
+			case <-time.After(c.backoff(attempt, m.Status)):
 			}
 		}
 	}
@@ -107,6 +104,31 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 	m.Err = FriendlyError(m.Status, message, m.Attempts)
 	return m, nil
 }
+
+// Upstream5xxBackoff is the first wait after a 5xx. Some gateways answer an
+// over-concurrency burst of long requests with 500 new_api_error; retrying
+// 250ms later lands in the same burst, so 5xx waits longer: 2s, 4s, 8s.
+var Upstream5xxBackoff = 2 * time.Second
+
+// backoff returns the wait before the next attempt. RetryDelay, when set,
+// replaces both bases (tests use it to stay fast).
+func (c *Client) backoff(attempt, status int) time.Duration {
+	base := 250 * time.Millisecond
+	if status >= 500 {
+		base = Upstream5xxBackoff
+	}
+	if c.RetryDelay > 0 {
+		base = c.RetryDelay
+	}
+	d := base * time.Duration(1<<attempt)
+	// Up to 25% jitter so parallel probes that failed together do not retry
+	// in lockstep and re-create the same burst.
+	if j := int64(d / 4); j > 0 {
+		d += time.Duration(rand.Int63n(j))
+	}
+	return d
+}
+
 func (c *Client) retries() int {
 	if c.NoRetry {
 		return 0
