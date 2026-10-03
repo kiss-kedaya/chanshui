@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"time"
 )
@@ -25,6 +26,31 @@ type queuedJob struct {
 func controlHash(value string) string {
 	h := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(h[:])
+}
+
+// visitorHashOf returns the hashed anonymous visitor identifier of the
+// submitting browser, or "" when the client sent none. The raw value is never
+// stored: only this hash is kept, so the column is useless on its own.
+func visitorHashOf(r *http.Request) string {
+	v := strings.TrimSpace(r.Header.Get("X-Visitor-ID"))
+	if !visitorIDValid(v) {
+		return ""
+	}
+	return controlHash(v)
+}
+
+// visitorIDValid accepts the 32-hex identifier the frontend generates.
+func visitorIDValid(v string) bool {
+	if len(v) != 32 {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 func controlHashMatches(value, expected string) bool {
 	if value == "" || expected == "" {
@@ -156,9 +182,17 @@ func (s *Server) persist(t *Task) {
 		t.mu.Unlock()
 	}
 }
+// authorize accepts either the per-job control token or the visitor identifier
+// of the browser that created the job. Retrying never escalates beyond the
+// job's own failed probes.
 func (s *Server) authorize(r *http.Request, t *Task) bool {
-	value := r.Header.Get("X-Job-Token")
-	return controlHashMatches(value, t.controlHash)
+	if controlHashMatches(r.Header.Get("X-Job-Token"), t.controlHash) {
+		return true
+	}
+	if t.visitorHash != "" && controlHashMatches(r.Header.Get("X-Visitor-ID"), t.visitorHash) {
+		return true
+	}
+	return s.visitorMatches(r, t.ID)
 }
 func (s *Server) fromRecord(r *history.Record) *Task {
 	t := &Task{ID: r.ReportID, ReportID: r.ReportID, HistoryID: r.ID, CreatedAt: r.CreatedAt, BaseURL: r.BaseURL, Model: r.Model, Status: r.Status, ExpiresAt: r.ExpiresAt}

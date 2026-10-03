@@ -1,39 +1,16 @@
 "use client";
-import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { reportPath } from "@/lib/report-view";
-import {
-  startDetect,
-  getDetect,
-  retryDetect,
-  getBankStats,
-  getModels,
-  ask,
-  DetectTask,
-  BankStats,
-  Metrics,
-} from "@/lib/api";
-import {
-  forgetJobControl,
-  getJobControl,
-  reconcileJobControl,
-  saveJobControl,
-} from "@/lib/job-controls";
-import { watchResource } from "@/lib/polling";
+import { startDetect, getBankStats, getModels, ask, BankStats, Metrics } from "@/lib/api";
+import { saveJobControl } from "@/lib/job-controls";
 import AuditHero from "@/components/AuditHero";
 import Hint from "@/components/Hint";
-import ProbeTimeline from "@/components/ProbeTimeline";
 import Icon from "@/components/Icon";
 import ErrorFold from "@/components/ErrorFold";
 import Select from "@/components/Select";
 import Link from "next/link";
-import ReportShare from "@/components/ReportShare";
-import ResultSkeleton from "@/components/ResultSkeleton";
-const ResultCards = dynamic(() => import("@/components/ResultCards"), {
-  loading: () => <ResultSkeleton label="正在整理检测结果" />,
-});
 export default function DetectPage() {
   const { t: tr } = useI18n();
   const router = useRouter();
@@ -46,7 +23,6 @@ export default function DetectPage() {
   >("auto");
   const [stats, setStats] = useState<BankStats | null>(null);
   const [models, setModels] = useState<string[] | null>(null);
-  const [task, setTask] = useState<DetectTask | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [modelBusy, setModelBusy] = useState(false);
@@ -54,10 +30,6 @@ export default function DetectPage() {
   const [concurrency, setConcurrency] = useState(0);
   const [timeout, setTimeoutValue] = useState(360);
   const [cacheOn, setCacheOn] = useState(false);
-  const [hasRetryKey, setHasRetryKey] = useState(false);
-  // 只有从报告页的“重试失败项”带 ?job= 跳回来时才显示重跑按钮；
-  // 首屏“新建检测”不显示旧任务内容，也不显示重跑。
-  const [retryMode, setRetryMode] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("summary");
   const [budget, setBudget] = useState(2048);
@@ -66,7 +38,6 @@ export default function DetectPage() {
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState("");
   const alive = useRef(true);
-  const stopPolling = useRef<(() => void) | null>(null);
   useEffect(() => {
     alive.current = true;
     getBankStats()
@@ -100,16 +71,8 @@ export default function DetectPage() {
         );
       }
     } catch {}
-    // 首页始终是“新建检测”的首屏。只有显式带 ?job= 时（从报告页的“重试失败项”
-    // 跳回来）才在工作区承载任务；否则不自动恢复上一次任务，避免首屏显示旧检测内容。
-    const requestedID = new URLSearchParams(window.location.search).get("job");
-    if (requestedID && /^[a-f0-9]{32}$/.test(requestedID)) {
-      setRetryMode(true);
-      poll(requestedID, true);
-    }
     return () => {
       alive.current = false;
-      stopPolling.current?.();
     };
   }, []);
   const settings = () => ({
@@ -121,45 +84,10 @@ export default function DetectPage() {
     timeout,
     cache: cacheOn,
   });
-  const poll = (id: string, restore = false) => {
-    stopPolling.current?.();
-    setBusy(true);
-    let first = true;
-    stopPolling.current = watchResource<DetectTask>({
-      load: (signal) => getDetect(id, signal, getJobControl(id)?.token),
-      onValue: (t) => {
-        if (!alive.current) return;
-        reconcileJobControl(t);
-        setHasRetryKey(!!getJobControl(t.id));
-        setTask(t);
-        if (restore && first) {
-          setBaseUrl(t.base_url);
-          setModel(t.model);
-          const selected = t.verdict.protocol;
-          if (["auto", "chat", "anthropic", "openai"].includes(selected || ""))
-            setProtocol(selected as typeof protocol);
-        }
-        first = false;
-        const running = ["running", "queued"].includes(t.status);
-        setBusy(running);
-        if (!running) window.dispatchEvent(new Event("history-updated"));
-      },
-      isActive: (t) => ["running", "queued"].includes(t.status),
-      onError: (e) => {
-        if (!alive.current) return;
-        if (/已过期|超过24小时|不存在/.test(e.message)) {
-          forgetJobControl(id);
-          setHasRetryKey(false);
-        }
-        setError(e.message);
-        setBusy(false);
-      },
-    });
-  };
-  const run = async (retry = false) => {
+  // 首页只负责“新建检测”：提交成功后直接跳到报告页，结果、重跑都在 /history 处理。
+  const run = async () => {
     setError("");
     setBusy(true);
-    if (!retry) setTask(null);
     try {
       try {
         localStorage.setItem(
@@ -167,22 +95,10 @@ export default function DetectPage() {
           JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: cacheOn }),
         );
       } catch {}
-      let id: string;
-      if (retry && task) {
-        const control = getJobControl(task.id);
-        if (!control) throw Error(tr("此任务的操作 key 已过期或已清理，不能重试"));
-        id = (await retryDetect(task.id, settings(), control.token)).task_id;
-      } else {
-        const d = await startDetect(settings());
-        id = d.task_id;
-        if (!saveJobControl({ jobId: id, token: d.control_token, expiresAt: d.expires_at }))
-          setError(tr("浏览器未允许保存操作 key，刷新后将无法重试此任务"));
-        // 新建检测直接进入报告页：首屏保持“新建检测”的样子，结果在独立页展示。
-        router.push(reportPath(id));
-        return;
-      }
-      // 重试失败项留在当前页继续轮询。
-      poll(id);
+      const d = await startDetect(settings());
+      if (!saveJobControl({ jobId: d.task_id, token: d.control_token, expiresAt: d.expires_at }))
+        setError(tr("浏览器未允许保存操作 key，刷新后将无法重试此任务"));
+      router.push(reportPath(d.report_id));
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -237,9 +153,6 @@ export default function DetectPage() {
     }
   };
   const canRun = !!(baseUrl.trim() && key.trim() && model && !busy);
-  const failed =
-    task?.probes.filter((p) => p.status === "error" || p.status === "cancelled")
-      .length || 0;
 
   return (
     <div className="page-shell">
@@ -462,70 +375,6 @@ export default function DetectPage() {
         </div>
       </section>
       </div>
-      {task && retryMode && failed > 0 && hasRetryKey && (
-        <button
-          className="btn-retry btn-retry-block"
-          onClick={() => run(true)}
-          disabled={!key.trim()}
-          title={!key.trim() ? tr("重新填写上游 API Key 后，只重试这个任务的失败项") : tr("只重试这个任务的失败项")}
-        >
-          <Icon name="refresh" />
-          {tr("重跑失败项（{n}）", { n: failed })}
-        </button>
-      )}
-      {task && (
-        <ProbeTimeline probes={task.probes} status={task.status} timing={task.verdict.timing}>
-          {!busy && (
-            <div className="report-actions">
-              <span className="muted">{task.warning || ""}</span>
-              <button
-                className="btn-secondary"
-                onClick={() => {
-                  const blob = new Blob(
-                    [
-                      JSON.stringify(
-                        {
-                          report_id: task.report_id,
-                          created_at: task.created_at,
-                          model: task.model,
-                          verdict: task.verdict,
-                        },
-                        null,
-                        2,
-                      ),
-                    ],
-                    { type: "application/json" },
-                  );
-                  const u = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = u;
-                  a.download =
-                    "chanshui-report-" + (task.report_id || task.id) + ".json";
-                  a.click();
-                  URL.revokeObjectURL(u);
-                }}
-              >
-                {tr("导出报告")}
-              </button>
-            </div>
-          )}
-        </ProbeTimeline>
-      )}
-      {task?.report_id && (
-        <ReportShare
-          key={task.report_id}
-          id={task.report_id}
-          expiresAt={task.expires_at}
-        />
-      )}
-      {task && (
-        <ResultCards
-          verdict={task.verdict}
-          model={task.model}
-          loading={["queued", "running"].includes(task.status)}
-          showCache={task.probes?.some((p) => p.id === "cache")}
-        />
-      )}
       <details className="ask-panel">
         <summary>{tr("单问单答")}</summary>
         <div className="advanced-grid">

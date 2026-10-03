@@ -1,4 +1,5 @@
 import { resetSealKey, sealJSON } from "@/lib/seal";
+import { visitorID } from "@/lib/visitor";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 export interface DetectRequest {
@@ -316,8 +317,12 @@ async function request<T>(
   const cacheableRead = publicRead;
   const snapshotKey = token ? path + "::authorized" : path;
   const snapshot = cacheableRead ? readSnapshots.get(snapshotKey) : undefined;
+  // 访客标识随每次请求发送，服务端据此判断“这个任务是不是这台浏览器提交的”。
+  // 它不是凭据：不含密钥，只用来把任务绑定到浏览器。
+  const visitor = visitorID();
   const readHeaders: Record<string, string> = {
     ...(token ? { "X-Job-Token": token } : {}),
+    ...(visitor ? { "X-Visitor-ID": visitor } : {}),
     ...(snapshot ? { "If-None-Match": snapshot.etag } : {}),
   };
   const res = await fetch(
@@ -330,6 +335,7 @@ async function request<T>(
           headers: {
             "content-type": "application/json",
             ...(token ? { "X-Job-Token": token } : {}),
+            ...(visitor ? { "X-Visitor-ID": visitor } : {}),
           },
           body: await sealJSON(API_BASE, body),
           signal,

@@ -100,7 +100,7 @@ func TestHistoryAndReportsMaskSiteUnlessMatchingJobKey(t *testing.T) {
 	historyID, err := s.store.CreateJob(context.Background(), history.Record{
 		ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		BaseURL: base, Model: "claude-opus-5", Verdict: json.RawMessage(`{"protocol":"anthropic"}`),
-	}, json.RawMessage(`[]`), controlHash(key))
+	}, json.RawMessage(`[]`), controlHash(key), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestHistoryListDropsDilutedFingerprint(t *testing.T) {
 	if _, err := s.store.CreateJob(context.Background(), history.Record{
 		ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		BaseURL: "https://gw.example.com/v1", Model: "gpt-6-astra", Verdict: verdict,
-	}, json.RawMessage(`[]`), "hash"); err != nil {
+	}, json.RawMessage(`[]`), "hash", ""); err != nil {
 		t.Fatal(err)
 	}
 	score := 85

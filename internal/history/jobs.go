@@ -32,7 +32,7 @@ func migrateJobs(db *sql.DB) error {
 		cols[name] = true
 	}
 	rows.Close()
-	for _, col := range []struct{ name, kind string }{{"status", "TEXT NOT NULL DEFAULT 'done'"}, {"expires_at", "INTEGER NOT NULL DEFAULT 0"}, {"progress_json", "TEXT NOT NULL DEFAULT '[]'"}, {"control_hash", "TEXT NOT NULL DEFAULT ''"}, {"questions_json", "TEXT NOT NULL DEFAULT '[]'"}, {"total_score", "INTEGER"}} {
+	for _, col := range []struct{ name, kind string }{{"status", "TEXT NOT NULL DEFAULT 'done'"}, {"expires_at", "INTEGER NOT NULL DEFAULT 0"}, {"progress_json", "TEXT NOT NULL DEFAULT '[]'"}, {"control_hash", "TEXT NOT NULL DEFAULT ''"}, {"visitor_hash", "TEXT NOT NULL DEFAULT ''"}, {"questions_json", "TEXT NOT NULL DEFAULT '[]'"}, {"total_score", "INTEGER"}} {
 		if !cols[col.name] {
 			if _, e = tx.Exec("ALTER TABLE detections ADD COLUMN " + col.name + " " + col.kind); e != nil {
 				return e
@@ -50,12 +50,14 @@ func migrateJobs(db *sql.DB) error {
 }
 
 // CreateJob commits the public job ID before it is admitted to a worker.
-func (s *Store) CreateJob(ctx context.Context, r Record, progress json.RawMessage, controlHash string) (int64, error) {
+// input is the visitor identifier of the submitting browser (may be empty when
+// the client does not send one); it is hashed before storage, never kept raw.
+func (s *Store) CreateJob(ctx context.Context, r Record, progress json.RawMessage, controlHash, visitorHash string) (int64, error) {
 	if !ValidReportID(r.ReportID) {
 		return 0, fmt.Errorf("invalid job ID")
 	}
 	expires := time.Now().Add(JobTTL).Unix()
-	res, e := s.db.ExecContext(ctx, "INSERT INTO detections(report_id,created_at,base_url,model,status,expires_at,progress_json,control_hash,verdict_json,questions_json,iq_max) VALUES(?,?,?,?,?,?,?,?,?,?,100)", r.ReportID, r.CreatedAt, r.BaseURL, r.Model, "queued", expires, string(progress), controlHash, string(r.Verdict), string(r.Questions))
+	res, e := s.db.ExecContext(ctx, "INSERT INTO detections(report_id,created_at,base_url,model,status,expires_at,progress_json,control_hash,visitor_hash,verdict_json,questions_json,iq_max) VALUES(?,?,?,?,?,?,?,?,?,?,?,100)", r.ReportID, r.CreatedAt, r.BaseURL, r.Model, "queued", expires, string(progress), controlHash, visitorHash, string(r.Verdict), string(r.Questions))
 	if e != nil {
 		return 0, e
 	}
@@ -88,5 +90,12 @@ func (s *Store) RecoverInterrupted() error {
 func (s *Store) ControlHash(id string) (string, error) {
 	var h string
 	e := s.db.QueryRow("SELECT control_hash FROM detections WHERE report_id=? AND expires_at>?", id, time.Now().Unix()).Scan(&h)
+	return h, e
+}
+
+// VisitorHash returns the hashed browser identifier bound to this report.
+func (s *Store) VisitorHash(id string) (string, error) {
+	var h string
+	e := s.db.QueryRow("SELECT visitor_hash FROM detections WHERE report_id=? AND expires_at>?", id, time.Now().Unix()).Scan(&h)
 	return h, e
 }

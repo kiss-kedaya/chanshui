@@ -81,7 +81,7 @@ func TestAllCompletedJobRevokesRetryCapability(t *testing.T) {
 	id, _ := history.NewReportID()
 	key, _ := history.NewReportID()
 	task := &Task{ID: id, BaseURL: up.URL, Model: "claude-opus-5", Status: "done", ExpiresAt: time.Now().Add(time.Hour).Unix(), controlHash: controlHash(key), Probes: []Probe{{ID: "Q1", Status: "done"}}}
-	_, err := s.store.CreateJob(context.Background(), history.Record{ReportID: id, Verdict: json.RawMessage(`{}`)}, json.RawMessage(`[]`), task.controlHash)
+	_, err := s.store.CreateJob(context.Background(), history.Record{ReportID: id, Verdict: json.RawMessage(`{}`)}, json.RawMessage(`[]`), task.controlHash, "")
 	if err != nil {
 		t.Fatal(err)
 	}

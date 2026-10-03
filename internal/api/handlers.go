@@ -102,6 +102,7 @@ type Task struct {
 	Source      string  `json:"-"`
 	persistMu   sync.Mutex
 	controlHash string
+	visitorHash string
 	finished    time.Time
 	mu          sync.Mutex
 	cancel      context.CancelFunc
@@ -320,7 +321,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 500, map[string]string{"error": "任务创建失败"})
 		return
 	}
-	t := &Task{ID: id, ReportID: id, Status: "queued", BaseURL: q.BaseURL, Model: q.Model, CreatedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(history.JobTTL).Unix(), controlHash: controlHash(token), answers: map[string]QuestionResult{}}
+	t := &Task{ID: id, ReportID: id, Status: "queued", BaseURL: q.BaseURL, Model: q.Model, CreatedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(history.JobTTL).Unix(), controlHash: controlHash(token), visitorHash: visitorHashOf(r), answers: map[string]QuestionResult{}}
 	rng := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
 	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng)}
 	t.Verdict.Protocol = q.Protocol
@@ -354,7 +355,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	progress, _ := json.Marshal(t.Probes)
 	raw, _ := json.Marshal(t.Verdict)
 	questions, _ := json.Marshal(t.questions)
-	historyID, e := s.store.CreateJob(r.Context(), history.Record{ReportID: id, CreatedAt: t.CreatedAt, BaseURL: t.BaseURL, Model: t.Model, Verdict: raw, Questions: questions}, progress, t.controlHash)
+	historyID, e := s.store.CreateJob(r.Context(), history.Record{ReportID: id, CreatedAt: t.CreatedAt, BaseURL: t.BaseURL, Model: t.Model, Verdict: raw, Questions: questions}, progress, t.controlHash, t.visitorHash)
 	if e != nil {
 		cancel()
 		reply(w, 503, map[string]string{"error": "任务存储繁忙，请稍后重试"})
@@ -418,12 +419,15 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 	if t == nil {
 		if rec, e := s.store.GetByReportID(r.PathValue("id")); e == nil {
 			hash, _ := s.store.ControlHash(rec.ReportID)
-			if !controlHashMatches(r.Header.Get("X-Job-Token"), hash) {
+			vhash, _ := s.store.VisitorHash(rec.ReportID)
+			if !controlHashMatches(r.Header.Get("X-Job-Token"), hash) &&
+				(vhash == "" || !controlHashMatches(r.Header.Get("X-Visitor-ID"), vhash)) {
 				reply(w, 403, map[string]string{"error": "只有任务创建者可重跑检测"})
 				return
 			}
 			t = s.fromRecord(rec)
 			t.controlHash = hash
+			t.visitorHash = vhash
 			s.mu.Lock()
 			if existing := s.tasks[t.ID]; existing != nil {
 				t = existing
@@ -613,12 +617,37 @@ func publicBaseURL(base string) string {
 	return u.Scheme + "://" + u.Host
 }
 
+// canReveal decides whether this request may see the unmasked report. Two
+// capabilities are accepted:
+//
+//  1. X-Job-Token — the per-job secret handed out at creation. Strongest, but
+//     only exists in the browser session that created the job.
+//  2. X-Visitor-ID — the anonymous browser identifier that submitted the job.
+//     Persisted on purpose so the same browser can return later. It carries no
+//     secret and never unlocks anything by itself: it only matches jobs that
+//     this same browser created.
 func (s *Server) canReveal(r *http.Request, reportID, inMemoryHash string) bool {
 	expected := inMemoryHash
 	if expected == "" && s.store != nil {
 		expected, _ = s.store.ControlHash(reportID)
 	}
-	return controlHashMatches(r.Header.Get("X-Job-Token"), expected)
+	if controlHashMatches(r.Header.Get("X-Job-Token"), expected) {
+		return true
+	}
+	return s.visitorMatches(r, reportID)
+}
+
+// visitorMatches reports whether the request's visitor identifier owns this job.
+func (s *Server) visitorMatches(r *http.Request, reportID string) bool {
+	raw := r.Header.Get("X-Visitor-ID")
+	if raw == "" || s.store == nil {
+		return false
+	}
+	expected, e := s.store.VisitorHash(reportID)
+	if e != nil || expected == "" {
+		return false
+	}
+	return controlHashMatches(raw, expected)
 }
 
 func reportPayload(id int64, reportID, baseURL, model, createdAt, status string, expiresAt int64, probes, verdict json.RawMessage, reveal bool) map[string]any {

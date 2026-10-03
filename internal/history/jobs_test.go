@@ -10,7 +10,7 @@ import (
 func TestTTLExpiryAndPhysicalCleanup(t *testing.T) {
 	s := tempDB(t)
 	id, _ := NewReportID()
-	numeric, e := s.CreateJob(context.Background(), Record{ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339), BaseURL: "https://fixture.invalid", Model: "model", Verdict: json.RawMessage("{}")}, json.RawMessage("[]"), "hash")
+	numeric, e := s.CreateJob(context.Background(), Record{ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339), BaseURL: "https://fixture.invalid", Model: "model", Verdict: json.RawMessage("{}")}, json.RawMessage("[]"), "hash", "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -40,7 +40,7 @@ func TestTTLExpiryAndPhysicalCleanup(t *testing.T) {
 func TestRestartMarksJobInterrupted(t *testing.T) {
 	s := tempDB(t)
 	id, _ := NewReportID()
-	n, e := s.CreateJob(context.Background(), Record{ReportID: id, CreatedAt: time.Now().Format(time.RFC3339), Verdict: json.RawMessage("{}")}, json.RawMessage("[]"), "hash")
+	n, e := s.CreateJob(context.Background(), Record{ReportID: id, CreatedAt: time.Now().Format(time.RFC3339), Verdict: json.RawMessage("{}")}, json.RawMessage("[]"), "hash", "")
 	if e != nil {
 		t.Fatal(e)
 	}

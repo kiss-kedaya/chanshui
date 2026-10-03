@@ -2,13 +2,14 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getDetection, getHistory, getReport, HistorySummary, SavedReport } from "@/lib/api";
+import { getDetection, getHistory, getReport, retryDetect, HistorySummary, SavedReport } from "@/lib/api";
 import { parseReportID, reportPath } from "@/lib/report-view";
 import { getJobControl, reconcileJobControl } from "@/lib/job-controls";
 import { watchResource } from "@/lib/polling";
 import ResultCards from "@/components/ResultCards";
 import ProbeTimeline from "@/components/ProbeTimeline";
 import ErrorFold from "@/components/ErrorFold";
+import Icon from "@/components/Icon";
 import ReportShare from "@/components/ReportShare";
 import ReportStage from "@/components/ReportStage";
 import { useI18n } from "@/lib/i18n";
@@ -89,6 +90,10 @@ function HistoryDetailInner() {
     [canRetry, setCanRetry] = useState(false);
   const [loadedID, setLoadedID] = useState(id);
   const [reload, setReload] = useState(0);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+  // 重试必须重新提供上游 API Key：它从不落盘，报告页也拿不到上次填的值。
+  const [retryKey, setRetryKey] = useState("");
   useEffect(() => {
     setLoadedID(id);
     setData(null);
@@ -139,6 +144,33 @@ function HistoryDetailInner() {
       },
     });
   }, [id, reload]);
+  // 重跑失败项：只用本任务里已记录的地址与模型，密钥当场重新填。
+  // 鉴权优先用本地 jobkey；没有（换了浏览器/清了存储）时服务端会用访客 ID 认。
+  const retry = async () => {
+    if (!data || !retryKey.trim() || retrying) return;
+    setRetryError("");
+    setRetrying(true);
+    try {
+      const control = getJobControl(data.report_id);
+      await retryDetect(
+        data.report_id,
+        {
+          base_url: data.base_url,
+          key: retryKey.trim(),
+          model: data.model,
+          protocol: "auto",
+        },
+        control?.token || "",
+      );
+      setRetryKey("");
+      setReload((n) => n + 1);
+      window.dispatchEvent(new Event("history-updated"));
+    } catch (e) {
+      setRetryError((e as Error).message);
+    } finally {
+      setRetrying(false);
+    }
+  };
   if (loadedID !== id) return <ReportBoot />;
   return (
     <div className="page-shell history-page">
@@ -196,13 +228,31 @@ function HistoryDetailInner() {
           />
         )}
         {data && canRetry && (
-          <Link
-            className="btn-retry btn-retry-block"
-            href={"/?job=" + encodeURIComponent(data.report_id)}
-            prefetch={false}
-          >
-            {tr("重试失败项")}
-          </Link>
+          <div className="retry-block">
+            <div className="field">
+              <label htmlFor="retry-key">{tr("重跑失败项需要重新填写 API Key")}</label>
+              <input
+                id="retry-key"
+                type="password"
+                autoComplete="off"
+                placeholder={tr("输入密钥")}
+                value={retryKey}
+                onChange={(e) => setRetryKey(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn-retry btn-retry-block"
+              onClick={() => void retry()}
+              disabled={retrying || !retryKey.trim()}
+              aria-busy={retrying}
+            >
+              <Icon name={retrying ? "spinner" : "refresh"} className={retrying ? "icon-spin" : ""} />
+              {retrying ? tr("正在重跑失败项…") : tr("重试失败项")}
+            </button>
+            {retryError && <ErrorFold text={retryError} />}
+          </div>
         )}
         {!data && !error && !loading && <ReportIndex />}
         {error && (
