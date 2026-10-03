@@ -118,7 +118,10 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 			batchWG.Add(1)
 			go func(i int, ch fingerprint.Challenge) {
 				defer batchWG.Done()
-				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: 4096, Stream: true, TimeoutSeconds: q.Timeout})
+				// 指纹题要一次输出几百个数字，属于长响应。实测同一题面各跑 6 次：
+				// 非流式 6/6 成功，流式有 1/6 断在半路（HTTP 仍 200，无 message_stop）。
+				// 数字样本只要最终文本，不需要逐字回传，所以走非流式更稳。
+				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: 4096, TimeoutSeconds: q.Timeout})
 				errText := m.Err
 				if e != nil {
 					errText = e.Error()

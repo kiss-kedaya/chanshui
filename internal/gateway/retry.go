@@ -123,6 +123,10 @@ func FriendlyError(status int, reason string, attempts int) string {
 		message = "检测已取消"
 	case strings.Contains(lower, "cloudflare") || strings.Contains(lower, "waf"):
 		message = "上游安全策略拦截了当前出口地址（Cloudflare/WAF），不是 API Key 鉴权失败"
+	case strings.Contains(lower, "sse stream ended") || strings.Contains(lower, "without message_stop"):
+		// 上游把 HTTP 头先回了 200，随后把流掐断。这不是上游 5xx 故障，
+		// 而是响应体没读完，重试通常能拿到完整结果，所以单独分类。
+		message = "上游响应流被提前中断（连接在传输中途结束），可重试"
 	case strings.Contains(lower, "不允许访问"):
 		message = "目标地址不可用于公网检测"
 	case status == 401 || status == 403:

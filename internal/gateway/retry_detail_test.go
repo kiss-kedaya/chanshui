@@ -11,7 +11,7 @@ func TestFriendlyErrorKeepsSafeDetail(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing detail: %q", got)
 	}
-	if summary != "上游响应格式异常或流式响应中断（HTTP 200）；已尝试 4 次" {
+	if summary != "上游响应流被提前中断（连接在传输中途结束），可重试（HTTP 200）；已尝试 4 次" {
 		t.Fatalf("summary = %q", summary)
 	}
 	if !strings.Contains(detail, "SSE stream ended") || strings.Contains(detail, "sk-abc") {
@@ -50,5 +50,16 @@ func TestFriendlyErrorUpstreamAcrossStatuses(t *testing.T) {
 		if !strings.Contains(got, "上游侧故障") {
 			t.Fatalf("HTTP %d 未标明上游侧: %q", status, got)
 		}
+	}
+}
+
+// 流在中途被掐断（HTTP 仍是 200）不能报成上游 5xx，要说成可重试的中断。
+func TestFriendlyErrorStreamTruncationIsNotUpstream5xx(t *testing.T) {
+	got := FriendlyError(200, "HTTP 200 read: SSE stream ended without message_stop or [DONE]", 4)
+	if !strings.Contains(got, "中断") {
+		t.Fatalf("断流未单独分类: %q", got)
+	}
+	if strings.Contains(got, "上游侧故障") {
+		t.Fatalf("断流不该报成上游侧故障: %q", got)
 	}
 }

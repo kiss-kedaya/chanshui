@@ -159,7 +159,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 			reply(w, 400, map[string]string{"error": "thinking 类型无效"})
 			return
 		}
-		if q.Thinking.Display != "" && q.Thinking.Display != "summarized" && q.Thinking.Display != "omitted" {
+		if q.Thinking.Display != "" && q.Thinking.Display != "summarized" && q.Thinking.Display != "omitted" && q.Thinking.Display != "highlights" {
 			reply(w, 400, map[string]string{"error": "display 模式无效"})
 			return
 		}
