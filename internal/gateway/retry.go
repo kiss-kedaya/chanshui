@@ -137,7 +137,9 @@ func FriendlyError(status int, reason string, attempts int) string {
 			message = "上游拒绝请求参数，请核对模型及接口兼容性"
 		}
 	case status >= 500:
-		message = "上游服务暂时异常"
+		// 5xx 是上游自己的故障，不是本站或请求参数的问题。明确写出来，
+		// 免得用户把它当成检测站坏了。重试次数由下面的统一后缀补充。
+		message = "上游服务异常，属上游侧故障，非本站问题"
 	case strings.Contains(lower, "deadline") || strings.Contains(lower, "timeout"):
 		message = "上游响应超时"
 	case strings.Contains(lower, "empty response"):
