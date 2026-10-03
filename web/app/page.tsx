@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { reportPath } from "@/lib/report-view";
+import { loadKey, saveKey, clearKey } from "@/lib/keyvault";
 import { startDetect, getBankStats, getModels, ask, BankStats, Metrics } from "@/lib/api";
 import { saveJobControl } from "@/lib/job-controls";
 import AuditHero from "@/components/AuditHero";
@@ -71,6 +72,12 @@ export default function DetectPage() {
         );
       }
     } catch {}
+    // 已保存的 Key 从加固存储里异步读回；读不到就保持空，让用户重填。
+    loadKey()
+      .then((saved) => {
+        if (alive.current && saved) setKey(saved);
+      })
+      .catch(() => {});
     return () => {
       alive.current = false;
     };
@@ -95,6 +102,8 @@ export default function DetectPage() {
           JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: cacheOn }),
         );
       } catch {}
+      // Key 单独加固落盘（IndexedDB 里不可提取的 AES 密钥加密），方便回报告页重试。
+      await saveKey(key);
       const d = await startDetect(settings());
       if (!saveJobControl({ jobId: d.task_id, token: d.control_token, expiresAt: d.expires_at }))
         setError(tr("浏览器未允许保存操作 key，刷新后将无法重试此任务"));
@@ -257,6 +266,20 @@ export default function DetectPage() {
                   <Icon name={showKey ? "eyeOff" : "eye"} />
                 </button>
               </div>
+              {key && (
+                <button
+                  type="button"
+                  className="key-forget"
+                  disabled={busy}
+                  onClick={() => {
+                    setKey("");
+                    setModels(null);
+                    void clearKey();
+                  }}
+                >
+                  {tr("清除已保存的密钥")}
+                </button>
+              )}
             </div>
           </div>
           <div className="model-row">
