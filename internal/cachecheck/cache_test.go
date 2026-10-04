@@ -308,6 +308,32 @@ func TestReportedJobChainIsOneHundredOnTheLastLink(t *testing.T) {
 	}
 }
 
+func TestDelayedCacheReadCanPassWhenLaterLinksAreStable(t *testing.T) {
+	m := []gateway.Metrics{
+		cacheMetric(0, 0, 6022, 8),
+		cacheMetric(0, 0, 6054, 8),
+		cacheMetric(5888, 0, 198, 8),
+		cacheMetric(5888, 0, 230, 8),
+		cacheMetric(5888, 0, 262, 8),
+		cacheMetric(5888, 0, 294, 8),
+	}
+	r := FromMetrics(m, "prefix", "responses", false)
+	if r.Status != "pass" || r.Pass == nil || !*r.Pass || ratioText(r.ThirdReadRatio) != "100.00" {
+		t.Fatalf("delayed cache read = status %s ratio %s pass %v reason %s", r.Status, ratioText(r.ThirdReadRatio), r.Pass, r.Reason)
+	}
+	// Delayed warmup must not hide a broken final link or missing usage.
+	m[5].CacheRead = 5000
+	r = FromMetrics(m, "prefix", "responses", false)
+	if r.Pass == nil || *r.Pass {
+		t.Fatal("broken final link passed after delayed warmup")
+	}
+	m[4].CacheWriteReported = false
+	r = FromMetrics(m, "prefix", "responses", false)
+	if r.Pass != nil {
+		t.Fatal("missing final-link usage became a verdict")
+	}
+}
+
 func TestReadOnlyCacheUsesLastReadOverTotal(t *testing.T) {
 	rows := [][2]int{{0, 6367}, {6144, 255}, {6272, 255}, {6272, 200}, {6272, 180}, {6272, 255}}
 	m := make([]gateway.Metrics, len(rows))

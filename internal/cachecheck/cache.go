@@ -160,12 +160,22 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		r.Reason = "读写字段不齐或上一轮缓存量为 0，无法验证衔接；缺失字段不按 0。"
 		return r
 	}
-	grew := len(r.Samples) > 1 && r.Samples[1].Read+r.Samples[1].Write > r.Samples[0].Read+cacheSlack
+	// Some Responses gateways do not report the first cache read until the
+	// third turn. Find growth anywhere before the final validated link rather
+	// than requiring it specifically on turn two.
+	grew := false
+	initial := r.Samples[0].Read
+	for _, s := range r.Samples[1 : len(r.Samples)-1] {
+		if s.Error == "" && s.ReadReported && s.WriteReported && s.Read+s.Write > initial+cacheSlack {
+			grew = true
+			break
+		}
+	}
 	if !grew {
 		fail := false
 		r.Pass = &fail
 		r.Status = "mismatch"
-		r.Reason = "第二轮没有比第一轮多出一段缓存，新对话没有进入缓存。"
+		r.Reason = "缓存链没有建立：后续轮次没有比首轮多出一段可复用缓存。"
 		return r
 	}
 	r.Pass = link.Pass
