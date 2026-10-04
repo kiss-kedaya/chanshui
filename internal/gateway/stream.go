@@ -166,6 +166,9 @@ func parseStream(body io.Reader, m *Metrics) error {
 			if err := flush(); err != nil {
 				return err
 			}
+			if m.StreamComplete {
+				return nil
+			}
 			continue
 		}
 		if strings.HasPrefix(line, "data:") {

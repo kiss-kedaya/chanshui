@@ -23,7 +23,7 @@ func TestExplicitProtocolsDoNotFallback(t *testing.T) {
 			defer s.Close()
 			c := Client{BaseURL: s.URL, Mode: tc.mode, RetryDelay: time.Millisecond}
 			m, e := c.CallMessages(context.Background(), CallRequest{Model: tc.model, Prompt: "x"})
-			if e != nil || count.Load() != 4 || m.Attempts != 4 {
+			if e != nil || count.Load() != 1 || m.Attempts != 1 {
 				t.Fatal(count.Load(), m, e)
 			}
 		})

@@ -98,6 +98,7 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 	outs := make([]fingerprint.Output, 0, wantSamples)
 	evidence := make([]any, 0, maxRequests)
 	requests := 0
+	firstError := ""
 	for len(outs) < wantSamples && requests < len(challenges) {
 		if ctx.Err() != nil {
 			break
@@ -107,9 +108,11 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 			batch = room
 		}
 		type slot struct {
-			out fingerprint.Output
-			ev  any
-			ok  bool
+			out       fingerprint.Output
+			ev        any
+			ok        bool
+			err       string
+			permanent bool
 		}
 		slots := make([]slot, batch)
 		var batchWG sync.WaitGroup
@@ -118,10 +121,9 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 			batchWG.Add(1)
 			go func(i int, ch fingerprint.Challenge) {
 				defer batchWG.Done()
-				// 指纹题要一次输出几百个数字，属于长响应。实测同一题面各跑 6 次：
-				// 非流式 6/6 成功，流式有 1/6 断在半路（HTTP 仍 200，无 message_stop）。
-				// 数字样本只要最终文本，不需要逐字回传，所以走非流式更稳。
-				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: 4096, TimeoutSeconds: q.Timeout})
+				// Messages prefers a buffered response for long numeric samples.
+				// Responses/Chat stream by default; some gateways require it.
+				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: 4096, Stream: g.ProtocolFor(q.Model) != "messages", TimeoutSeconds: q.Timeout})
 				errText := m.Err
 				if e != nil {
 					errText = e.Error()
@@ -132,19 +134,34 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 					answer = ""
 				}
 				slots[i] = slot{
-					out: fingerprint.Output{Text: answer, ExpectedCount: ch.ExpectedCount},
-					ev:  map[string]any{"id": ch.ID, "expected_count": ch.ExpectedCount, "parsed_count": len(fingerprint.ParseNumbers(m.Answer)), "answer": m.Answer, "error": errText, "ms": m.Ms, "usable": ok},
-					ok:  ok,
+					out:       fingerprint.Output{Text: answer, ExpectedCount: ch.ExpectedCount},
+					ev:        map[string]any{"id": ch.ID, "expected_count": ch.ExpectedCount, "parsed_count": len(fingerprint.ParseNumbers(m.Answer)), "answer": m.Answer, "error": errText, "ms": m.Ms, "usable": ok, "http_status": m.Status, "attempts": m.Attempts, "protocol": m.Protocol},
+					ok:        ok,
+					err:       errText,
+					permanent: errText != "" && gateway.PermanentRequestError(m.Status),
 				}
 			}(i, ch)
 		}
 		batchWG.Wait()
 		requests += batch
+		failedRequests, permanent := 0, false
 		for _, sl := range slots {
 			evidence = append(evidence, sl.ev)
+			if sl.err != "" {
+				failedRequests++
+				if firstError == "" {
+					firstError = sl.err
+				}
+			}
+			permanent = permanent || sl.permanent
 			if sl.ok && len(outs) < wantSamples {
 				outs = append(outs, sl.out)
 			}
+		}
+		// More challenge text cannot fix credentials or an exhausted upstream
+		// outage. Keep the ten-challenge budget for successful but unusable output.
+		if permanent || failedRequests == batch {
+			break
 		}
 	}
 	a := fingerprint.Attribute(outs, bank)
@@ -159,11 +176,20 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 	family, familyName := a.Family, a.FamilyName
 	if a.UsedOutputs == 0 {
 		family, familyName = "unknown", "没有有效样本"
-		note = "10 次里没有拿到有效数字样本，这项记 0 分。"
+		note = fmt.Sprintf("%d 次里没有拿到有效数字样本，这项记 0 分。", requests)
 	} else if a.UsedOutputs < wantSamples {
 		note = "有效样本不足 3 个，这项记 0 分。"
 	}
 	out := map[string]any{"family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < wantSamples, "evidence": evidence, "note": note}
+	if ctx.Err() != nil {
+		return out, ctx.Err()
+	}
+	if a.UsedOutputs < wantSamples {
+		if firstError == "" {
+			firstError = "上游返回的数字不足或格式无效"
+		}
+		return out, fmt.Errorf("指纹采样未完成（有效样本 %d/%d）：%s", a.UsedOutputs, wantSamples, firstError)
+	}
 	if a.UsedOutputs > 0 && a.LowConfidence {
 		b, e := fingerprint.CompareBehavior(ctx, behaviorAdapter{g, q.Timeout}, q.Model, bank, a)
 		if e != nil {

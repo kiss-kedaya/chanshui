@@ -52,35 +52,6 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 				m.Err = validationErr.Error()
 			}
 		}
-		fallbackToChat := false
-		if (c.Mode == "" || c.Mode == "auto") && q.protocolOverride == "" {
-			baseProtocol := c.ProtocolFor(q.Model)
-			unsupportedPath := m.Status == 404 || m.Status == 405
-			toolCompatibility := m.Status == 400 && (len(q.Tools) > 0 || q.WebSearch)
-			if (baseProtocol == "responses" && unsupportedPath) || ((baseProtocol == "responses" || baseProtocol == "messages") && toolCompatibility) {
-				q.protocolOverride = "chat"
-				fallbackToChat = true
-			}
-		}
-		// Some gateways reject forced tool selection even though they accept the
-		// declared tool. One retry may proceed without the selector; this avoids
-		// spending all four attempts on identical deterministic parameter errors.
-		forceWasSet := q.ForceTool != ""
-		if (m.Status == 400 || m.Status == 422) && forceWasSet && !fallbackToChat {
-			q.ForceTool = ""
-		}
-		if (m.Status == 400 || m.Status == 422) && !forceWasSet && (len(q.Tools) > 0 || q.WebSearch) {
-			break
-		}
-		if q.StopOnInvalidSignature && m.Status == 400 && strings.Contains(strings.ToLower(m.Err), "signature") {
-			break
-		}
-		// 402 余额不足是终止性错误：账户没钱，重发同样的请求只会得到同样的
-		// 结果，还白烧 4 次重试。其它 4xx 各有安排（404/405 要留给协议回退，
-		// 400/422 要看工具参数），不在这里一并处理。
-		if m.Status == 402 {
-			break
-		}
 		if err == nil && m.Err == "" {
 			m.Ms = time.Since(start).Milliseconds()
 			return m, nil
@@ -88,7 +59,38 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 		if ctx.Err() != nil {
 			return m, ctx.Err()
 		}
-		if attempt < c.retries() {
+		if q.StopOnInvalidSignature && m.Status == 400 && strings.Contains(strings.ToLower(m.Err), "signature") {
+			break
+		}
+		adapted := false
+		// Correct a stream-only endpoint on the same path before considering
+		// tool compatibility. This also applies to explicitly selected protocols.
+		if (m.Status == 400 || m.Status == 422) && !q.Stream && requiresStream(m.Err) {
+			q.Stream = true
+			adapted = true
+		} else if (c.Mode == "" || c.Mode == "auto") && q.protocolOverride == "" {
+			baseProtocol := c.ProtocolFor(q.Model)
+			unsupportedPath := m.Status == 404 || m.Status == 405
+			toolCompatibility := m.Status == 400 && (len(q.Tools) > 0 || q.WebSearch)
+			if (baseProtocol == "responses" && unsupportedPath) || ((baseProtocol == "responses" || baseProtocol == "messages") && toolCompatibility) {
+				q.protocolOverride = "chat"
+				adapted = true
+			}
+		}
+		// Some gateways reject forced tool selection even though they accept the
+		// declared tool. One retry may proceed without the selector; this avoids
+		// spending all four attempts on identical deterministic parameter errors.
+		forceWasSet := q.ForceTool != ""
+		if (m.Status == 400 || m.Status == 422) && forceWasSet && !adapted {
+			q.ForceTool = ""
+			adapted = true
+		}
+		// Retrying authentication, billing or unchanged parameter/path errors
+		// only adds latency. Transient statuses retain their independent budget.
+		if !adapted && PermanentRequestError(m.Status) {
+			break
+		}
+		if !adapted && attempt < c.retries() {
 			select {
 			case <-ctx.Done():
 				return m, ctx.Err()
@@ -103,6 +105,19 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 	}
 	m.Err = FriendlyError(m.Status, message, m.Attempts)
 	return m, nil
+}
+
+// PermanentRequestError identifies HTTP errors that need a changed request
+// or credentials. Callers must apply supported compatibility changes first.
+func PermanentRequestError(status int) bool {
+	return status >= 400 && status < 500 && status != 408 && status != 409 && status != 425 && status != 429
+}
+
+func requiresStream(reason string) bool {
+	lower := strings.ToLower(reason)
+	return strings.Contains(lower, "stream") && (strings.Contains(lower, "streaming is required") ||
+		strings.Contains(lower, "stream must be true") || strings.Contains(lower, "stream=true") ||
+		strings.Contains(lower, `only accepts "stream": true`) || strings.Contains(lower, "only supports streaming"))
 }
 
 // Upstream5xxBackoff is the first wait after a 5xx. Some gateways answer an
