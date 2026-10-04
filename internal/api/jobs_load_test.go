@@ -137,8 +137,23 @@ func TestRetryAfterMemoryEvictionKeepsJobID(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &created)
 	id := created["job_id"].(string)
 	task := waitTask(t, s, id)
-	task.persistMu.Lock()
-	task.persistMu.Unlock()
+	// The terminal in-memory state is visible before the final persist starts.
+	// Merely taking persistMu can win that race. Wait for the durable state
+	// before simulating eviction (production cleanup waits a full minute).
+	task.mu.Lock()
+	finalStatus := task.Status
+	task.mu.Unlock()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		record, err := s.store.GetByReportID(id)
+		if err == nil && record.Status == finalStatus {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("final job state was not persisted: %v", err)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	s.mu.Lock()
 	delete(s.tasks, id)
 	s.mu.Unlock()
