@@ -1,8 +1,8 @@
 [
   {
-    "id": "deepseek-flash",
+    "id": "deepseek-v4.1-flash",
     "aliases": [
-      "deepseek-v4.1-flash"
+      "deepseek-flash"
     ],
     "family": "deepseek",
     "family_name": "DeepSeek",

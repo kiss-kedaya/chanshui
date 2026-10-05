@@ -56,8 +56,8 @@ func lineName(value string) string {
 }
 
 func CanonModel(model string) string {
-	if strings.EqualFold(strings.TrimSpace(model), "deepseek-v4.1-flash") {
-		model = "deepseek-flash"
+	if strings.EqualFold(strings.TrimSpace(model), "deepseek-flash") {
+		model = "deepseek-v4.1-flash"
 	}
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(model)) {

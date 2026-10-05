@@ -34,7 +34,8 @@ func main() {
 	}
 	ref := fingerprint.LocalReference{ID: capture.Model, Family: "deepseek", FamilyName: "DeepSeek", Source: capture.BaseURL, CapturedAt: capture.StartedAt}
 	if ref.ID == "deepseek-flash" {
-		ref.Aliases = []string{"deepseek-v4.1-flash"}
+		ref.ID = "deepseek-v4.1-flash"
+		ref.Aliases = []string{"deepseek-flash"}
 	}
 	var holdout []fingerprint.Output
 	for _, r := range capture.Records {

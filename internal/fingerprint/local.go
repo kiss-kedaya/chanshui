@@ -77,9 +77,16 @@ func AddLocalReference(b *Bank, ref LocalReference) error {
 			index = i
 			break
 		}
+		for _, alias := range ref.Aliases {
+			if m.ID == alias {
+				index = i
+				break
+			}
+		}
 	}
 	if index >= 0 {
 		b.Numeric.Models[index] = model
+		b.Numeric.Robust.ModelOrder[index] = ref.ID
 		h.Centroids[index] = hc
 		o.Centroids[index] = oc
 		for i := range o.EnvironmentCentroids {

@@ -45,7 +45,7 @@ export function fingerprintFamily(family: string): string {
   return f;
 }
 export function canonModel(model: string): string {
-	if (model.trim().toLowerCase() === "deepseek-v4.1-flash") model = "deepseek-flash";
+	if (model.trim().toLowerCase() === "deepseek-flash") model = "deepseek-v4.1-flash";
   return model.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 

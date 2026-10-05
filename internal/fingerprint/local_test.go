@@ -51,13 +51,13 @@ func TestDeepSeekHeldOutTriples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := bank.NumericModel("deepseek-v4.1-flash")
-	if ref == nil || ref.ID != "deepseek-flash" || ref.ReferenceSamples != 36 {
+	ref := bank.NumericModel("deepseek-flash")
+	if ref == nil || ref.ID != "deepseek-v4.1-flash" || ref.ReferenceSamples != 36 {
 		t.Fatal("missing trained alias")
 	}
 	for i := 0; i < len(outputs); i += 3 {
 		a := Attribute(outputs[i:i+3], bank)
-		if a.TopModel != "deepseek-flash" || a.UsedOutputs != 3 {
+		if a.TopModel != "deepseek-v4.1-flash" || a.UsedOutputs != 3 {
 			t.Fatalf("holdout %d: %+v", i/3, a)
 		}
 	}
