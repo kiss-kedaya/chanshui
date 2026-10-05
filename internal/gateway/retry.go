@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -29,6 +30,11 @@ func Protocol(model string) string {
 	return "messages"
 }
 func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, error) {
+	// The operator confirmed this version alias; the official API accepts
+	// only deepseek-flash. Other gateways may require the versioned name.
+	if u, e := url.Parse(c.BaseURL); e == nil && strings.EqualFold(u.Hostname(), "api.deepseek.com") && q.Model == "deepseek-v4.1-flash" {
+		q.Model = "deepseek-flash"
+	}
 	start := time.Now()
 	var m Metrics
 	var err error

@@ -27,6 +27,8 @@ test("hide displayed 0.0 percent without changing nonzero probabilities",()=>{
 });
 
 test("fingerprint model mismatch is diluted and scores zero",()=>{
+  assert.equal(fingerprintDiluted("deepseek-v4.1-flash","deepseek","deepseek-flash"), false);
+  assert.equal(fingerprintDiluted("deepseek-v4-flash","deepseek","deepseek-flash"), true);
   assert.equal(fingerprintDiluted("claude-opus-4-6","gpt","gpt-5.4"), true);
   assert.equal(fingerprintDiluted("claude-opus-4-6","claude","claude-haiku-4-5"), true);
   assert.equal(fingerprintDiluted("claude-opus-4-6","claude","claude-opus-4-5"), true);

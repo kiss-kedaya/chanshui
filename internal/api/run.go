@@ -84,12 +84,12 @@ func (a behaviorAdapter) Call(ctx context.Context, model, prompt string, max int
 }
 func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any, error) {
 	bank := s.currentBank()
-	if !gateway.IsClaude(q.Model) && !strings.HasPrefix(strings.ToLower(q.Model), "gpt-") {
+	if bank.NumericModel(q.Model) == nil && !gateway.IsClaude(q.Model) && !strings.HasPrefix(strings.ToLower(q.Model), "gpt-") {
 		b, e := fingerprint.CompareBehavior(ctx, behaviorAdapter{g, q.Timeout}, q.Model, bank, fingerprint.Attribution{LowConfidence: true})
 		if e != nil {
 			return nil, e
 		}
-		return map[string]any{"family": "unknown", "family_name": "未建立数字基线", "family_prob": 0, "top_model": "", "top_prob": 0, "results": []any{}, "behavioral_top3": b.Top3, "used_outputs": 0, "requests": 0, "low_confidence": true, "note": "当前数字库只覆盖 GPT 和 Claude。没有有效数字样本，这项记 0 分。", "evidence": []any{}}, nil
+		return map[string]any{"family": "unknown", "family_name": "未建立数字基线", "family_prob": 0, "top_model": "", "top_prob": 0, "results": []any{}, "behavioral_top3": b.Top3, "used_outputs": 0, "requests": 0, "low_confidence": true, "note": "当前模型尚未建立数字基线，这项记 0 分。", "evidence": []any{}}, nil
 	}
 	const wantSamples = 3
 	const maxRequests = 10
@@ -123,7 +123,11 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 				defer batchWG.Done()
 				// Messages prefers a buffered response for long numeric samples.
 				// Responses/Chat stream by default; some gateways require it.
-				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: 4096, Stream: g.ProtocolFor(q.Model) != "messages", TimeoutSeconds: q.Timeout})
+				maxTokens := 4096
+				if ref := bank.NumericModel(q.Model); ref != nil && ref.ReferenceSamples > 0 {
+					maxTokens = 16384
+				}
+				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: maxTokens, Stream: g.ProtocolFor(q.Model) != "messages", TimeoutSeconds: q.Timeout})
 				errText := m.Err
 				if e != nil {
 					errText = e.Error()
@@ -173,6 +177,9 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 		res = append(res, map[string]any{"model": v.ModelID, "probability": v.Prob, "similarity": v.JSSimilarity})
 	}
 	note := "概率只在数字库内的候选之间比较。凑满 3 个有效样本且归因和所选模型一致，这项才记满分。"
+	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.ReferenceSamples > 0 {
+		note += " 此候选为单一接口采样基线；候选权重沿用原库温度，未完成跨供应商概率校准，不能单独证明模型身份。"
+	}
 	family, familyName := a.Family, a.FamilyName
 	if a.UsedOutputs == 0 {
 		family, familyName = "unknown", "没有有效样本"
@@ -181,6 +188,9 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 		note = "有效样本不足 3 个，这项记 0 分。"
 	}
 	out := map[string]any{"family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < wantSamples, "evidence": evidence, "note": note}
+	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.ReferenceSamples > 0 {
+		out["reference"] = map[string]any{"source": ref.ReferenceSource, "training_samples": ref.ReferenceSamples, "aliases": ref.Aliases, "calibration": "inherited_candidate_weights_not_recalibrated"}
+	}
 	if ctx.Err() != nil {
 		return out, ctx.Err()
 	}

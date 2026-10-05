@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -15,6 +16,43 @@ import (
 )
 
 type syncTransport func(*http.Request) (*http.Response, error)
+
+func TestUpstreamOnlyCachedBankKeepsLocalReference(t *testing.T) {
+	db, err := history.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	raw, err := os.ReadFile("../fingerprint/bank.generated.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.SaveRuntimeState(context.Background(), bankStateKey, raw); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(db, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !s.supported("deepseek-flash") || !s.supported("deepseek-v4.1-flash") {
+		t.Fatal("cached upstream bank erased local models")
+	}
+	var upstream fingerprint.Bank
+	if err = json.Unmarshal(raw, &upstream); err != nil {
+		t.Fatal(err)
+	}
+	count := len(upstream.Numeric.Models)
+	if err = s.publishBank(context.Background(), &upstream); err != nil {
+		t.Fatal(err)
+	}
+	if len(upstream.Numeric.Models) != count {
+		t.Fatal("publish mutated caller snapshot")
+	}
+	if s.currentBank().NumericModel("deepseek-v4.1-flash") == nil {
+		t.Fatal("published bank erased local models")
+	}
+}
 
 func (f syncTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func TestAutomaticSyncValidatedSwapAndPersistence(t *testing.T) {
@@ -74,6 +112,9 @@ func TestAutomaticSyncValidatedSwapAndPersistence(t *testing.T) {
 	defer next.Close()
 	if next.currentBank().Source["commit"] != sha {
 		t.Fatal("verified cache not loaded")
+	}
+	if next.currentBank().NumericModel("deepseek-v4.1-flash") == nil {
+		t.Fatal("local reference lost after restart")
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

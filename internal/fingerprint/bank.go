@@ -24,11 +24,14 @@ type NumericBank struct {
 }
 
 type ModelDef struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	Family      string `json:"family"`
-	FamilyName  string `json:"family_name"`
-	Counts      []int  `json:"counts"`
+	Aliases          []string `json:"aliases,omitempty"`
+	ReferenceSource  string   `json:"reference_source,omitempty"`
+	ReferenceSamples int      `json:"reference_samples,omitempty"`
+	ID               string   `json:"id"`
+	DisplayName      string   `json:"display_name"`
+	Family           string   `json:"family"`
+	FamilyName       string   `json:"family_name"`
+	Counts           []int    `json:"counts"`
 }
 
 type Robust struct {
@@ -102,6 +105,9 @@ type Uncertainty struct {
 func LoadBank() (*Bank, error) {
 	var b Bank
 	if err := json.Unmarshal(bankGenerated, &b); err != nil {
+		return nil, err
+	}
+	if err := MergeLocalReferences(&b); err != nil {
 		return nil, err
 	}
 	return &b, nil

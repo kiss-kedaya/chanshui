@@ -3,6 +3,12 @@ package integrity
 import "testing"
 
 func TestDilutedMatchesRequestedModel(t *testing.T) {
+	if Diluted("deepseek-v4.1-flash", "deepseek", "deepseek-flash") {
+		t.Fatal("confirmed alias marked diluted")
+	}
+	if !Diluted("deepseek-v4-flash", "deepseek", "deepseek-flash") {
+		t.Fatal("older version merged into new alias")
+	}
 	if Diluted("claude-opus-4-6", "claude", "claude-opus-4-6") {
 		t.Fatal("matching opus marked diluted")
 	}

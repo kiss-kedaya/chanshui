@@ -28,12 +28,22 @@ func (s *Server) loadCachedBank() {
 		return
 	}
 	var b fingerprint.Bank
-	if json.Unmarshal(raw, &b) == nil && fingerprint.ValidateBank(&b) == nil {
+	if json.Unmarshal(raw, &b) == nil && fingerprint.MergeLocalReferences(&b) == nil {
 		s.bank = &b
 	}
 }
 func (s *Server) publishBank(ctx context.Context, b *fingerprint.Bank) error {
-	if e := fingerprint.ValidateBank(b); e != nil {
+	// Never append local centroids into a snapshot already used by jobs.
+	copyRaw, e := json.Marshal(b)
+	if e != nil {
+		return e
+	}
+	var next fingerprint.Bank
+	if e = json.Unmarshal(copyRaw, &next); e != nil {
+		return e
+	}
+	b = &next
+	if e := fingerprint.MergeLocalReferences(b); e != nil {
 		return e
 	}
 	raw, e := json.Marshal(b)

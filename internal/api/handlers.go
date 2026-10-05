@@ -269,6 +269,9 @@ func cleanModel(id string) string {
 }
 func (s *Server) supported(id string) bool {
 	bank := s.currentBank()
+	if bank.NumericModel(id) != nil {
+		return true
+	}
 	for _, m := range bank.Numeric.Models {
 		if m.ID == id {
 			return true
@@ -284,8 +287,13 @@ func (s *Server) supported(id string) bool {
 func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	bank := s.currentBank()
 	seen := map[string]bool{}
+	familySet := map[string]bool{}
 	for _, m := range bank.Numeric.Models {
 		seen[m.ID] = true
+		for _, alias := range m.Aliases {
+			seen[alias] = true
+		}
+		familySet[m.FamilyName] = true
 	}
 	for _, m := range bank.Behavioral.Models {
 		seen[cleanModel(m.ModelID)] = true
@@ -295,7 +303,12 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	reply(w, 200, map[string]any{"supported_models": ids, "fingerprint_count": len(ids), "numeric_count": len(bank.Numeric.Models), "behavioral_count": len(bank.Behavioral.Models), "families": []string{"GPT", "Claude", "Gemini", "DeepSeek", "Grok", "GLM"}, "numeric_families": []string{"GPT", "Claude"}, "source": bank.Source})
+	families := make([]string, 0, len(familySet))
+	for family := range familySet {
+		families = append(families, family)
+	}
+	sort.Strings(families)
+	reply(w, 200, map[string]any{"supported_models": ids, "fingerprint_count": len(ids), "numeric_count": len(bank.Numeric.Models), "behavioral_count": len(bank.Behavioral.Models), "families": []string{"GPT", "Claude", "Gemini", "DeepSeek", "Grok", "GLM"}, "numeric_families": families, "source": bank.Source})
 }
 func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
