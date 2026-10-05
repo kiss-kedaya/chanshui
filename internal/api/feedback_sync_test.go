@@ -52,6 +52,11 @@ func TestUpstreamOnlyCachedBankKeepsLocalReference(t *testing.T) {
 	if s.currentBank().NumericModel("deepseek-v4.1-flash") == nil {
 		t.Fatal("published bank erased local models")
 	}
+	for _, model := range []string{"grok-4.6", "grok-4.7"} {
+		if !s.supported(model) || s.currentBank().NumericModel(model) == nil {
+			t.Fatalf("published bank erased %s", model)
+		}
+	}
 }
 
 func (f syncTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

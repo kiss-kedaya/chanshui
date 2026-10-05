@@ -62,3 +62,32 @@ func TestDeepSeekHeldOutTriples(t *testing.T) {
 		}
 	}
 }
+
+func TestGrokHeldOutTriplesAgainstJointBank(t *testing.T) {
+	bank, err := LoadBank()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"grok-4.6", "grok-4.7"} {
+		t.Run(model, func(t *testing.T) {
+			raw, err := os.ReadFile("testdata/" + model + "-holdout.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var outputs []Output
+			if err = json.Unmarshal(raw, &outputs); err != nil {
+				t.Fatal(err)
+			}
+			ref := bank.NumericModel(model)
+			if len(outputs) != 12 || ref == nil || ref.ReferenceSamples != 36 || ref.Family != "grok" {
+				t.Fatal("incomplete Grok baseline")
+			}
+			for i := 0; i < len(outputs); i += 3 {
+				a := Attribute(outputs[i:i+3], bank)
+				if a.TopModel != model || a.UsedOutputs != 3 {
+					t.Fatalf("group %d: top %s want %s", i/3, a.TopModel, model)
+				}
+			}
+		})
+	}
+}

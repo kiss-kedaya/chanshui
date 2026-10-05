@@ -44,15 +44,19 @@ func main() {
 	concurrency := flag.Int("concurrency", 3, "parallel upstream requests")
 	seed := flag.Int64("seed", 20261005, "reproducible independent challenge seed")
 	maxTokens := flag.Int("max-tokens", 16384, "output budget including reasoning")
+	timeout := flag.Int("timeout", 180, "per-attempt timeout in seconds")
+	resume := flag.Bool("resume", false, "continue an existing matching capture; completed rows are retained")
 	flag.Parse()
-	if *train < 1 || *holdout < 0 || *concurrency < 1 || *concurrency > 8 {
+	if *train < 0 || *holdout < 0 || *train+*holdout < 1 || *concurrency < 1 || *concurrency > 8 || *timeout < 1 {
 		panic("invalid sample counts or concurrency")
 	}
-	file, err := os.OpenFile(*out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		panic(err)
+	if !*resume {
+		file, err := os.OpenFile(*out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		file.Close()
 	}
-	file.Close()
 	key := strings.TrimSpace(os.Getenv("CHANSHUI_CAPTURE_KEY"))
 	if key == "" {
 		key, _ = bufio.NewReader(os.Stdin).ReadString('\n')
@@ -73,8 +77,32 @@ func main() {
 	rows := make([]record, len(challenges))
 	var mu sync.Mutex
 	started := time.Now().UTC().Format(time.RFC3339)
+	if *resume {
+		raw, err := os.ReadFile(*out)
+		if err != nil {
+			panic(err)
+		}
+		var previous struct {
+			Model     string   `json:"model"`
+			Base      string   `json:"base_url"`
+			Started   string   `json:"started_at"`
+			Seed      int64    `json:"seed"`
+			MaxTokens int      `json:"max_tokens"`
+			Train     int      `json:"training_requested"`
+			Holdout   int      `json:"holdout_requested"`
+			Records   []record `json:"records"`
+		}
+		if err = json.Unmarshal(raw, &previous); err != nil {
+			panic(err)
+		}
+		if previous.Model != *model || previous.Base != *base || previous.Seed != *seed || previous.MaxTokens != *maxTokens || previous.Train != *train || previous.Holdout != *holdout || len(previous.Records) != len(rows) {
+			panic("resume parameters differ from capture")
+		}
+		rows = previous.Records
+		started = previous.Started
+	}
 	save := func() {
-		data := map[string]any{"schema_version": 1, "model": *model, "base_url": *base, "protocol": "chat", "started_at": started, "updated_at": time.Now().UTC().Format(time.RFC3339), "seed": *seed, "training_requested": *train, "holdout_requested": *holdout, "max_tokens": *maxTokens, "temperature": "upstream default", "identity": "endpoint-labelled baseline, not independently verified model identity", "records": rows}
+		data := map[string]any{"schema_version": 1, "model": *model, "base_url": *base, "protocol": "chat", "started_at": started, "updated_at": time.Now().UTC().Format(time.RFC3339), "seed": *seed, "training_requested": *train, "holdout_requested": *holdout, "max_tokens": *maxTokens, "timeout_seconds": *timeout, "temperature": "upstream default", "identity": "endpoint-labelled baseline, not independently verified model identity", "records": rows}
 		raw, e := json.MarshalIndent(data, "", "  ")
 		if e != nil {
 			panic(e)
@@ -94,7 +122,7 @@ func main() {
 			defer wg.Done()
 			for i := range jobs {
 				ch := challenges[i]
-				m, e := client.CallMessages(context.Background(), gateway.CallRequest{Model: *model, Prompt: ch.Prompt, MaxTokens: *maxTokens, Stream: true, TimeoutSeconds: 180})
+				m, e := client.CallMessages(context.Background(), gateway.CallRequest{Model: *model, Prompt: ch.Prompt, MaxTokens: *maxTokens, Stream: true, TimeoutSeconds: *timeout})
 				errorText := m.Err
 				if e != nil {
 					errorText = e.Error()
@@ -115,7 +143,12 @@ func main() {
 		}()
 	}
 	for i := range challenges {
-		jobs <- i
+		mu.Lock()
+		complete := rows[i].Index != 0
+		mu.Unlock()
+		if !complete {
+			jobs <- i
+		}
 	}
 	close(jobs)
 	wg.Wait()
