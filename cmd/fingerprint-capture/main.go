@@ -33,6 +33,38 @@ type record struct {
 	OutputTokens   int    `json:"output_tokens"`
 	ThinkingTokens int    `json:"thinking_tokens"`
 	Error          string `json:"error,omitempty"`
+	Protocol       string `json:"protocol,omitempty"`
+}
+
+// pacedTransport only enforces an explicitly supplied upstream request quota.
+// It paces every HTTP attempt, including retries, rather than letting bursts
+// turn an advertised per-minute limit into repeated 429 responses.
+type pacedTransport struct {
+	base     http.RoundTripper
+	interval time.Duration
+	mu       sync.Mutex
+	next     time.Time
+}
+
+func (p *pacedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	p.mu.Lock()
+	now := time.Now()
+	slot := p.next
+	if slot.Before(now) {
+		slot = now
+	}
+	p.next = slot.Add(p.interval)
+	p.mu.Unlock()
+	if wait := time.Until(slot); wait > 0 {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		case <-timer.C:
+		}
+	}
+	return p.base.RoundTrip(req)
 }
 
 func main() {
@@ -46,8 +78,15 @@ func main() {
 	maxTokens := flag.Int("max-tokens", 16384, "output budget including reasoning")
 	timeout := flag.Int("timeout", 180, "per-attempt timeout in seconds")
 	resume := flag.Bool("resume", false, "continue an existing matching capture; completed rows are retained")
+	retryInvalid := flag.Bool("retry-invalid", false, "retry failed rows when resuming")
+	rotateInvalid := flag.Bool("rotate-invalid", false, "when retrying invalid rows, draw a fresh challenge instead of repeating one the model refused")
+	requestsPerMinute := flag.Int("requests-per-minute", 0, "honor an explicit upstream request quota; 0 disables pacing")
+	protocol := flag.String("protocol", "chat", "chat, auto, anthropic, or openai; use the endpoint contract")
 	flag.Parse()
-	if *train < 0 || *holdout < 0 || *train+*holdout < 1 || *concurrency < 1 || *concurrency > 8 || *timeout < 1 {
+	if *protocol != "chat" && *protocol != "auto" && *protocol != "anthropic" && *protocol != "openai" {
+		panic("invalid protocol")
+	}
+	if *train < 0 || *holdout < 0 || *train+*holdout < 1 || *concurrency < 1 || *timeout < 1 || *requestsPerMinute < 0 {
 		panic("invalid sample counts or concurrency")
 	}
 	if !*resume {
@@ -68,7 +107,11 @@ func main() {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
 	defer tr.CloseIdleConnections()
-	client := gateway.Client{BaseURL: *base, Key: key, Mode: "chat", HTTP: &http.Client{Transport: tr}}
+	var transport http.RoundTripper = tr
+	if *requestsPerMinute > 0 {
+		transport = &pacedTransport{base: tr, interval: time.Minute / time.Duration(*requestsPerMinute)}
+	}
+	client := gateway.Client{BaseURL: *base, Key: key, Mode: *protocol, HTTP: &http.Client{Transport: transport}}
 	rng := rand.New(rand.NewSource(*seed))
 	var challenges []fingerprint.Challenge
 	for len(challenges) < *train+*holdout {
@@ -100,9 +143,23 @@ func main() {
 		}
 		rows = previous.Records
 		started = previous.Started
+		if *retryInvalid {
+			// A provider refusal is a property of the prompt, so repeating it can
+			// never yield a sample. -rotate-invalid draws a fresh challenge for the
+			// failed slot instead; the artifact still records the prompt actually asked.
+			rotate := rand.New(rand.NewSource(time.Now().UnixNano()))
+			for i := range rows {
+				if rows[i].Index != 0 && !rows[i].Usable {
+					if *rotateInvalid {
+						challenges[i] = fingerprint.GenerateChallenges(1, rotate)[0]
+					}
+					rows[i] = record{}
+				}
+			}
+		}
 	}
 	save := func() {
-		data := map[string]any{"schema_version": 1, "model": *model, "base_url": *base, "protocol": "chat", "started_at": started, "updated_at": time.Now().UTC().Format(time.RFC3339), "seed": *seed, "training_requested": *train, "holdout_requested": *holdout, "max_tokens": *maxTokens, "timeout_seconds": *timeout, "temperature": "upstream default", "identity": "endpoint-labelled baseline, not independently verified model identity", "records": rows}
+		data := map[string]any{"schema_version": 1, "model": *model, "base_url": *base, "protocol": client.ProtocolFor(*model), "started_at": started, "updated_at": time.Now().UTC().Format(time.RFC3339), "seed": *seed, "training_requested": *train, "holdout_requested": *holdout, "max_tokens": *maxTokens, "timeout_seconds": *timeout, "temperature": "upstream default", "identity": "endpoint-labelled baseline, not independently verified model identity", "records": rows}
 		raw, e := json.MarshalIndent(data, "", "  ")
 		if e != nil {
 			panic(e)
@@ -116,7 +173,7 @@ func main() {
 	}
 	jobs := make(chan int)
 	var wg sync.WaitGroup
-	for w := 0; w < *concurrency; w++ {
+	for w := 0; w < min(*concurrency, len(challenges)); w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -134,6 +191,7 @@ func main() {
 				}
 				row := record{Index: i + 1, Split: split, Prompt: ch.Prompt, Expected: ch.ExpectedCount, Answer: strings.ReplaceAll(m.Answer, key, "[redacted]"), Parsed: len(fingerprint.ParseNumbers(m.Answer)), Usable: errorText == "" && m.StopReason != "max_tokens" && fingerprint.Usable(m.Answer, ch.ExpectedCount, 80), Status: m.Status, Attempts: m.Attempts, Ms: m.Ms, Error: errorText}
 				row.StopReason, row.OutputTokens, row.ThinkingTokens = m.StopReason, m.OutputTokens, m.ThinkingTokens
+				row.Protocol = m.Protocol
 				mu.Lock()
 				rows[i] = row
 				save()
@@ -144,7 +202,7 @@ func main() {
 	}
 	for i := range challenges {
 		mu.Lock()
-		complete := rows[i].Index != 0
+		complete := rows[i].Index != 0 && (rows[i].Usable || !*retryInvalid)
 		mu.Unlock()
 		if !complete {
 			jobs <- i

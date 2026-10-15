@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // LocalReference retains raw training sequences so centroids can be projected
@@ -105,6 +106,9 @@ func AddLocalReference(b *Bank, ref LocalReference) error {
 }
 
 func (b *Bank) NumericModel(id string) *ModelDef {
+	for _, prefix := range []string{"openai/", "anthropic/", "moonshotai/"} {
+		id = strings.TrimPrefix(id, prefix)
+	}
 	for i := range b.Numeric.Models {
 		m := &b.Numeric.Models[i]
 		if m.ID == id {

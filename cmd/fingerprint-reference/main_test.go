@@ -8,7 +8,7 @@ import (
 )
 
 func TestReadCaptureKeepsTrainingAndHoldoutSeparate(t *testing.T) {
-	for _, model := range []string{"grok-4.6", "grok-4.7", "deepseek-flash"} {
+	for _, model := range []string{"grok-4.6", "grok-4.7", "deepseek-flash", "anthropic/claude-fable-5", "openai/gpt-6.1-sol", "moonshotai/kimi-k3"} {
 		t.Run(model, func(t *testing.T) {
 			p := filepath.Join(t.TempDir(), "capture.json")
 			body := map[string]any{"model": model, "base_url": "https://fixture.invalid", "records": []any{
@@ -27,6 +27,10 @@ func TestReadCaptureKeepsTrainingAndHoldoutSeparate(t *testing.T) {
 			if model == "deepseek-flash" {
 				if ref.ID != "deepseek-v4.1-flash" || ref.Family != "deepseek" {
 					t.Fatal(ref)
+				}
+			} else if model == "anthropic/claude-fable-5" || model == "openai/gpt-6.1-sol" || model == "moonshotai/kimi-k3" {
+				if len(ref.Aliases) != 1 || ref.Aliases[0] != model || ref.ID == model || ref.Family == "" {
+					t.Fatal("provider alias lost", ref)
 				}
 			} else if ref.ID != model || ref.Family != "grok" || ref.FamilyName != "Grok" {
 				t.Fatal(ref)

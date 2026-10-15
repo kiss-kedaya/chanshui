@@ -240,8 +240,8 @@ func (s *Server) validate(q *Request, model bool) error {
 	if q.Key == "" || len(q.Key) > 4096 {
 		return fmt.Errorf("请填写有效的 API Key")
 	}
-	if model && !s.supported(q.Model) {
-		return fmt.Errorf("请从可测模型清单选择模型")
+	if model && (q.Model == "" || len(q.Model) > 256 || strings.ContainsAny(q.Model, "\r\n\t")) {
+		return fmt.Errorf("请填写有效的模型名称（1～256 字节，不含换行或制表符）")
 	}
 	if q.Timeout == 0 {
 		q.Timeout = 360

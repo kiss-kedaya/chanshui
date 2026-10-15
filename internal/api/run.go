@@ -84,7 +84,7 @@ func (a behaviorAdapter) Call(ctx context.Context, model, prompt string, max int
 }
 func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any, error) {
 	bank := s.currentBank()
-	if bank.NumericModel(q.Model) == nil && !gateway.IsClaude(q.Model) && !strings.HasPrefix(strings.ToLower(q.Model), "gpt-") {
+	if bank.NumericModel(q.Model) == nil && !gateway.IsClaude(q.Model) && integrity.ModelFamily(q.Model) != "gpt" {
 		b, e := fingerprint.CompareBehavior(ctx, behaviorAdapter{g, q.Timeout}, q.Model, bank, fingerprint.Attribution{LowConfidence: true})
 		if e != nil {
 			return nil, e
@@ -567,8 +567,13 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 			family, _ := m["family"].(string)
 			top, _ := m["top_model"].(string)
 			used, _ := asInt(m["used_outputs"])
+			// A near-tie between two candidates is not evidence of dilution.
+			// Without this guard gpt-6.1-sol and gpt-6-astra, whose endpoints
+			// produce near-identical number distributions, marked each other as
+			// diluted on roughly one in six live draws.
+			lowConfidence, _ := m["low_confidence"].(bool)
 			got := integrity.FingerprintFamily(family)
-			if used >= 3 && got != "" && got != "unknown" && !integrity.Diluted(model, family, top) {
+			if used >= 3 && got != "" && got != "unknown" && (lowConfidence || !integrity.Diluted(model, family, top)) {
 				fpPoints = 10
 			}
 		}

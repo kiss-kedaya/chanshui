@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
-import { reportPath } from "@/lib/report-view";
+import { reportPath, modelFamily } from "@/lib/report-view";
 import { loadKey, saveKey, clearKey } from "@/lib/keyvault";
 import { startDetect, getBankStats, getModels, ask, BankStats, Metrics } from "@/lib/api";
 import { saveJobControl } from "@/lib/job-controls";
@@ -27,7 +27,7 @@ export default function DetectPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [modelBusy, setModelBusy] = useState(false);
-  const [catalogReady, setCatalogReady] = useState(false);
+
   const [concurrency, setConcurrency] = useState(0);
   const [timeout, setTimeoutValue] = useState(360);
   const [cacheOn, setCacheOn] = useState(false);
@@ -50,7 +50,7 @@ export default function DetectPage() {
         if (alive.current) setError(e.message);
       })
       .finally(() => {
-        if (alive.current) setCatalogReady(true);
+
       });
     try {
       const p = JSON.parse(localStorage.getItem("chanshui-settings") || "{}");
@@ -123,9 +123,9 @@ export default function DetectPage() {
         protocol,
       });
       setModels(d.models);
-      if (!d.models.includes(model)) setModel(d.models[0] || "");
+      if (!model.trim()) setModel(d.models[0] || "");
       if (!d.models.length)
-        setError(tr("上游模型与可测清单没有交集。未发送检测请求。"));
+        setError(tr("上游未返回模型，可直接输入实际调用名称。"));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -137,7 +137,7 @@ export default function DetectPage() {
     setAskError("");
     setAnswer(null);
     try {
-      const thinking = !model.toLowerCase().startsWith("claude-")
+      const thinking = modelFamily(model) !== "claude"
         ? null
         : mode === "omit"
           ? null
@@ -165,7 +165,7 @@ export default function DetectPage() {
       setAsking(false);
     }
   };
-  const canRun = !!(baseUrl.trim() && key.trim() && model && !busy);
+  const canRun = !!(baseUrl.trim() && key.trim() && model.trim() && !busy);
 
   return (
     <div className="page-shell">
@@ -289,20 +289,25 @@ export default function DetectPage() {
           <div className="model-row">
             <div className="field">
               <label htmlFor="model">{tr("目标模型")}</label>
-              <Select
+              <input
                 id="model"
                 value={model}
                 disabled={busy}
-                loading={modelBusy || (!catalogReady && !model)}
+                list="model-suggestions"
+                placeholder="例如 openai/gpt-6.1-sol"
+                maxLength={256}
+                autoComplete="off"
+                aria-describedby="model-help"
                 onChange={(e) => setModel(e.target.value)}
-              >
-                <option value="">{tr("选择可测模型")}</option>
+              />
+              <datalist id="model-suggestions">
                 {(models ?? stats?.supported_models ?? []).map((m) => (
                   <option key={m} value={m}>
                     {m}
                   </option>
                 ))}
-              </Select>
+              </datalist>
+              <small id="model-help">{tr("可选择或输入自定义名称，请求时原样发送；没有对应基线时不代表已验证型号。")}</small>
             </div>
             <button
               className="btn-secondary icon-button model-refresh"
@@ -405,7 +410,7 @@ export default function DetectPage() {
       <details className="ask-panel">
         <summary>{tr("单问单答")}</summary>
         <div className="advanced-grid">
-          {model.toLowerCase().startsWith("claude-") && (
+          {modelFamily(model) === "claude" && (
             <div className="field">
               <label htmlFor="thinking-mode">{tr("思考模式")}</label>
               <Select
@@ -423,7 +428,7 @@ export default function DetectPage() {
               </Select>
             </div>
           )}
-          {model.toLowerCase().startsWith("claude-") && mode === "budget" && (
+          {modelFamily(model) === "claude" && mode === "budget" && (
             <div className="field">
               <label htmlFor="budget">{tr("思考预算 token")}</label>
               <input
@@ -496,7 +501,7 @@ export default function DetectPage() {
                 e: answer.CacheRead,
               })}
             </p>
-            {model.toLowerCase().startsWith("claude-") && (
+            {modelFamily(model) === "claude" && (
               <details>
                 <summary>{tr("思维链全文与签名")}</summary>
                 <pre>{answer.ThinkingText || tr("未回传摘要")}</pre>

@@ -26,13 +26,14 @@ export function probabilityVisible(probability: number): boolean {
 }
 
 export function modelFamily(model: string): string {
-  const m = model.trim().toLowerCase();
+  const m = model.trim().toLowerCase().replace(/^(openai|anthropic|moonshotai)\//, "");
   if (m.startsWith("claude")) return "claude";
   if (m.startsWith("gpt") || /^o[134](?:[.-]|$)/.test(m) || m.includes("chatgpt")) return "gpt";
   if (m.startsWith("gemini")) return "gemini";
   if (m.startsWith("deepseek")) return "deepseek";
   if (m.startsWith("grok")) return "grok";
   if (m.startsWith("glm")) return "glm";
+  if (m.startsWith("kimi")) return "kimi";
   return "";
 }
 export function fingerprintFamily(family: string): string {
@@ -45,6 +46,7 @@ export function fingerprintFamily(family: string): string {
   return f;
 }
 export function canonModel(model: string): string {
+  model = model.trim().toLowerCase().replace(/^(openai|anthropic|moonshotai)\//, "");
 	if (model.trim().toLowerCase() === "deepseek-flash") model = "deepseek-v4.1-flash";
   return model.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }

@@ -30,6 +30,29 @@ func TestBuildTotalFullPassAndDilutedFingerprint(t *testing.T) {
 	}
 }
 
+// A near-tie between two enrolled candidates must not be read as dilution:
+// gpt-6.1-sol and gpt-6-astra sit close enough on real traffic that live draws
+// pick the wrong one about one time in six.
+func TestBuildTotalLowConfidenceTieIsNotDiluted(t *testing.T) {
+	v := Verdict{
+		Fingerprint: map[string]any{"family": "gpt", "top_model": "gpt-6-astra", "top_prob": 0.51, "used_outputs": 3, "low_confidence": true},
+		IQ:          map[string]any{"complete": true, "score": 100},
+		Injection:   map[string]any{"score": 10},
+		Hidden:      map[string]any{"status": "clean", "score": 10},
+		Tools:       map[string]any{"pass": true},
+		Web:         map[string]any{"status": "pass", "pass": true, "protocol": "messages"},
+		Thinking:    map[string]any{"score": 10},
+		Cache:       map[string]any{"pass": true},
+	}
+	if total := buildTotal(v, "gpt-6.1-sol"); total.Score != 100 {
+		t.Fatalf("low-confidence tie scored %d, want 100", total.Score)
+	}
+	v.Fingerprint = map[string]any{"family": "gpt", "top_model": "gpt-6-astra", "top_prob": 0.95, "used_outputs": 3, "low_confidence": false}
+	if total := buildTotal(v, "gpt-6.1-sol"); total.Score != 68 {
+		t.Fatalf("confident mismatch scored %d, want 68", total.Score)
+	}
+}
+
 func TestBuildTotalChatWithoutCacheStill100(t *testing.T) {
 	v := Verdict{
 		Fingerprint: map[string]any{"family": "unknown", "used_outputs": 0},

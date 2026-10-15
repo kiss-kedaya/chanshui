@@ -122,7 +122,7 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	}
 	ids := []string{}
 	for _, id := range all {
-		if s.supported(id) {
+		if strings.TrimSpace(id) != "" {
 			ids = append(ids, id)
 		}
 	}

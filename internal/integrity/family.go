@@ -8,7 +8,7 @@ import (
 var oFamily = regexp.MustCompile(`^o[134](?:[.-]|$)`)
 
 func ModelFamily(model string) string {
-	m := strings.ToLower(strings.TrimSpace(model))
+	m := unqualifiedModel(model)
 	switch {
 	case strings.HasPrefix(m, "claude"):
 		return "claude"
@@ -20,6 +20,8 @@ func ModelFamily(model string) string {
 		return "deepseek"
 	case strings.HasPrefix(m, "grok"):
 		return "grok"
+	case strings.HasPrefix(m, "kimi"):
+		return "kimi"
 	case strings.HasPrefix(m, "glm"):
 		return "glm"
 	default:
@@ -55,7 +57,16 @@ func lineName(value string) string {
 	return ""
 }
 
+func unqualifiedModel(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	for _, prefix := range []string{"openai/", "anthropic/", "moonshotai/"} {
+		m = strings.TrimPrefix(m, prefix)
+	}
+	return m
+}
+
 func CanonModel(model string) string {
+	model = unqualifiedModel(model)
 	if strings.EqualFold(strings.TrimSpace(model), "deepseek-flash") {
 		model = "deepseek-v4.1-flash"
 	}

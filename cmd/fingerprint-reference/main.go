@@ -30,8 +30,21 @@ func readCapture(path string) (fingerprint.LocalReference, []fingerprint.Output)
 	if err = json.Unmarshal(raw, &capture); err != nil {
 		panic(err)
 	}
+	requestModel := capture.Model
+	if prefix, name, ok := strings.Cut(capture.Model, "/"); ok {
+		switch prefix {
+		case "anthropic", "openai", "moonshotai":
+			capture.Model = name
+		}
+	}
 	family, familyName := "", ""
 	switch {
+	case strings.HasPrefix(capture.Model, "gpt-"):
+		family, familyName = "gpt", "GPT"
+	case strings.HasPrefix(capture.Model, "claude-"):
+		family, familyName = "claude", "Claude"
+	case strings.HasPrefix(capture.Model, "kimi-"):
+		family, familyName = "kimi", "Kimi"
 	case strings.HasPrefix(capture.Model, "deepseek-"):
 		family, familyName = "deepseek", "DeepSeek"
 	case strings.HasPrefix(capture.Model, "grok-"):
@@ -43,6 +56,9 @@ func readCapture(path string) (fingerprint.LocalReference, []fingerprint.Output)
 	if ref.ID == "deepseek-flash" {
 		ref.ID = "deepseek-v4.1-flash"
 		ref.Aliases = []string{"deepseek-flash"}
+	}
+	if requestModel != capture.Model {
+		ref.Aliases = append(ref.Aliases, requestModel)
 	}
 	var holdout []fingerprint.Output
 	for _, r := range capture.Records {

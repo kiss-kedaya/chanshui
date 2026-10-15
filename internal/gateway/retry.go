@@ -13,18 +13,26 @@ import (
 const RetryCount = 3
 
 // IsClaude gates Anthropic-only configuration and visible reasoning evidence.
+func modelWithoutProvider(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	for _, prefix := range []string{"openai/", "anthropic/", "moonshotai/"} {
+		m = strings.TrimPrefix(m, prefix)
+	}
+	return m
+}
+
 func IsClaude(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-")
+	return strings.HasPrefix(modelWithoutProvider(model), "claude-")
 }
 func Protocol(model string) string {
-	m := strings.ToLower(model)
+	m := modelWithoutProvider(model)
 	if IsClaude(m) {
 		return "messages"
 	}
 	if strings.HasPrefix(m, "gpt-") || strings.HasPrefix(m, "o1") || strings.HasPrefix(m, "o3") || strings.HasPrefix(m, "o4") {
 		return "responses"
 	}
-	if strings.HasPrefix(m, "gemini-") || strings.HasPrefix(m, "deepseek-") || strings.HasPrefix(m, "grok-") || strings.HasPrefix(m, "glm-") {
+	if strings.HasPrefix(m, "gemini-") || strings.HasPrefix(m, "deepseek-") || strings.HasPrefix(m, "grok-") || strings.HasPrefix(m, "glm-") || strings.HasPrefix(m, "kimi-") {
 		return "chat"
 	}
 	return "messages"

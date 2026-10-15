@@ -52,7 +52,7 @@ func TestUpstreamOnlyCachedBankKeepsLocalReference(t *testing.T) {
 	if s.currentBank().NumericModel("deepseek-v4.1-flash") == nil {
 		t.Fatal("published bank erased local models")
 	}
-	for _, model := range []string{"grok-4.6", "grok-4.7"} {
+	for _, model := range []string{"grok-4.6", "grok-4.7", "gpt-6.1-sol", "openai/gpt-6.1-sol", "claude-fable-5", "anthropic/claude-fable-5"} {
 		if !s.supported(model) || s.currentBank().NumericModel(model) == nil {
 			t.Fatalf("published bank erased %s", model)
 		}

@@ -162,7 +162,7 @@ func TestDetectHistoryIsolationRetry(t *testing.T) {
 }
 func TestValidationAndModels(t *testing.T) {
 	s, up, _, calls := testSetup(t)
-	for _, q := range []Request{{BaseURL: up.URL, Key: "secret", Model: "unknown"}, {BaseURL: "file:///tmp", Key: "secret", Model: "claude-opus-5"}, {BaseURL: up.URL + "?key=oops", Key: "secret", Model: "claude-opus-5"}} {
+	for _, q := range []Request{{BaseURL: up.URL, Key: "secret", Model: ""}, {BaseURL: "file:///tmp", Key: "secret", Model: "claude-opus-5"}, {BaseURL: up.URL + "?key=oops", Key: "secret", Model: "claude-opus-5"}} {
 		if w := post(t, s, "/api/detect", q); w.Code != 400 {
 			t.Fatal(w.Code)
 		}
@@ -171,7 +171,7 @@ func TestValidationAndModels(t *testing.T) {
 		t.Fatal("invalid request called upstream")
 	}
 	w := post(t, s, "/api/models", Request{BaseURL: up.URL, Key: "secret"})
-	if w.Code != 200 || strings.Contains(w.Body.String(), "unlisted-model") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "unlisted-model") {
 		t.Fatal(w.Body.String())
 	}
 	plain := httptest.NewRequest("POST", "/api/models", strings.NewReader(`{"base_url":"`+up.URL+`","key":"secret","model":"claude-opus-5","protocol":"auto","concurrency":0,"timeout":360,"cache":false}`))
