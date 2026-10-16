@@ -35,8 +35,8 @@ func TestUpstreamOnlyCachedBankKeepsLocalReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if !s.supported("deepseek-flash") || !s.supported("deepseek-v4.1-flash") {
-		t.Fatal("cached upstream bank erased local models")
+	if !s.supported("gpt-6-astra") || !s.supported("claude-opus-5") {
+		t.Fatal("cached bank lost its enrolled models")
 	}
 	var upstream fingerprint.Bank
 	if err = json.Unmarshal(raw, &upstream); err != nil {
@@ -49,10 +49,7 @@ func TestUpstreamOnlyCachedBankKeepsLocalReference(t *testing.T) {
 	if len(upstream.Numeric.Models) != count {
 		t.Fatal("publish mutated caller snapshot")
 	}
-	if s.currentBank().NumericModel("deepseek-v4.1-flash") == nil {
-		t.Fatal("published bank erased local models")
-	}
-	for _, model := range []string{"grok-4.6", "grok-4.7"} {
+	for _, model := range []string{"gpt-6-astra", "claude-opus-5", "gpt-6-sol"} {
 		if !s.supported(model) || s.currentBank().NumericModel(model) == nil {
 			t.Fatalf("published bank erased %s", model)
 		}
@@ -118,8 +115,8 @@ func TestAutomaticSyncValidatedSwapAndPersistence(t *testing.T) {
 	if next.currentBank().Source["commit"] != sha {
 		t.Fatal("verified cache not loaded")
 	}
-	if next.currentBank().NumericModel("deepseek-v4.1-flash") == nil {
-		t.Fatal("local reference lost after restart")
+	if next.currentBank().NumericModel("gpt-6-astra") == nil {
+		t.Fatal("enrolled model lost after restart")
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

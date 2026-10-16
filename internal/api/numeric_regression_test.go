@@ -22,10 +22,8 @@ func TestNumericSelectsStreamByProtocol(t *testing.T) {
 		{"auto", "claude-opus-5", "/v1/messages", false},
 		{"chat", "claude-opus-5", "/v1/chat/completions", true},
 		{"anthropic", "gpt-6-astra", "/v1/messages", false},
-		{"auto", "deepseek-flash", "/v1/chat/completions", true},
-		{"auto", "deepseek-v4.1-flash", "/v1/chat/completions", true},
-		{"auto", "grok-4.6", "/v1/chat/completions", true},
-		{"auto", "grok-4.7", "/v1/chat/completions", true},
+		{"auto", "gpt-6-sol", "/v1/responses", true},
+		{"auto", "claude-sonnet-5", "/v1/messages", false},
 	} {
 		t.Run(tc.mode+"-"+tc.model, func(t *testing.T) {
 			s, _, _, _ := testSetup(t)
