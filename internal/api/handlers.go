@@ -566,6 +566,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		shown := integrity.PresentedScore(*items[i].TotalScore, items[i].FingerprintContribution, integrity.Diluted(items[i].Model, items[i].Family, items[i].TopModel))
 		items[i].TotalScore = &shown
 	}
+	w.Header().Set("Cache-Control", "public, max-age=10, s-maxage=30, stale-while-revalidate=30")
 	replyConditional(w, r, items)
 }
 func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
@@ -580,6 +581,7 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reveal := s.canReveal(r, rec.ReportID, "")
+	setReportCacheHeaders(w, rec.Status, rec.Progress)
 	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.BaseURL, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict, reveal))
 }
 
@@ -678,6 +680,34 @@ func reportPayload(id int64, reportID, baseURL, model, createdAt, status string,
 	}
 }
 
+// setReportCacheHeaders keeps running and retryable reports uncached while
+// allowing a completed, stable report to be reused by the same browser.  The
+// response is still private because a matching job token or visitor ID can
+// reveal the upstream host.
+func setReportCacheHeaders(w http.ResponseWriter, status string, probes json.RawMessage) {
+	w.Header().Set("Vary", "X-Job-Token, X-Visitor-ID")
+	if status != "done" || hasRetryableProbe(probes) {
+		w.Header().Set("Cache-Control", "no-store")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=300, stale-while-revalidate=60")
+}
+
+func hasRetryableProbe(raw json.RawMessage) bool {
+	var probes []struct {
+		Status string `json:"status"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &probes) != nil {
+		return true
+	}
+	for _, probe := range probes {
+		if probe.Status == "error" || probe.Status == "cancelled" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 	id := strings.ToLower(r.PathValue("id"))
 	if !history.ValidReportID(id) {
@@ -694,6 +724,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		reveal := s.canReveal(r, t.ID, t.controlHash)
 		verdict, _ := json.Marshal(t.Verdict)
 		probes, _ := json.Marshal(t.Probes)
+		setReportCacheHeaders(w, t.Status, probes)
 		replyConditional(w, r, reportPayload(t.HistoryID, t.ID, t.BaseURL, t.Model, t.CreatedAt, t.Status, t.ExpiresAt, probes, verdict, reveal))
 		return
 	}
@@ -703,5 +734,6 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reveal := s.canReveal(r, rec.ReportID, "")
+	setReportCacheHeaders(w, rec.Status, rec.Progress)
 	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.BaseURL, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict, reveal))
 }

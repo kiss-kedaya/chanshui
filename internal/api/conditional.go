@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 // Only public read endpoints use validators. Creation/retry responses contain
@@ -19,10 +21,12 @@ func replyConditional(w http.ResponseWriter, r *http.Request, value any) {
 	etag := `"` + hex.EncodeToString(hash[:16]) + `"`
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if r.Header.Get("If-None-Match") == etag {
+	inm := strings.TrimSpace(r.Header.Get("If-None-Match"))
+	if inm == etag || inm == "W/"+etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }

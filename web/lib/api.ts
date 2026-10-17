@@ -329,6 +329,10 @@ async function request<T>(
   retried = false,
 ): Promise<T> {
   const publicRead = body === undefined && /^\/api\/(detect\/|reports\/|history(?:\?|\/))/.test(path);
+  // Report and history reads carry validators and explicit cache headers.
+  // Polling endpoints stay uncached so progress never comes from a stale
+  // browser entry.
+  const httpCacheable = body === undefined && /^\/api\/(reports\/|history(?:\?|\/))/.test(path);
   // A capability-bearing read is private. Keep its validator separate from
   // the public snapshot so a 304 can never substitute an unmasked payload
   // into an anonymous response (or vice versa).
@@ -346,7 +350,7 @@ async function request<T>(
   const res = await fetch(
     API_BASE + path,
     body === undefined
-      ? { cache: "no-store", signal, headers: readHeaders }
+      ? { cache: httpCacheable ? "default" : "no-store", signal, headers: readHeaders }
       : {
           method: "POST",
           redirect: "error",
