@@ -232,8 +232,11 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 
 	g, clientErr := s.client(q)
 	var wg sync.WaitGroup
-	job := func(id string, f func() (any, error)) {
+	jobWithSignal := func(id string, f func() (any, error), signal chan struct{}) {
 		if selected != nil && !selected[id] {
+			if signal != nil {
+				close(signal)
+			}
 			return
 		}
 		wg.Add(1)
@@ -247,6 +250,9 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 				}
 			}
 			t.mu.Unlock()
+			if signal != nil {
+				close(signal)
+			}
 			var result any
 			var e error
 			if clientErr != nil {
@@ -301,7 +307,16 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			s.persist(t)
 		}()
 	}
-	job("fingerprint", func() (any, error) { return s.numeric(ctx, g, q) })
+	job := func(id string, f func() (any, error)) {
+		jobWithSignal(id, f, nil)
+	}
+	fingerprintStarted := make(chan struct{})
+	jobWithSignal("fingerprint", func() (any, error) { return s.numeric(ctx, g, q) }, fingerprintStarted)
+	// Give the fingerprint probes the first upstream slots. The other
+	// sections are still concurrent, but they start after fingerprint has
+	// entered its first request batch.
+	<-fingerprintStarted
+	time.Sleep(25 * time.Millisecond)
 	job("injection", func() (any, error) {
 		v, e := inject.Measure(ctx, g, q.Model, q.Timeout)
 		if e != nil {
