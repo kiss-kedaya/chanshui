@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 )
 
 func TestDeepSeekSearchValidatesResponse(t *testing.T) {

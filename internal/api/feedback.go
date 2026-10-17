@@ -1,7 +1,7 @@
 package api
 
 import (
-	"chanzhushui/internal/history"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
 	"net"
 	"net/http"
 	"strings"

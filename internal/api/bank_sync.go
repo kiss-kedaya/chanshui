@@ -1,10 +1,10 @@
 package api
 
 import (
-	"chanzhushui/internal/fingerprint"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
 	"io"
 	"log"
 	"net/http"

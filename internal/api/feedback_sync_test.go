@@ -2,10 +2,10 @@ package api
 
 import (
 	"bytes"
-	"chanzhushui/internal/fingerprint"
-	"chanzhushui/internal/history"
 	"context"
 	"encoding/json"
+	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
 	"io"
 	"net/http"
 	"os"

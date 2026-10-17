@@ -1,14 +1,14 @@
 package api
 
 import (
-	"chanzhushui/internal/history"
-	"chanzhushui/internal/integrity"
-	"chanzhushui/internal/iq"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
+	"github.com/kiss-kedaya/chanzhushui/internal/integrity"
+	"github.com/kiss-kedaya/chanzhushui/internal/iq"
 	"log"
 	"net/http"
 	"strings"

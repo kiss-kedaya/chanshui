@@ -1,10 +1,10 @@
 package inject
 
 import (
-	"chanzhushui/internal/gateway"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 	"io"
 	"net/http"
 	"net/http/httptest"

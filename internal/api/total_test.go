@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"chanzhushui/internal/integrity"
+	"github.com/kiss-kedaya/chanzhushui/internal/integrity"
 )
 
 func TestBuildTotalFullPassAndDilutedFingerprint(t *testing.T) {

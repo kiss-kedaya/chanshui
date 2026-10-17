@@ -1,11 +1,11 @@
 package api
 
 import (
-	"chanzhushui/internal/gateway"
-	"chanzhushui/internal/history"
-	"chanzhushui/internal/iq"
 	"encoding/json"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
+	"github.com/kiss-kedaya/chanzhushui/internal/iq"
 	"math"
 	mathrand "math/rand"
 	"net"

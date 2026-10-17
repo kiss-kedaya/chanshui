@@ -1,0 +1,13 @@
+services:
+  chanshui:
+    build: .
+    ports:
+      - "127.0.0.1:8770:8770"
+    environment:
+      CHANSHUI_ADMIN_TOKEN: ${CHANSHUI_ADMIN_TOKEN:?set CHANSHUI_ADMIN_TOKEN in .env}
+    volumes:
+      - chanshui-data:/data
+    restart: unless-stopped
+
+volumes:
+  chanshui-data:

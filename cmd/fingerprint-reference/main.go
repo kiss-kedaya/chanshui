@@ -3,10 +3,10 @@
 package main
 
 import (
-	"chanzhushui/internal/fingerprint"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
 	"os"
 	"strings"
 )

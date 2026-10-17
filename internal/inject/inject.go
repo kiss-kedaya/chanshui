@@ -1,9 +1,9 @@
 package inject
 
 import (
-	"chanzhushui/internal/gateway"
 	"context"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 	"math"
 	"strings"
 	"time"

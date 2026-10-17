@@ -1,9 +1,9 @@
 package api
 
 import (
-	"chanzhushui/internal/gateway"
 	"context"
 	"encoding/json"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 	"net/http"
 	"net/http/httptest"
 	"strings"

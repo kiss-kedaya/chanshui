@@ -3,8 +3,8 @@
 package main
 
 import (
-	"chanzhushui/internal/api"
 	"context"
+	"github.com/kiss-kedaya/chanzhushui/internal/api"
 	"os"
 	"os/signal"
 	"syscall"

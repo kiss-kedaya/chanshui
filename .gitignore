@@ -1,5 +1,4 @@
 dev/
-dev/
 dev-*/
 *.exe
 *.db
@@ -13,3 +12,9 @@ web/out-build/
 web/.next/
 *.tsbuildinfo
 .env*
+!.env.example
+private-feedback*.json
+feedback-export*.json
+*.log
+.DS_Store
+Thumbs.db

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 )
 
 const deepSeekSearchQuery = "DeepSeek V4 模型 发布"

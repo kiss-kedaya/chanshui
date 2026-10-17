@@ -1,19 +1,19 @@
 package api
 
 import (
-	"chanzhushui/internal/cachecheck"
-	"chanzhushui/internal/capability"
-	"chanzhushui/internal/fingerprint"
-	"chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanzhushui/internal/cachecheck"
+	"github.com/kiss-kedaya/chanzhushui/internal/capability"
+	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 
-	"chanzhushui/internal/inject"
-	"chanzhushui/internal/integrity"
-	"chanzhushui/internal/iq"
-	"chanzhushui/internal/knowledge"
-	"chanzhushui/internal/thinking"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/inject"
+	"github.com/kiss-kedaya/chanzhushui/internal/integrity"
+	"github.com/kiss-kedaya/chanzhushui/internal/iq"
+	"github.com/kiss-kedaya/chanzhushui/internal/knowledge"
+	"github.com/kiss-kedaya/chanzhushui/internal/thinking"
 	"math/rand"
 	"strings"
 	"sync"

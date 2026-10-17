@@ -1,11 +1,11 @@
 package cachecheck
 
 import (
-	"chanzhushui/internal/gateway"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 	"math"
 	"strings"
 	"unicode/utf8"

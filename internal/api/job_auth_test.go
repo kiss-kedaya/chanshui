@@ -1,9 +1,9 @@
 package api
 
 import (
-	"chanzhushui/internal/history"
 	"context"
 	"encoding/json"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
 	"net/http"
 	"net/http/httptest"
 	"strings"

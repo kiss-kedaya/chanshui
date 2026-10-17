@@ -1,8 +1,8 @@
 package api
 
 import (
-	"chanzhushui/internal/gateway"
 	"context"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 	"time"
 )
 

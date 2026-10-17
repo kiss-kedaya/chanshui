@@ -3,8 +3,8 @@
 package main
 
 import (
-	"chanzhushui/internal/api"
 	"context"
+	"github.com/kiss-kedaya/chanzhushui/internal/api"
 )
 
 func installDrainSignal(_ *api.Server, _ context.Context) func() { return func() {} }

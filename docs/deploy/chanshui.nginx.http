@@ -23,8 +23,9 @@ server {
 
     # Cloudflare terminates the public certificate; this existing origin
     # certificate keeps the Cloudflare-to-origin hop encrypted.
-    ssl_certificate /etc/nginx/ssl/redacted.invalid.crt;
-    ssl_certificate_key /etc/nginx/ssl/redacted.invalid.key;
+    # Replace with the certificate for your own domain.
+    ssl_certificate /etc/nginx/ssl/<YOUR_DOMAIN>.crt;
+    ssl_certificate_key /etc/nginx/ssl/<YOUR_DOMAIN>.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     include /etc/nginx/cloudflare.conf;
 

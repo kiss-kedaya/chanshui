@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"chanzhushui/internal/fingerprint"
-	"chanzhushui/internal/integrity"
+	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanzhushui/internal/integrity"
 )
 
 // familyHasNumericBaseline reports whether the numeric bank has at least one

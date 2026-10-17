@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 )
 
 // Production waits 2s/4s/8s after an upstream 5xx. Fixtures that return 5xx on

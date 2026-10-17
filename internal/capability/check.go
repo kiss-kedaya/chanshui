@@ -2,12 +2,12 @@ package capability
 
 import (
 	"bytes"
-	"chanzhushui/internal/gateway"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 	"io"
 	"strings"
 	"time"

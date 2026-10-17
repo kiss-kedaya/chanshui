@@ -1,87 +1,185 @@
-# 掺水？ · 便携模型检测站
+# 掺水？ · 模型检测站
 
-Go服务端 + Next.js静态前端 + SQLite。填接口、密钥、模型，提交即创建Job；Job ID就是分享ID，24小时后自动清理。
-当前版本已完成本地验证，并准备部署到 `chanshui.dev`；生产部署使用独立 systemd 服务和 nginx 反代。
+> Self-hosted audit station for LLM gateways and resellers. Check whether a claimed model is actually served, and collect protocol, cache, tool, web, thinking, knowledge-cutoff, IQ and fingerprint evidence.
 
-## 现在支持
+一个可自托管的模型中转站审计工具。填入网关地址、API Key 和模型名，提交一次检测，得到一份带证据链的报告。Go 服务端 + Next.js 静态前端 + SQLite，单机即可运行。
 
-- 注入大小与缓存链：注入使用两次独立小请求。缓存读写默认关闭，打开后单独计分。
-- 模型归因：GPT/Claude、DeepSeek V4.1 Flash、Grok 4.6/4.7 最多请求 10 次，凑满 3 个有效数字样本才记分。没有有效样本，或归因和所选模型不一致，这一项为 0 分；不一致时标红。低到 0.0% 的候选不显示。`deepseek-flash` 与用户确认的 `deepseek-v4.1-flash` 别名共用一份数字基线。
-- 缓存链：可选的 6 轮串行对话。系统前缀每轮字节相同，并回放上一轮的用户句和回答。通过条件是上一轮读加写与末轮读相差不超过 64 token。缓存率是末轮读取除以末轮总输入。字段缺失显示未知，不把缺失当成 0。未勾选时不跑、不计分。
-- 思维链回传：只测 claude- 前缀。有思维摘要记 5 分。不再检测 signature，也不再因为读不出模型把这项打成 0。
-- IQ：答完后在同一轮对话提交标准答案，模型只返回一个整数作为该题得分，并限制在满分内。新报告扩展至 Q1～Q8，旧报告分值不重算。
-- 接口完整性：单独统计协议、缓存、工具、联网、流式和思维链证据，未知项显示覆盖率，不混入 IQ。
-- 知识截止：2025–2026 串行二分，最多 10 问，第一问固定是 2025-11-04 纽约市长选举。知道冬奥、不知道世界杯时，再用 2026-07-04 建国 250 周年切开。每题四选一，只解析 {"choice":"字母"}。只认结果，不认日程；结果说错不移动边界。不进 IQ、完整性和指纹分。
-- IQ 扩展题库：保留原题，新增洗车、球拍与球、船锚水位三类可验证题型；新评分版本不改旧报告。
-- Job进度、全站历史、ID查询、当前域名分享、停止、失败重跑、单问单答。
-- 搜索式模型下拉、统一输入样式、清楚的错误卡；无代理入口或代理兜底。
+示例部署：<https://chanshui.dev>（不依赖该站点即可自托管）
 
-## 本地运行
+## 能查什么
 
-    ./scripts/start-local.ps1
+- **模型指纹归因**：数字挑战 + 行为参考，比较声称模型与实际响应的候选；置信度不足时明确显示“证据不足”，不伪造结论。
+- **注入大小**：两次独立小请求估算协议包装和上下文注入量。
+- **缓存读写**：可选的串行多轮对话，核对缓存读/写衔接、命中率和末轮缓存率；缺字段显示未知，不把缺失当 0。
+- **工具调用**：核对结构化调用、`tool_use_id`、参数和结果回传，不执行任意外部工具。
+- **联网证据**：DeepSeek 走 `POST /v1/tools/search`；Messages/Responses 走原生搜索工具，只认实际搜索执行和来源 URL。
+- **思维链回传**：仅 Claude 前缀模型检测摘要/全文/签名是否回传，只占思维链板块 5 分。
+- **知识截止**：用可验证的时事问题串行二分，只展示模型自报或探测结果，不混入 IQ。
+- **推理表现**：Q1～Q8 可验证题型，报告保留评分版本，旧报告不重算。
+- **接口完整性**：独立统计协议、缓存、工具、联网、流式和思维链证据，未知项显示覆盖率。
 
-自动安装锁定依赖、构建静态页面、Go测试与启动。打开 http://127.0.0.1:8770 。已有构建可加-SkipBuild。
-停止：scripts/stop-local.ps1。全套测试：scripts/test-local.ps1。
+## 架构
 
-数据在.local/history.db；上游API Key只在当前提交/重试请求中使用，不落盘、不进日志、不写入浏览器。只有按 Job ID 绑定的操作 key 会写入创建者浏览器，用于该 Job 的失败项重试。
-服务重启，未完成任务标interrupted，不自动重复付费请求。报告在24小时内继续可查；每个Job的操作key单独保存在创建者浏览器，刷新后仍可用，只允许该Job的“重试失败项”，全部探针完成或Job过期后自动清理；重试仍需重新填写API Key。
+```text
+Browser / Agent
+      │
+      ▼
+Go HTTP server ── SQLite (jobs, reports, feedback)
+      │
+      ├── Next.js static export in web/out-build
+      ├── /api/v1 public audit API
+      └── upstream gateway (Chat / Messages / Responses / DeepSeek Search)
+```
 
-## 部署准备（不等于已上线）
+- 单个 Go 二进制同时托管静态页面和 API。
+- API Key 只在当前请求中使用，不写入数据库、报告、日志或分享链接。
+- Job ID 即分享 ID；公开报告只读，失败项重试需要创建时返回的一次性操作 key。
+- 报告默认保留 24 小时；反馈写入私有表，不跟随报告清理。
+- 单实例 SQLite 是默认部署；升级使用双实例 + nginx 切流，见 `docs/deploy/rolling-upgrade.md`。
 
-scripts/build-server.ps1生成Linux amd64二进制+静态页面本地包；部署前按checksums.txt校验。
-完整运行参数、反代Host、队列/TTL和限制见docs/server-preparation.md。
-默认16个worker、128个等待Job、全局64个上游在途请求，SQLite WAL与8连接。
-单实例便携方案，不声称已支持分布式多副本。服务器容量取决于CPU/内存/磁盘及上游耗时，需针对实际机器压测。
+## 快速开始
 
-分享链接由当前网页location.origin拼接，部署域名后自动使用该域名。测试Job与分享ID完全一致；公开分享ID只有只读权限，操作key不进URL、不进分享报告。
+要求：Go 1.22+、Node.js 20/22、npm。
 
-## 重试、缓存与协议
+### Windows
 
-缓存检测默认关闭。打开后固定为 6 次串行对话：系统前缀保持字节一致，后续轮回放上一轮用户句和回答。通过条件是上一轮读加写与末轮读相差不超过 64 token。缓存率按末轮读取除以末轮总输入。注入大小仍是两次独立小请求，不携带缓存控制点。
+```powershell
+./scripts/start-local.ps1
+```
 
-默认单次上游请求超时360秒；超时、断流、限流和5xx等临时错误，每个测试请求独立执行最多3次重试（首次加3次，最多4次尝试）。5xx按2/4/8秒加随机抖动退避；鉴权、余额不足、无法适配的参数或路径错误立即停止。兼容性回退共用4次尝试预算，主动取消立即停止，不切代理。任务级总耗时按探针波次、并发等待和上述独立重试预算计算，结果记录总耗时。
-指纹探针按实际协议选择响应方式：Messages默认非流式，Responses/Chat默认流式；上游明确要求流式时，在原路径切换为流式重试。流式读到结束事件就返回，不额外等待连接关闭。成功响应但数字无效时最多补采到10题；永久错误或一批请求全部耗尽重试时停止补采。未凑满3个有效样本标为失败，保留证据，网页Job可重试失败项。
-Claude→Messages；GPT→Responses（只在404/405时预算内回退Chat）；Gemini/DeepSeek/Grok/GLM→OpenAI兼容Chat，不假装原生Gemini协议。
-缓存测试前缀约 1300 token，Haiku 约 2400 token，6 发串行，只有勾选后才会产生上游费用。不再发送 1h TTL。其他接口缺写字段时只展示已报告的缓存读，不伪造公式通过。
+打开 <http://127.0.0.1:8770>。已有构建可加 `-SkipBuild`；停止用 `scripts/stop-local.ps1`。
 
-## 模型库更新
+### 手动运行
 
-服务启动即后台检查ModelTrace，之后每6小时检查，失败5分钟后再试；只读取固定官方仓库、固定commit的数据文件。维度/数据有效性校验通过后持久化到SQLite并原子切换内存快照，失败保持旧库。检测不会读取一半更新的数据，前端不显示commit或同步时间。scripts/sync-bank.cjs仅作为维护工具。
-不是旧插件assets的副本。当前commit d4131b30243dfa05e70180b5eedde742103f1d73，元数据记录在data_ref/provenance.json。
-运行时自动同步不需要前端操作或重编译。实现算法变化仍需要更新代码与oracle测试，不能仅靠数据同步适配。
+```bash
+cd web
+npm ci
+npm run build
+cd ..
 
-## 证据与边界
+export CHANSHUI_ADMIN_TOKEN="$(openssl rand -hex 24)"
+go run . \
+  -addr 127.0.0.1:8770 \
+  -web web/out-build \
+  -db .local/history.db
+```
 
-计划：docs/superpowers/plans/2026-10-01-chanshui-detection-station.md；验收：docs/local-verification-2026-10-01.md。
-注入是含协议包装的近似值；两点不展示虚假的线性置信。数字指纹覆盖GPT/Claude与已采样的DeepSeek Flash，其他模型仍仅行为探索参考。DeepSeek基线来自api.deepseek.com的36个有效训练样本，12个独立验证样本按3题一组全部命中；未验证其他DeepSeek版本的混淆率，也未重校准跨供应商概率，不作为模型身份的独立证明。采集与重建说明见docs/deepseek-fingerprint-2026-10-05.md。
-公开流量前仍需依赖升级审查、入口防滥用和目标服务器资源配额评估；当前站点域名为 `chanshui.dev`。
+打开 <http://127.0.0.1:8770>。反馈管理在 `/admin`，登录时使用同一个 `CHANSHUI_ADMIN_TOKEN`。
 
-## 展示、反馈与新增检测
+### Docker
 
-参考LMSpeed的暖白/深色主视觉，默认暖橙日间。右上角外观支持暖橙/薄荷绿×日间/夜间四种组合，浏览器保存选择。说明收进悬浮提示，眼睛切换密钥可见性；获取模型、提交Job、探针进度有旋转动画，支持减少动态效果。
+准备 `.env`：
 
-接口格式四选：auto自适应、chat兼容、anthropic原生、openai原生。默认auto；手动指定协议禁止404后擅自换路。报告保存原模式，重跑保持一致。
-工具检测校验结构化调用名称、ID、随机参数；自动模式遇兼容网关400会在重试预算内切换到Chat，并支持字符串/对象参数回传；不执行任意外部工具。联网检测使用Messages/Responses原生搜索，须返回搜索执行和来源证据；Chat无统一联网协议，标未经验证。两项都不改变IQ评分。新报告显示Q1～Q8，旧题内部ID保持版本化。
+```bash
+cp .env.example .env
+# 填入：CHANSHUI_ADMIN_TOKEN=$(openssl rand -hex 24)
+docker compose up -d --build
+```
 
-左下角反馈收联系方式和问题/建议，写入私有feedback表，无公开读取API。管理员使用反馈导出程序：
+默认只绑定 `127.0.0.1:8770`，由外层 nginx/Caddy 提供 TLS；数据在 `chanshui-data` 卷。不要把 `8770` 直接暴露公网。
 
-    feedback-export -db ./data/jobs.db -out ./private-feedback.json
+### 反馈管理
 
-本地也可go run ./cmd/feedback-export；必须指定不存在的输出文件，导出含联系方式，应按敏感件保管，不进git。反馈不跟随24h报告清理。
+- 浏览器打开 `/admin`，输入 `CHANSHUI_ADMIN_TOKEN`。
+- 页面支持刷新、退出和导出当前反馈 JSON；导出文件含联系方式，按敏感文件保管。
+- 也可以离线导出：
 
-## Release 与 GitHub Actions
+```bash
+feedback-export \
+  -db ./data/jobs.db \
+  -out ./private-feedback.json
+```
 
-- `CI`：Pull Request、`main` Push、手动触发；运行 Go race/vet、前端测试、类型检查和静态构建。
-- `CodeQL`：Go 与 TypeScript/JavaScript 周期扫描。
-- `Release`：推送 `v*` 标签或手动输入标签后，构建 Linux、Windows、macOS 的 amd64/arm64 包，附静态前端、运行说明、`VERSION` 和校验文件，再创建 GitHub Release。
-- 本地准备发布包：`./scripts/build-server.ps1`。它只构建到 `.artifacts/`，不上传。
-- 发布声明：`docs/release-notes/v0.1.5.md`。
+`feedback-export` 只创建新文件（`O_EXCL`，权限 0600）；不要把导出文件放进静态 Web 目录，也不要提交到 Git。
 
-Release 工作流、SEO 元数据和 `chanshui.dev` 反代配置已准备；远程发布与服务器切换需以实际验收结果为准。
+## 运行参数
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `-addr` | `127.0.0.1:8770` | 监听地址；生产环境保持回环，由 nginx 反代 |
+| `-db` | `.local/history.db` | SQLite 文件；目录必须可写并持久化 |
+| `-web` | `web/out-build` | Next.js 静态导出目录 |
+| `-workers` | `16` | 同时执行的检测 Job 上限 |
+| `-queue` | `128` | 有界等待队列 |
+| `-upstream-concurrency` | `64` | 全局上游请求并发上限 |
+| `-skip-recover` | `false` | 双实例切换时使用，避免把另一实例的 Job 标成中断 |
+| `-allow-private` | `false` | 仅本地测试；允许私网上游，生产不要打开 |
+
+环境变量：
+
+| 变量 | 用途 |
+| --- | --- |
+| `CHANSHUI_ADMIN_TOKEN` | `/admin` 反馈管理口令；通常为 48 位 hex，可用 `openssl rand -hex 24` 生成 |
+| `CHANSHUI_CAPTURE_KEY` | 仅 `cmd/fingerprint-capture` 使用；也可从 stdin 读取 |
+
+`.env.example` 是配置模板；`.env*` 默认不进入 Git。
+
+## 检测与数据边界
+
+- 注入大小是含协议包装的近似值，不展示虚假的线性置信。
+- 数字指纹只对已建立的候选库比较；DeepSeek/Grok 等基线是采集时的版本参考，不是官方型号身份的独立证明。
+- 缓存命中受上游 TTL、路由和缓存策略影响；缺字段、空结果和重试导致的不可靠样本不会被伪判为通过。
+- 公共 API 结果不写入全站历史，只在内存保留 24 小时，重启即丢。
+- 站点只应测试你拥有或已获授权的网关。模型名称和第三方数据归各自权利人所有。
+
+更细的采集、评分和协议说明见 `docs/`，公共 API 规范见 `/docs` 和 `GET /api/v1/openapi.json`。
 
 ## 公共 API
 
-`POST /api/v1/audits` 给 Agent 和接入方。每个客户端 IP 每分钟 1 次，轮询不计数。`sections` 可省略或传 `all`（含缓存），也可以只传要测的板块。非 Claude 模型跳过思维链；只选思维链会返回 400。总分只按选中板块重算，全过仍是 100。
+`POST /api/v1/audits` 面向 Agent 和脚本调用：
 
-结果不写入全站检测历史，只在内存保留 24 小时，重启即丢，不能重试失败项。规范在 `GET /api/v1/openapi.json`，说明页是 `/docs`，页上显示已公益提供的检测次数。
+- 每个客户端 IP 每分钟 1 次，轮询不计数。
+- `sections` 可省略或传 `all`，也可以只选要测的板块。
+- 结果不进入全站历史；只选思维链或非 Claude 模型时按实际适用板块处理。
+- 文档页：`/docs`；OpenAPI：`/api/v1/openapi.json`。
 
+## 测试与构建
+
+```bash
+go test -race ./...
+go vet ./...
+
+cd web
+npm ci
+npm test
+npm run typecheck
+npm run build
+```
+
+Linux 部署包：
+
+```powershell
+./scripts/build-server.ps1
+```
+
+只构建到 `.artifacts/`，不上传、不部署。发布包和校验说明见 `docs/server-preparation.md`。
+
+## 部署
+
+- `docs/deploy/chanshui.service`：单实例 systemd 模板。
+- `docs/deploy/chanshui-bluegreen@.service`、`chanshui-run`、`chanshui-switch.sh`：双实例 + nginx 切流。
+- `docs/deploy/chanshui.nginx.http`：nginx 反代模板。
+- `docs/deploy/rolling-upgrade.md`：排空与切流顺序。
+
+生产至少要做：TLS、反代 Host、`/api` 不进 SPA 兜底、入口限速/WAF、独立数据目录、管理员口令只放在环境文件、不要把 SQLite/反馈导出放进 Web 根目录。
+
+## 安全与隐私
+
+细节见 `SECURITY.md`。重点：
+
+- 上游 API Key 不落盘、不进报告、不进日志；操作 key 只保存在创建者浏览器，服务端只存摘要。
+- 反馈联系方式只通过 `/admin` 或离线导出读取，没有公开反馈接口。
+- 默认报告 24 小时过期；过期清理不删除反馈。
+- 发现安全问题请走 GitHub Security Advisories，不要开公开 Issue。
+
+## 数据与第三方说明
+
+数字/行为基线包含 ModelTrace 数据和本地采集样本；DeepSeek/Grok 基线有独立采集记录。第三方模型名称、数据和依赖分别遵循其自身条款，详见 `THIRD_PARTY_NOTICES.md`。
+
+## 贡献
+
+见 `CONTRIBUTING.md`。提交前请跑完整测试，不要提交密钥、数据库、反馈导出或本地 `.env`。
+
+## License
+
+代码默认按 MIT 发布，见 `LICENSE`。第三方数据、模型名称和依赖不自动适用 MIT，见 `THIRD_PARTY_NOTICES.md`。

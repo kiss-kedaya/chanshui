@@ -1,11 +1,11 @@
 package main
 
 import (
-	"chanzhushui/internal/api"
-	"chanzhushui/internal/history"
 	"context"
 	"flag"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/api"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
 	"log"
 	"net"
 	"net/http"

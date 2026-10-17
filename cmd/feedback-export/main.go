@@ -2,10 +2,10 @@
 package main
 
 import (
-	"chanzhushui/internal/history"
 	"context"
 	"encoding/json"
 	"flag"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
 	"log"
 	"os"
 	"time"

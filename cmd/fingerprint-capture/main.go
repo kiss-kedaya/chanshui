@@ -4,12 +4,12 @@ package main
 
 import (
 	"bufio"
-	"chanzhushui/internal/fingerprint"
-	"chanzhushui/internal/gateway"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
 	"math/rand"
 	"net/http"
 	"os"
@@ -68,7 +68,7 @@ func (p *pacedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func main() {
-	base := flag.String("base-url", "https://redacted.invalid", "upstream base URL")
+	base := flag.String("base-url", "", "upstream base URL (required)")
 	model := flag.String("model", "deepseek-v4.1-flash", "model label to sample")
 	out := flag.String("out", ".local/deepseek-capture.json", "output artifact (must not exist)")
 	train := flag.Int("train", 36, "training samples")
@@ -83,6 +83,9 @@ func main() {
 	requestsPerMinute := flag.Int("requests-per-minute", 0, "honor an explicit upstream request quota; 0 disables pacing")
 	protocol := flag.String("protocol", "chat", "chat, auto, anthropic, or openai; use the endpoint contract")
 	flag.Parse()
+	if strings.TrimSpace(*base) == "" {
+		panic("-base-url is required")
+	}
 	if *protocol != "chat" && *protocol != "auto" && *protocol != "anthropic" && *protocol != "openai" {
 		panic("invalid protocol")
 	}

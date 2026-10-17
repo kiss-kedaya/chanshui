@@ -2,8 +2,8 @@
 
 本文件同时用于本地运行和 `chanshui.dev` 新机部署。生产部署使用独立 systemd 服务和 nginx 反代，数据目录必须单独持久化；不要与同机其他服务共用端口或数据库。
 
-当前部署验收：`chanshui.dev` → `<ORIGIN_IP>`（Cloudflare 橙云）→ nginx 443 → `127.0.0.1:8770`；systemd 单元为 `chanshui.service`，数据目录为 `/opt/chanshui-data`。源站不直接暴露 8770。
-升级按 `docs/deploy/rolling-upgrade.md` 排空旧 Job 后切换，不直接重启中断检测。
+示例部署：`<YOUR_DOMAIN>` → `<YOUR_SERVER_IP>`（Cloudflare 或其它入口）→ nginx 443 → `127.0.0.1:8770`；systemd 单元为 `chanshui.service`，数据目录为 `/opt/chanshui-data`。源站不要直接暴露 8770。
+升级按 `docs/deploy/rolling-upgrade.md` 的双实例 + nginx 切流；只有无法启动第二实例时才用单实例排空兜底。
 
 ## 最小运行结构
 
@@ -13,7 +13,7 @@
 
     ./chanshui -addr 127.0.0.1:8770 -web ./web -db ./data/jobs.db -workers 16 -queue 128 -upstream-concurrency 64
 
-推荐nginx等反向代理提供TLS域名，转发所有路径，保留原始Host。不要把/api请求放进SPA兜底；不要缓存/api响应。
+推荐 nginx 等反向代理提供 TLS 域名，转发所有路径，保留原始 Host。不要把 `/api` 请求放进 SPA 兜底；运行中报告保持 `no-store`，完成报告按应用返回的 `Cache-Control`/ETag 处理。
 分享URL由浏览器当前 location.origin 拼接 /history?id=<job_id>，不写死127.0.0.1、不信任用户传入的分享域名。
 如需服务直接监听内网，可显式 -addr 指定对应IP；默认仍为回环。生产不要使用 -allow-private，避免用户提交内网地址。
 

@@ -2,12 +2,12 @@ package api
 
 import (
 	"bytes"
-	"chanzhushui/internal/gateway"
-	"chanzhushui/internal/history"
-	"chanzhushui/internal/iq"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanzhushui/internal/history"
+	"github.com/kiss-kedaya/chanzhushui/internal/iq"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"

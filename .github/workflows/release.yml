@@ -96,7 +96,10 @@ jobs:
           root="${GITHUB_WORKSPACE}/stage/${{ matrix.target }}"
           mkdir -p "$root/web"
           cp -R web/out-build/. "$root/web/"
-          cp README.md docs/server-preparation.md "$root/"
+          cp README.md LICENSE SECURITY.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md docs/server-preparation.md Dockerfile docker-compose.yml .env.example "$root/"
+          if [ -f "docs/release-notes/${TAG}.md" ]; then
+            cp "docs/release-notes/${TAG}.md" "$root/"
+          fi
           printf '%s\n' "$TAG" > "$root/VERSION"
           binary="chanshui"
           if [ "$GOOS" = "windows" ]; then binary="chanshui.exe"; fi

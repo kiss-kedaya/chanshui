@@ -14,8 +14,14 @@ New-Item -ItemType Directory -Path $webTarget -Force | Out-Null
 Get-ChildItem -LiteralPath web/out-build -Force | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $webTarget -Recurse -Force}
 Copy-Item -LiteralPath docs/server-preparation.md -Destination $target
 Copy-Item -LiteralPath README.md -Destination $target
-Copy-Item -LiteralPath docs/release-notes/v0.1.3.md -Destination $target
+Copy-Item -LiteralPath LICENSE -Destination $target
+Copy-Item -LiteralPath SECURITY.md -Destination $target
+Copy-Item -LiteralPath CONTRIBUTING.md -Destination $target
+Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination $target
+Copy-Item -LiteralPath .env.example -Destination $target
 $version = if($env:RELEASE_VERSION){$env:RELEASE_VERSION}else{try{git describe --tags --always --dirty 2>$null}catch{'dev-local'}}
+$releaseNote = Join-Path $root "docs/release-notes/$version.md"
+if(Test-Path -LiteralPath $releaseNote){Copy-Item -LiteralPath $releaseNote -Destination $target}
 [IO.File]::WriteAllText((Join-Path $target 'VERSION'),[string]$version)
 $hashLines=@()
 Get-ChildItem -LiteralPath $target -File -Recurse | ForEach-Object {if($_.Name -ne 'checksums.txt'){$hash=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower();$relative=$_.FullName.Substring($target.Length+1).Replace('\','/');$hashLines += "$hash  $relative"}}
