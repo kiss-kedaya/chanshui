@@ -55,16 +55,43 @@ test("cache card shows per-request rates, missing writes, and unbounded third-ro
   assert.match(html, /保留原始比例/);
 });
 
-test("cache card does not fabricate a denominator when previous write is missing", () => {
+test("cache card uses the previous read for a read-only chain", () => {
   const html = renderCache({
+    status: "pass",
+    pass: true,
     samples: [
       { index: 2, input: 4, output: 2, input_reported: true, output_reported: true, read: 1000, write: 0, read_reported: true, write_reported: false, hit_rate: null },
       { index: 3, input: 4, output: 2, input_reported: true, output_reported: true, read: 1000, write: 0, read_reported: true, write_reported: false, hit_rate: null },
     ],
-    third_read_ratio: null,
+    third_read_baseline: 1000,
+    third_read_ratio: 99.6,
   });
-  assert.match(html, /末轮缓存率<\/span><strong>—<\/strong>/);
-  assert.match(html, /上一轮读 ＋ 写<\/span><strong>—<\/strong>/);
+  assert.match(html, /末轮缓存率<\/span><strong>99\.60%<\/strong>/);
+  assert.match(html, /上一轮读取<\/span><strong>1000<\/strong>/);
+});
+
+test("read-only cold start with an unreported first read still passes", () => {
+  const rows = [
+    { index: 1, input: 1909, output: 4, total: 1909, input_reported: true, output_reported: true, read: 0, write: 0, read_reported: false, write_reported: false, hit_rate: null },
+    { index: 2, input: 143, output: 4, total: 1935, input_reported: true, output_reported: true, read: 1792, write: 0, read_reported: true, write_reported: false, hit_rate: 92.61 },
+    { index: 3, input: 169, output: 4, total: 1961, input_reported: true, output_reported: true, read: 1792, write: 0, read_reported: true, write_reported: false, hit_rate: 91.38 },
+    { index: 4, input: 195, output: 4, total: 1987, input_reported: true, output_reported: true, read: 1792, write: 0, read_reported: true, write_reported: false, hit_rate: 90.19 },
+    { index: 5, input: 221, output: 4, total: 2013, input_reported: true, output_reported: true, read: 1792, write: 0, read_reported: true, write_reported: false, hit_rate: 89.05 },
+    { index: 6, input: 247, output: 4, total: 2039, input_reported: true, output_reported: true, read: 1792, write: 0, read_reported: true, write_reported: false, hit_rate: 87.89 },
+  ];
+  const html = renderCache({
+    status: "pass",
+    pass: true,
+    third_read_baseline: 1792,
+    third_read_ratio: 87.89,
+    samples: rows,
+  });
+  assert.match(html, /末轮缓存率<\/span><strong>87\.89%<\/strong>/);
+  assert.match(html, /末轮读取<\/span><strong>1792<\/strong>/);
+  assert.match(html, /末轮总输入<\/span><strong>2039<\/strong>/);
+  assert.match(html, /上一轮读取<\/span><strong>1792<\/strong>/);
+  assert.match(html, /<td>#1<\/td><td>—<\/td><td>—<\/td><td>1909<\/td><td>4<\/td><td>—<\/td>/);
+  assert.match(html, /<td>#6<\/td><td>1792<\/td><td>—<\/td><td>247<\/td><td>4<\/td><td>87\.89%<\/td>/);
 });
 
 test("cache card distinguishes absent input from a reported zero", () => {

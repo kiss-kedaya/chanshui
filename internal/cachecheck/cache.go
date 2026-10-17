@@ -195,17 +195,30 @@ func readOnlySamples(samples []Sample) bool {
 	if len(samples) < 2 {
 		return false
 	}
+	reportedReads := 0
 	for _, s := range samples {
-		if s.Error != "" || !s.ReadReported || s.WriteReported {
+		if s.Error != "" || s.WriteReported {
+			return false
+		}
+		if s.ReadReported {
+			reportedReads++
+			if s.Read < 0 {
+				return false
+			}
+		} else if s.Read != 0 {
 			return false
 		}
 	}
-	return true
+	return reportedReads >= 2
 }
 
 func finishReadOnly(r Result) Result {
 	for i := range r.Samples {
 		s := &r.Samples[i]
+		if !s.ReadReported {
+			s.HitRate = nil
+			continue
+		}
 		if s.Total > 0 {
 			s.HitRate = chainRate(s.Read, s.Total)
 			continue
@@ -221,6 +234,31 @@ func finishReadOnly(r Result) Result {
 		r.Third = &r.Samples[2]
 	}
 	last := r.Samples[len(r.Samples)-1]
+	baseline := 0
+	for i := len(r.Samples) - 2; i >= 0; i-- {
+		if r.Samples[i].ReadReported {
+			baseline = r.Samples[i].Read
+			break
+		}
+	}
+	r.ThirdReadBaseline = baseline
+	r.Expected = baseline
+	r.Actual = last.Read
+	r.Delta = last.Read - baseline
+	r.Transitions = r.Transitions[:0]
+	for i := 0; i+1 < len(r.Samples); i++ {
+		a, b := r.Samples[i], r.Samples[i+1]
+		tr := Transition{From: i + 1, To: i + 2, Actual: b.Read}
+		if a.ReadReported {
+			tr.Expected = a.Read
+		}
+		tr.Delta = b.Read - tr.Expected
+		if a.Error == "" && b.Error == "" && b.ReadReported && !a.WriteReported && !b.WriteReported {
+			pass := b.Read > 0 && (tr.Expected == 0 || absInt(tr.Delta) <= cacheSlack)
+			tr.Pass = &pass
+		}
+		r.Transitions = append(r.Transitions, tr)
+	}
 	if last.Total > 0 {
 		r.ThirdReadRatio = chainRate(last.Read, last.Total)
 	} else {
@@ -231,7 +269,7 @@ func finishReadOnly(r Result) Result {
 	r.Pass = &pass
 	if pass {
 		r.Status = "pass"
-		r.Reason = "上游没有回传缓存写入。末轮缓存率是末轮读取除以末轮总输入。"
+		r.Reason = "上游没有回传缓存写入；按读取链验证，后续轮次稳定读到缓存。末轮缓存率 = 末轮读取 ÷ 末轮总输入，缺写字段不按 0。"
 	} else {
 		r.Status = "mismatch"
 		r.Reason = "上游没有回传缓存写入，末轮读取为 0，缓存率按 0% 记，未通过。"

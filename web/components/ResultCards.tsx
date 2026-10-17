@@ -88,13 +88,23 @@ export default function ResultCards({
   const thirdCache = cacheSamples.length ? cacheSamples[cacheSamples.length - 1] : undefined;
   const previousCache = cacheSamples.length > 1 ? cacheSamples[cacheSamples.length - 2] : undefined;
   const thirdTotal = thirdCache && thirdCache.read_reported !== false ? thirdCache.total : null;
-  const previousCacheTotal = previousCache &&
-    previousCache.read_reported !== false && previousCache.write_reported !== false
-    ? (cache?.third_read_baseline ?? previousCache.read + previousCache.write) : null;
+  const previousCacheTotal = previousCache
+    ? cache?.third_read_baseline != null
+      ? cache.third_read_baseline
+      : previousCache.read_reported !== false
+        ? previousCache.write_reported === true
+          ? previousCache.read + previousCache.write
+          : previousCache.read
+        : null
+    : null;
   const cacheKnown = cache?.status !== "unknown" && cache?.third_read_ratio != null;
+  const reportedReads = cacheSamples.filter(
+    (row) => row.read_reported !== false && !row.error,
+  ).length;
   const readOnlyCache =
     cacheSamples.length > 1 &&
-    cacheSamples.every((row) => row.write_reported === false && row.read_reported !== false && !row.error);
+    cacheSamples.every((row) => row.write_reported === false && !row.error) &&
+    reportedReads >= 2;
   const cacheToken = (value?: number | null, reported?: boolean) =>
     reported === false || value == null || !Number.isFinite(value) ? "—" : value;
   const cacheRate = (value?: number | null) =>
@@ -593,7 +603,7 @@ export default function ResultCards({
                     <strong>{cacheToken(thirdTotal, thirdCache?.read_reported)}</strong>
                   </div>
                   <div>
-                    <span>{tr("上一轮读 ＋ 写")}</span>
+                    <span>{readOnlyCache ? tr("上一轮读取") : tr("上一轮读 ＋ 写")}</span>
                     <strong>{cacheToken(previousCacheTotal)}</strong>
                   </div>
                 </div>
@@ -607,7 +617,7 @@ export default function ResultCards({
                     label={tr("末轮缓存率说明")}
                     text={
                       readOnlyCache
-                        ? tr("上游没有缓存写入时，末轮缓存率 = 末轮读取 ÷ 末轮总输入。上一轮读＋写保持为 —，缺写不当成 0。")
+                        ? tr("上游没有缓存写入时，末轮缓存率 = 末轮读取 ÷ 末轮总输入。上一轮读取作为读取链参考，缺写不当成 0。")
                         : tr("上一条缓存读 + 写 = 下一条缓存读，就是 100%。末轮缓存率 = 末轮读取 ÷ 上一轮读加写。缺字段或请求失败时不计算。")
                     }
                   />

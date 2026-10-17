@@ -347,11 +347,51 @@ func TestReadOnlyCacheUsesLastReadOverTotal(t *testing.T) {
 	if r.Status != "pass" || r.Pass == nil || !*r.Pass || ratioText(r.ThirdReadRatio) != "96.09" {
 		t.Fatalf("readonly pass = status %s ratio %s pass %v", r.Status, ratioText(r.ThirdReadRatio), r.Pass)
 	}
-	if r.ThirdReadBaseline != 0 {
-		t.Fatalf("baseline %d, want 0", r.ThirdReadBaseline)
+	if r.ThirdReadBaseline != 6272 {
+		t.Fatalf("baseline %d, want 6272", r.ThirdReadBaseline)
 	}
 	if ratioText(r.Samples[0].HitRate) != "0.00" || ratioText(r.Samples[1].HitRate) != "96.02" || ratioText(r.Samples[5].HitRate) != "96.09" {
 		t.Fatalf("row rates %s %s %s", ratioText(r.Samples[0].HitRate), ratioText(r.Samples[1].HitRate), ratioText(r.Samples[5].HitRate))
+	}
+}
+
+func TestReadOnlyCacheColdStartWithoutReadField(t *testing.T) {
+	inputs := []int{1909, 143, 169, 195, 221, 247}
+	m := make([]gateway.Metrics, len(inputs))
+	for i, input := range inputs {
+		m[i] = gateway.Metrics{
+			Protocol:       "chat",
+			UsagePresent:   true,
+			InputTokens:    input,
+			OutputTokens:   4,
+			OutputReported: true,
+			Attempts:       1,
+		}
+		if i == 0 {
+			continue
+		}
+		m[i].CacheRead = 1792
+		m[i].CacheReadReported = true
+		m[i].CacheWriteReported = false
+	}
+	r := FromMetrics(m, "prefix", "chat", false)
+	if r.Status != "pass" || r.Pass == nil || !*r.Pass {
+		t.Fatalf("cold-start read-only = status %s pass %v reason %s", r.Status, r.Pass, r.Reason)
+	}
+	if ratioText(r.ThirdReadRatio) != "87.89" {
+		t.Fatalf("ratio %s, want 87.89", ratioText(r.ThirdReadRatio))
+	}
+	if r.ThirdReadBaseline != 1792 || r.Expected != 1792 || r.Actual != 1792 || r.Delta != 0 {
+		t.Fatalf("baseline=%d expected=%d actual=%d delta=%d", r.ThirdReadBaseline, r.Expected, r.Actual, r.Delta)
+	}
+	if r.Samples[0].HitRate != nil {
+		t.Fatalf("unreported first read got hit rate %v", *r.Samples[0].HitRate)
+	}
+	if ratioText(r.Samples[1].HitRate) != "92.61" {
+		t.Fatalf("second hit rate %s, want 92.61", ratioText(r.Samples[1].HitRate))
+	}
+	if len(r.Transitions) != 5 || r.Transitions[0].Pass == nil || !*r.Transitions[0].Pass || r.Transitions[4].Pass == nil || !*r.Transitions[4].Pass {
+		t.Fatalf("transitions %+v", r.Transitions)
 	}
 }
 
