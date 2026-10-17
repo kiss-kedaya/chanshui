@@ -20,32 +20,32 @@
 升级顺序：
 
 1. 新包解到新的版本目录，校验 `checksums.txt`，不覆盖当前目录。
-2. 在空闲端口启动新版本；必须带 `-skip-recover`，否则新实例启动时会把旧实例正在跑的 Job 标成 `interrupted`。两个实例共用 `/opt/chanshui-data/jobs.db`，SQLite 继续使用 WAL 和 `busy_timeout`。
+2. 在空闲端口启动新版本；模板 wrapper 会在另一端口健康时自动加 `-skip-recover`。否则新实例启动时会把旧实例正在跑的 Job 标成 `interrupted`。两个实例共用 `/opt/chanshui-data/jobs.db`，SQLite 继续使用 WAL 和 `busy_timeout`。
 3. 检查新端口的 `/api/health`、`/api/ready` 和首页；确认 `draining=false`、`queued_jobs=0`，并能提交一条新检测。
 4. 修改 nginx 的 upstream/`proxy_pass` 指向新端口，`nginx -t` 后 `systemctl reload nginx`。reload 只影响新连接，旧连接继续走旧实例。
 5. 观察旧实例 `/api/health`，等 `active_jobs=0` 后停止旧实例；不要给旧实例发 `SIGUSR1`，它已经不再接收新请求。
 6. 更新 `/opt/chanshui-current` 指向新版本。下一次升级反向使用另一个端口。
 
-具体命令示例（当前蓝在 8770，新版本切到 8771）：
+具体命令示例（当前绿在 8771，新版本切到 8770）：
 
 ```bash
-# 1. 启动绿色实例（root-only admin.env 已存在）
-sudo tee /etc/chanshui/bluegreen-next.env >/dev/null <<'EOF'
-CHANSHUI_ROOT=/opt/chanshui-0.1.45
-CHANSHUI_PORT=8771
-CHANSHUI_OTHER_PORT=8770
+# 1. 启动新的蓝色实例（root-only admin.env 已存在）
+sudo tee /etc/chanshui/bluegreen-next2.env >/dev/null <<'EOF'
+CHANSHUI_ROOT=/opt/chanshui-0.1.46
+CHANSHUI_PORT=8770
+CHANSHUI_OTHER_PORT=8771
 EOF
-sudo systemctl start chanshui-bluegreen@next
-curl -fsS http://127.0.0.1:8771/api/ready
+sudo systemctl start chanshui-bluegreen@next2
+curl -fsS http://127.0.0.1:8770/api/ready
 
-# 2. 切流并等蓝色实例跑完
-sudo /usr/local/bin/chanshui-switch 8771 chanshui-bluegreen@next chanshui
+# 2. 切流并等绿色实例跑完
+sudo /usr/local/bin/chanshui-switch 8770 chanshui-bluegreen@next2 chanshui-bluegreen@next
 
-# 3. 蓝色停稳后再更新 current
-sudo ln -sfn /opt/chanshui-0.1.45 /opt/chanshui-current
+# 3. 绿色停稳后再更新 current
+sudo ln -sfn /opt/chanshui-0.1.46 /opt/chanshui-current
 ```
 
-下一次升级把端口和 unit 反过来：绿色在跑时，新的蓝色实例用 `8770`，切流脚本参数改为 `8770 chanshui chanshui-bluegreen@next`。
+下一次升级再反向：用 `@next3` 和 `8771`，切流脚本参数改成 `8771 chanshui-bluegreen@next3 chanshui-bluegreen@next2`。不要直接用 `chanshui.service` 做备用实例，它的 `ExecStart` 没有 `-skip-recover`；模板 unit 的 wrapper 才会根据另一端口是否健康自动加这个参数。
 
 回滚：nginx 切回旧端口即可；旧实例仍在时不再启动第三份。旧实例已经停止时，先按旧版本目录在旧端口启动，再切回。
 
