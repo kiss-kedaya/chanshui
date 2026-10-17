@@ -62,3 +62,28 @@ jobs:
       - name: Frontend production build
         working-directory: web
         run: npm run build
+
+  docker:
+    name: Docker image smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t chanshui:ci .
+
+      - name: Run health check
+        run: |
+          set -euo pipefail
+          docker run -d --name chanshui-ci -p 18770:8770 \
+            -e CHANSHUI_ADMIN_TOKEN=0123456789abcdef0123456789abcdef0123456789abcdef \
+            chanshui:ci
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18770/api/health; then ok=1; break; fi
+            sleep 2
+          done
+          docker rm -f chanshui-ci >/dev/null || true
+          test "$ok" = 1
