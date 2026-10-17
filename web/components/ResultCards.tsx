@@ -99,7 +99,13 @@ export default function ResultCards({
     reported === false || value == null || !Number.isFinite(value) ? "—" : value;
   const cacheRate = (value?: number | null) =>
     value == null || !Number.isFinite(value) ? "—" : value.toFixed(2) + "%";
-  const diluted = Boolean(f && !f.error && fingerprintDiluted(model || "", f.family, f.top_model));
+  const behavioral = f?.basis === "behavioral";
+  const diluted = Boolean(
+    f &&
+      !f.error &&
+      !f.low_confidence &&
+      fingerprintDiluted(model || "", f.family, f.top_model),
+  );
   const scored: DetectVerdict = v.total
     ? {
         ...v,
@@ -165,14 +171,37 @@ export default function ResultCards({
                   </p>
                   <p>
                     <span>{tr("实际")}</span>
-                    <b className={diluted ? "bad" : ""}>{f.top_model || f.family_name || tr("未归因")}</b>
+                    <b className={diluted ? "bad" : ""}>
+                      {f.top_display || f.top_model || f.family_name || tr("未归因")}
+                    </b>
                   </p>
                 </div>
+                <p className="basis-line">
+                  <span className={"basis-chip" + (behavioral ? " behavioral" : "")}>
+                    {behavioral ? tr("行为归因") : tr("数字归因")}
+                  </span>
+                  <span className="muted">
+                    {behavioral
+                      ? tr("数字库没有该家族，已用行为库 {n} 个候选直接比对。", {
+                          n: f.behavioral_total ?? 34,
+                        })
+                      : tr("按数字基线候选比较。")}
+                    {f.low_confidence ? " " + tr("证据不足，不判掺水。") : ""}
+                  </span>
+                </p>
                 <div className="metric-line">
                   <strong className={diluted ? "bad family-title" : "family-title"}>
                     {f.family_name || f.family}
                   </strong>
-                  <span>{tr("家族概率 {n}%", { n: (f.family_prob * 100).toFixed(1) })}</span>
+                  <span>
+                    {behavioral
+                      ? tr("行为相似度 {n}%", {
+                          n: ((f.top_similarity ?? f.top_prob ?? 0) * 100).toFixed(1),
+                        })
+                      : tr("家族概率 {n}%", {
+                          n: (f.family_prob * 100).toFixed(1),
+                        })}
+                  </span>
                 </div>
                 {f.results
                   ?.filter((r) => probabilityVisible(r.probability))
@@ -180,7 +209,7 @@ export default function ResultCards({
                   .map((r) => (
                     <div className="candidate" key={r.model}>
                       <div>
-                        <span>{r.model}</span>
+                        <span>{r.display || r.model}</span>
                         <b>{(r.probability * 100).toFixed(1)}%</b>
                       </div>
                       <div className="prob-bar">
@@ -191,10 +220,16 @@ export default function ResultCards({
                     </div>
                   ))}
                 <p className="muted">
-                  {tr("有效样本 {a} / 3", { a: f.used_outputs })}
-                  {typeof f.requests === "number" ? tr(" · 请求 {n} / 10", { n: f.requests }) : ""}
+                  {behavioral
+                    ? tr("行为探针 3 个 · 相似度按 6 维特征比对")
+                    : <>
+                        {tr("有效样本 {a} / 3", { a: f.used_outputs })}
+                        {typeof f.requests === "number"
+                          ? tr(" · 请求 {n} / 10", { n: f.requests })
+                          : ""}
+                      </>}
                 </p>
-                {f.behavioral_top3 && (
+                {!behavioral && f.behavioral_top3 && (
                   <Details
                     label={tr("行为相似候选（探索性参考）")}
                     value={{
@@ -205,7 +240,9 @@ export default function ResultCards({
                 )}
               </>
             )}
-            <Details label={tr("数字挑战原始证据")} value={f.evidence} />
+            {!behavioral && f.evidence?.length ? (
+              <Details label={tr("数字挑战原始证据")} value={f.evidence} />
+            ) : null}
           </>
         )}
       </section>

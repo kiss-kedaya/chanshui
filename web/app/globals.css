@@ -1684,6 +1684,33 @@ code {
   font-weight: 500;
   letter-spacing: 0;
 }
+.basis-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 13px;
+}
+.basis-chip {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 70%, var(--bg));
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.basis-chip.behavioral {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--card));
+  color: var(--accent);
+}
+.basis-line .muted {
+  font-size: 11px;
+  line-height: 1.5;
+}
 .fake-seal {
   position: absolute;
   right: 18px;

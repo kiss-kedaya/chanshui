@@ -30,8 +30,13 @@ test("fingerprint model mismatch is diluted and scores zero",()=>{
   assert.equal(fingerprintDiluted("openai/gpt-6.1-sol","gpt","gpt-6.1-sol"), false);
   assert.equal(fingerprintDiluted("openai/gpt-6.1-sol","gpt","gpt-6-sol"), true);
   assert.equal(fingerprintDiluted("anthropic/claude-fable-5","claude","claude-fable-5"), false);
-  assert.equal(fingerprintDiluted("deepseek-v4.1-flash","deepseek","deepseek-flash"), false);
+  assert.equal(fingerprintDiluted("deepseek-v4.1-flash-1017","deepseek","deepseek-flash"), false);
+  assert.equal(fingerprintDiluted("deepseek-v4.1-flash-0910","deepseek","deepseek-flash"), true);
+  assert.equal(fingerprintDiluted("deepseek-flash","deepseek","deepseek-v4.1-flash-0910"), true);
+  assert.equal(fingerprintDiluted("deepseek-flash","deepseek","deepseek-v4.1-flash-1017"), false);
+  assert.equal(fingerprintDiluted("deepseek-v4.1-flash","deepseek","deepseek-v4.1-flash-0910"), false);
   assert.equal(fingerprintDiluted("deepseek-v4-flash","deepseek","deepseek-flash"), true);
+  assert.equal(fingerprintDiluted("deepseek-flash","deepseek","deepseek-v4-pro"), true);
   assert.equal(fingerprintDiluted("claude-opus-4-6","gpt","gpt-5.4"), true);
   assert.equal(fingerprintDiluted("claude-opus-4-6","claude","claude-haiku-4-5"), true);
   assert.equal(fingerprintDiluted("claude-opus-4-6","claude","claude-opus-4-5"), true);

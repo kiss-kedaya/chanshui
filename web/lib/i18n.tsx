@@ -80,7 +80,15 @@ type I18nValue = {
 const I18nContext = createContext<I18nValue>({
   lang: "zh",
   follow: true,
-  t: (source) => source,
+  t: (source, vars) => {
+    let text = source;
+    if (vars) {
+      for (const [key, value] of Object.entries(vars)) {
+        text = text.split("{" + key + "}").join(String(value));
+      }
+    }
+    return text;
+  },
   setLang: () => {},
   locale: "zh-CN",
 });

@@ -215,13 +215,27 @@ export interface DetectVerdict {
     error?: string;
   } | null;
   fingerprint: {
+    basis?: "numeric" | "behavioral";
     family: string;
     family_name: string;
     family_prob: number;
     top_model: string;
+    top_display?: string;
     top_prob: number;
-    results: { model: string; probability: number; similarity: number }[];
-    behavioral_top3?: { modelId: string; similarity: number }[];
+    top_similarity?: number;
+    results: {
+      model: string;
+      display?: string;
+      probability: number;
+      similarity: number;
+    }[];
+    behavioral_top3?: {
+      modelId: string;
+      displayName?: string;
+      family?: string;
+      similarity: number;
+    }[];
+    behavioral_total?: number;
     behavior_note?: string;
     used_outputs: number;
     requests?: number;

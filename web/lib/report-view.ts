@@ -47,14 +47,19 @@ export function fingerprintFamily(family: string): string {
 }
 export function canonModel(model: string): string {
   model = model.trim().toLowerCase().replace(/^(openai|anthropic|moonshotai)\//, "");
-	if (model.trim().toLowerCase() === "deepseek-flash") model = "deepseek-v4.1-flash";
+	if (model.trim().toLowerCase() === "deepseek-flash") model = "deepseek-v4.1-flash-1017";
   return model.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 export function fingerprintDiluted(requested: string, family: string, topModel = ""): boolean {
   const claimed = canonModel(requested);
   const actual = canonModel(topModel);
-  if (claimed && actual && claimed !== actual) return true;
+  if (claimed && actual && claimed !== actual) {
+    // A non-dated version claim is compatible with any dated baseline of the
+    // same version; the report still shows which date matched.
+    if (claimed === "deepseekv41flash" && actual.startsWith("deepseekv41flash")) return false;
+    return true;
+  }
   const want = modelFamily(requested);
   const got = fingerprintFamily(family);
   if (!want || !got || got === "unknown") return false;
