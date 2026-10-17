@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+: "${CHANSHUI_ROOT:?}"
+: "${CHANSHUI_PORT:?}"
+: "${CHANSHUI_OTHER_PORT:?}"
+db=${CHANSHUI_DB:-/opt/chanshui-data/jobs.db}
+skip=
+if curl -fsS --max-time 2 "http://127.0.0.1:${CHANSHUI_OTHER_PORT}/api/health" >/dev/null 2>&1; then
+  skip=-skip-recover
+fi
+exec "$CHANSHUI_ROOT/chanshui" \
+  -addr "127.0.0.1:${CHANSHUI_PORT}" \
+  -web "$CHANSHUI_ROOT/web" \
+  -db "$db" \
+  -workers 16 \
+  -queue 128 \
+  -upstream-concurrency 64 \
+  $skip

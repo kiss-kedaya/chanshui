@@ -1,0 +1,24 @@
+[Unit]
+Description=Chanshui bluegreen (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chanshui
+Group=chanshui
+EnvironmentFile=/etc/chanshui/admin.env
+EnvironmentFile=/etc/chanshui/bluegreen-%i.env
+ExecStart=/usr/local/bin/chanshui-run
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/chanshui-data
+LimitNOFILE=65536
+TimeoutStopSec=1300
+
+[Install]
+WantedBy=multi-user.target

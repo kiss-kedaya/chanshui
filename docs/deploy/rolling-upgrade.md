@@ -1,16 +1,70 @@
 # 滚动升级与 Job 操作密钥
 
-## 升级顺序
+## 默认：双实例 + nginx 切流
 
-单实例 SQLite 不做两个 worker 实例同时抢同一队列。上线时先排空旧实例，再切换二进制，避免正在运行的分享链接被中断：
+升级时不再先排空。新版本先在空闲端口启动，nginx 把新请求切过去；旧实例只负责跑完手上已有的 Job，新检测从切换那一刻起就可以继续提交。
 
-1. 确认新包已通过 `checksums.txt` 校验，放入新的版本目录，不覆盖当前目录。
-2. 对当前服务进程发送 `SIGUSR1`，进入 draining。此时 `/api/detect` 返回 `503 + Retry-After`，已有 queued/running Job 继续运行。
-3. 轮询 `GET http://127.0.0.1:8770/api/health`，直到 `queued_jobs=0` 且 `active_jobs=0`。同时确认 `GET /api/ready` 返回 `503`，证明不会再接收新 Job。
-4. 停止旧服务，切换 `/opt/chanshui-current` 到新版本目录，启动新服务；新服务默认会把异常中断的残留 Job 标为 `interrupted`，但不会碰已排空任务。
-5. 依次验证本机 `/api/health`、nginx/Cloudflare `/api/ready`、首页和 `/history`，确认健康后恢复入口。
+端口约定：
 
-`TimeoutStopSec=1300` 是 systemd 停止服务时的保护窗口，不替代任务级总耗时预算。默认每个上游请求超时360秒、每个请求独立最多重试3次；任务总耗时由探针波次、并发等待和4次尝试预算共同决定。不要直接 `systemctl restart` 代替排空流程。
+- 蓝：`127.0.0.1:8770`
+- 绿：`127.0.0.1:8771`
+- nginx 只把 `/api/` 和页面反代到当前颜色，另一个实例保持待命或排空。
+
+仓库里的入口模板：
+
+- `docs/deploy/chanshui-bluegreen@.service`
+- `docs/deploy/chanshui-run`
+- `docs/deploy/chanshui-upstream.conf`
+- `docs/deploy/chanshui-switch.sh`
+
+升级顺序：
+
+1. 新包解到新的版本目录，校验 `checksums.txt`，不覆盖当前目录。
+2. 在空闲端口启动新版本；必须带 `-skip-recover`，否则新实例启动时会把旧实例正在跑的 Job 标成 `interrupted`。两个实例共用 `/opt/chanshui-data/jobs.db`，SQLite 继续使用 WAL 和 `busy_timeout`。
+3. 检查新端口的 `/api/health`、`/api/ready` 和首页；确认 `draining=false`、`queued_jobs=0`，并能提交一条新检测。
+4. 修改 nginx 的 upstream/`proxy_pass` 指向新端口，`nginx -t` 后 `systemctl reload nginx`。reload 只影响新连接，旧连接继续走旧实例。
+5. 观察旧实例 `/api/health`，等 `active_jobs=0` 后停止旧实例；不要给旧实例发 `SIGUSR1`，它已经不再接收新请求。
+6. 更新 `/opt/chanshui-current` 指向新版本。下一次升级反向使用另一个端口。
+
+具体命令示例（当前蓝在 8770，新版本切到 8771）：
+
+```bash
+# 1. 启动绿色实例（root-only admin.env 已存在）
+sudo tee /etc/chanshui/bluegreen-next.env >/dev/null <<'EOF'
+CHANSHUI_ROOT=/opt/chanshui-0.1.45
+CHANSHUI_PORT=8771
+CHANSHUI_OTHER_PORT=8770
+EOF
+sudo systemctl start chanshui-bluegreen@next
+curl -fsS http://127.0.0.1:8771/api/ready
+
+# 2. 切流并等蓝色实例跑完
+sudo /usr/local/bin/chanshui-switch 8771 chanshui-bluegreen@next chanshui
+
+# 3. 蓝色停稳后再更新 current
+sudo ln -sfn /opt/chanshui-0.1.45 /opt/chanshui-current
+```
+
+下一次升级把端口和 unit 反过来：绿色在跑时，新的蓝色实例用 `8770`，切流脚本参数改为 `8770 chanshui chanshui-bluegreen@next`。
+
+回滚：nginx 切回旧端口即可；旧实例仍在时不再启动第三份。旧实例已经停止时，先按旧版本目录在旧端口启动，再切回。
+
+注意事项：
+
+- 过渡期最多两个实例；不要让两个实例同时执行同一个内存队列。
+- 旧实例的 Job 不在新实例内存里，但报告读取和失败重试会回落到 SQLite；切换后不要依赖旧实例的停止接口。
+- 公共接口的每分钟限速和公益计数在进程内，过渡期两个实例各自计数；正式长跑前应把限速移到共享存储。
+- 两个实例都会做模型库自动同步；过渡期可接受，后续可加 `-no-sync` 让备用实例只读。
+- `TimeoutStopSec=1300` 仍是停止旧实例时的保护窗口。默认每个上游请求超时 360 秒、每个请求独立最多重试 3 次。
+
+## 兜底：单实例排空切换
+
+只有在新实例无法启动、或数据库锁无法接受时，才退回旧流程：
+
+1. 对当前服务进程发送 `SIGUSR1`，进入 draining。
+2. 轮询 `/api/health`，直到 `queued_jobs=0` 且 `active_jobs=0`；确认 `/api/ready` 为 `503`。
+3. 停止旧服务，切换 `/opt/chanshui-current`，启动新服务。
+4. 验证 `/api/health`、`/api/ready`、首页和 `/history`。
 
 ## 操作密钥边界
 
@@ -18,4 +72,4 @@
 
 失败项重试必须使用对应Job的 `X-Job-Token` 请求头，比较采用常量时间；操作key不能用于其他Job、停止接口或读取权限，公开 Job ID 只有只读权限。重试仍要求重新提交 API Key，服务端不会把 API Key 写入数据库、浏览器或 URL；操作key本身也不进URL、分享链接、报告和日志。
 
-生产入口应保持 HTTPS、`/api/*` `no-store`，Cloudflare 对 API 路径绕过缓存；公开读取接口用 ETag 返回 304 降低重复包体；不要把 `X-Job-Token` 放进查询参数或分享链接。
+生产入口保持 HTTPS。运行中、排队中和可重试的报告使用 `no-store`；已完成且没有失败项的报告使用 `private, max-age=300, stale-while-revalidate=60`，由浏览器复用。公开读取接口继续用 ETag 返回 304；不要把 `X-Job-Token` 放进查询参数或分享链接。
