@@ -2258,6 +2258,7 @@ tr:hover td {
     transform: translateY(0);
   }
 }
+
 @keyframes popover-in {
   from {
     opacity: 0;
@@ -4415,4 +4416,220 @@ html[data-mode="dark"] .agent-onboard-tip {
   .api-doc-layout { grid-template-columns: 1fr; }
   .api-tree { position: static; }
   .agent-onboard { max-width: 100%; }
+}
+
+/* Mobile: one compact brand row, icon-only actions, no duplicate nav links. */
+@media (max-width: 760px) {
+  .sidebar {
+    position: relative;
+    min-height: 58px;
+    padding: 9px 12px 8px;
+  }
+  .sidebar-logo {
+    gap: 8px;
+    padding: 0;
+    font-size: 22px;
+  }
+  .logo-symbol {
+    width: 27px;
+    height: 29px;
+    font-size: 21px;
+  }
+  .nav-docs {
+    display: none;
+  }
+  .nav-home:not(.nav-docs) {
+    position: absolute;
+    right: 144px;
+    top: 10px;
+    display: flex;
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #c5bfa9;
+    font-size: 0;
+  }
+  html[data-accent] .nav-home:not(.nav-docs),
+  html[data-accent] .nav-home:not(.nav-docs).active {
+    border-color: transparent;
+    background: transparent;
+    color: #c5bfa9;
+  }
+  .nav-home:not(.nav-docs) svg {
+    width: 18px;
+    height: 18px;
+  }
+  .mobile-history {
+    position: absolute;
+    right: 56px;
+    top: 10px;
+    display: flex;
+    height: 38px;
+    min-height: 38px;
+    padding: 0 9px;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #c5bfa9;
+    font-size: 11px;
+  }
+  .mobile-history svg {
+    width: 16px;
+    height: 16px;
+  }
+  .sidebar-bottom {
+    position: static;
+    width: auto;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+  }
+  .feedback-trigger {
+    position: absolute;
+    right: 12px;
+    top: 10px;
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0;
+    justify-content: center;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #c5bfa9;
+    box-shadow: none;
+  }
+  .feedback-trigger > span,
+  .feedback-trigger > svg:last-child {
+    display: none;
+  }
+  .feedback-trigger > svg:first-child {
+    width: 18px;
+    height: 18px;
+  }
+  .mobile-history:hover,
+  .nav-home:not(.nav-docs):hover,
+  .feedback-trigger:hover {
+    background: #2c2b26;
+    color: #f0d2b8;
+  }
+
+  .top-tools {
+    top: 8px;
+    right: 12px;
+    gap: 2px;
+  }
+  .top-tools .theme-trigger {
+    min-height: 34px;
+    padding: 0 7px;
+    gap: 6px;
+    border-color: transparent;
+    background: transparent;
+    color: #7b7568;
+    box-shadow: none;
+    font-size: 11px;
+  }
+  .top-tools .docs-entry {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+  .top-tools .docs-entry .tool-label,
+  .top-tools .theme-menu .tool-label {
+    display: none;
+  }
+  .top-tools .docs-entry svg {
+    width: 17px;
+    height: 17px;
+  }
+  .top-tools .lang-menu .theme-trigger > svg {
+    display: none;
+  }
+  .top-tools .theme-menu .theme-trigger > svg {
+    width: 10px;
+    height: 10px;
+    opacity: 0.55;
+  }
+  .page-top {
+    height: 48px;
+    padding-right: 118px;
+    gap: 0;
+  }
+  .page-top .report-query-link {
+    margin-left: 0;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .history-page > .hero-card:first-child {
+    margin-top: 54px;
+  }
+  .history-page > .hero-card:first-child .section-heading {
+    padding-right: 0;
+  }
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .actions > .btn-primary {
+    width: 100%;
+    min-width: 0;
+    flex: none;
+  }
+  .api-doc-layout,
+  .api-tree,
+  .api-detail,
+  .api-table-wrap {
+    min-width: 0;
+  }
+
+  .opening .hero-content {
+    padding: 23px 19px 22px;
+  }
+  .opening {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .opening > .audit-hero,
+  .opening > .connection-card,
+  .opening .hero-content,
+  .opening .hero-content h1,
+  .opening .hero-content h1 span,
+  .opening .hero-content > p {
+    min-width: 0;
+  }
+  .opening .hero-content h1 {
+    font-size: 29px;
+    letter-spacing: -0.6px;
+    margin-top: 14px;
+    overflow-wrap: anywhere;
+  }
+  .hero-points {
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .hero-points li {
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 761px) {
+  .page-top {
+    padding-right: 288px;
+  }
+  .history-page > .hero-card:first-child .section-heading {
+    padding-right: 288px;
+  }
 }

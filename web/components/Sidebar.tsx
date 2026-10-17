@@ -137,7 +137,7 @@ export default function Sidebar() {
         <Icon name="scan" /> {tr("新建检测")}
       </Link>
       <Link
-        className={"nav-home" + (pathname === "/docs" ? " active" : "")}
+        className={"nav-home nav-docs" + (pathname === "/docs" ? " active" : "")}
         href="/docs"
       >
         <Icon name="scan" /> {tr("接口文档")}
@@ -147,7 +147,8 @@ export default function Sidebar() {
         aria-expanded={mobileOpen}
         onClick={() => setMobileOpen(!mobileOpen)}
       >
-        {mobileOpen ? tr("收起历史") : tr("历史记录")}
+        <Icon name="clock" width="16" height="16" />
+        <span>{mobileOpen ? tr("收起历史") : tr("历史记录")}</span>
       </button>
       <div className="sidebar-title">
         <span>{tr("全站检测历史")}</span>

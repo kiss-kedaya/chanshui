@@ -54,7 +54,7 @@ export default function ThemeMenu() {
         onClick={() => setOpen(!open)}
       >
         <span className={"theme-dot theme-dot-" + theme.accent} />
-        <span>{tr("外观")}</span>
+        <span className="tool-label">{tr("外观")}</span>
         <Icon name="chevron" width="12" height="12" />
       </button>
       {open && (
