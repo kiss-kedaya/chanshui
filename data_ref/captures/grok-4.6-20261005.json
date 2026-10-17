@@ -1,5 +1,5 @@
 {
-  "base_url": "https://redacted.invalid",
+  "base_url": "<REDACTED_GATEWAY>",
   "holdout_requested": 12,
   "identity": "endpoint-labelled baseline, not independently verified model identity",
   "max_tokens": 16384,
