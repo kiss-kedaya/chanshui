@@ -223,6 +223,10 @@ export interface DetectVerdict {
     top_display?: string;
     top_prob: number;
     top_similarity?: number;
+    sample_min?: number;
+    sample_limit?: number;
+    confidence_target?: number;
+    confidence_reached?: boolean;
     results: {
       model: string;
       display?: string;

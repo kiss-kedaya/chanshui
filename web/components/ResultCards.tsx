@@ -75,11 +75,8 @@ export default function ResultCards({
     f = v.fingerprint,
     t = v.thinking,
     q = v.iq;
-  const hidden = v.hidden;
   // v0.1.27/28 落库的报告里 signals/asks 可能是 null（后端 nil 切片），
   // 旧报告不会被重写，所以前端必须兜底。
-  const hiddenSignals = hidden?.signals ?? [];
-  const hiddenAsks = hidden?.asks ?? [];
   const knowledge = v.knowledge;
   const integrity = v.integrity;
   const claude = (model || "").toLowerCase().startsWith("claude-");
@@ -110,6 +107,8 @@ export default function ResultCards({
   const cacheRate = (value?: number | null) =>
     value == null || !Number.isFinite(value) ? "—" : value.toFixed(2) + "%";
   const behavioral = f?.basis === "behavioral";
+  const sampleLimit =
+    f?.sample_limit ?? (f?.confidence_reached === undefined ? 3 : 10);
   const diluted = Boolean(
     f &&
       !f.error &&
@@ -233,12 +232,31 @@ export default function ResultCards({
                   {behavioral
                     ? tr("行为探针 3 个 · 相似度按 6 维特征比对")
                     : <>
-                        {tr("有效样本 {a} / 3", { a: f.used_outputs })}
+                        {tr("有效样本 {a} / {b}", {
+                          a: f.used_outputs,
+                          b: sampleLimit,
+                        })}
                         {typeof f.requests === "number"
                           ? tr(" · 请求 {n} / 10", { n: f.requests })
                           : ""}
                       </>}
                 </p>
+                {!behavioral &&
+                  f.confidence_reached === true &&
+                  (f.used_outputs ?? 0) < sampleLimit && (
+                    <p className="muted">
+                      {tr("顶部概率达到 90%，已提前停止采样。")}
+                    </p>
+                  )}
+                {!behavioral &&
+                  f.confidence_reached === false &&
+                  (f.used_outputs ?? 0) >= sampleLimit && (
+                    <p className="muted">
+                      {tr("已取满 {n} 个样本，顶部概率未达到 90%。", {
+                        n: sampleLimit,
+                      })}
+                    </p>
+                  )}
                 {!behavioral && f.behavioral_top3 && (
                   <Details
                     label={tr("行为相似候选（探索性参考）")}
@@ -253,75 +271,6 @@ export default function ResultCards({
             {!behavioral && f.evidence?.length ? (
               <Details label={tr("数字挑战原始证据")} value={f.evidence} />
             ) : null}
-          </>
-        )}
-      </section>
-      <section className="result-card">
-        <div className="rc-head">
-          <CardTitle
-            title={tr("隐藏指令检测")}
-            label={tr("隐藏指令检测说明")}
-            text={tr("按多种问法的自述一致性与自报知识截止日期判断上游是否在用户消息前注入了隐藏指令。不依赖上游上报的 token 数，因此不受计数抹平影响。")}
-          />
-          <span className="rc-score">
-            <ScoreShare verdict={scored} part="hidden" />
-            <span className="card-number">02</span>
-          </span>
-        </div>
-        {!hidden ? (
-          <ResultSkeleton label={loading ? tr("追问中…") : tr("暂无结果")} />
-        ) : hidden.error ? (
-          <ErrorFold text={hidden.error} />
-        ) : (
-          <>
-            <div className="metric-line">
-              <strong>{hidden.status === "injected" ? tr("检出隐藏指令") : hidden.status === "clean" ? tr("未检出") : hidden.status === "suspect" ? tr("存疑") : tr("无法判定")}</strong>
-              <b className="score-chip">{hidden.score + " / " + hidden.max_score}</b>
-            </div>
-            <div className="mini-stats">
-              <span>
-                {tr("承认存在前置指令")} <b>{hidden.ack_count}</b>
-              </span>
-              <span>
-                {tr("否认")} <b>{hidden.deny_count}</b>
-              </span>
-              {hidden.identity?.claimed_cutoff ? (
-                <span>
-                  {tr("自报截止")} <b>{hidden.identity.claimed_cutoff}</b>
-                  {hidden.identity.cutoff_mismatch ? <> {tr("≠ 官方 {v}", { v: hidden.identity.expected_cutoff || "?" })}</> : null}
-                </span>
-              ) : null}
-            </div>
-            {hiddenSignals.length ? (
-              <ul className="mini-list">
-                {hiddenSignals.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            ) : null}
-            <details className="fold">
-              <summary>{tr("各问法原始回答")}</summary>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{tr("问法")}</th>
-                      <th>{tr("判读")}</th>
-                      <th>{tr("回答")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hiddenAsks.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.id}</td>
-                        <td>{row.stance}</td>
-                        <td>{row.error ? row.error : row.answer}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
           </>
         )}
       </section>

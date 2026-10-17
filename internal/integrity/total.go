@@ -31,7 +31,6 @@ var sectionWeight = map[string]int{
 	"fingerprint": 30,
 	"iq":          25,
 	"injection":   12,
-	"hidden":      10,
 	"tools":       8,
 	"web":         6,
 	"thinking":    5,

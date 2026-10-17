@@ -7,7 +7,6 @@ import (
 	"chanzhushui/internal/gateway"
 
 	"chanzhushui/internal/inject"
-	"chanzhushui/internal/injection"
 	"chanzhushui/internal/integrity"
 	"chanzhushui/internal/iq"
 	"chanzhushui/internal/knowledge"
@@ -91,19 +90,25 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 		}
 		return behaviorFallback(q.Model, bank, b), nil
 	}
-	const wantSamples = 3
+	const minSamples = 3
+	const maxSamples = 10
+	const sampleBatch = 3
+	const confidenceTarget = 0.90
 	const maxRequests = 10
 	minValid := bank.Numeric.MinimumValidNumbers
 	challenges := fingerprint.GenerateChallenges(maxRequests, rand.New(rand.NewSource(time.Now().UnixNano())))
-	outs := make([]fingerprint.Output, 0, wantSamples)
+	outs := make([]fingerprint.Output, 0, maxSamples)
 	evidence := make([]any, 0, maxRequests)
 	requests := 0
 	firstError := ""
-	for len(outs) < wantSamples && requests < len(challenges) {
+	for len(outs) < maxSamples && requests < len(challenges) {
 		if ctx.Err() != nil {
 			break
 		}
-		batch := wantSamples - len(outs)
+		batch := maxSamples - len(outs)
+		if batch > sampleBatch {
+			batch = sampleBatch
+		}
 		if room := len(challenges) - requests; batch > room {
 			batch = room
 		}
@@ -158,7 +163,7 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 				}
 			}
 			permanent = permanent || sl.permanent
-			if sl.ok && len(outs) < wantSamples {
+			if sl.ok && len(outs) < maxSamples {
 				outs = append(outs, sl.out)
 			}
 		}
@@ -166,6 +171,12 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 		// outage. Keep the ten-challenge budget for successful but unusable output.
 		if permanent || failedRequests == batch {
 			break
+		}
+		if len(outs) >= minSamples {
+			snapshot := fingerprint.Attribute(outs, bank)
+			if snapshot.TopProb >= confidenceTarget {
+				break
+			}
 		}
 	}
 	a := fingerprint.Attribute(outs, bank)
@@ -176,7 +187,7 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 		}
 		res = append(res, map[string]any{"model": v.ModelID, "display": v.DisplayName, "probability": v.Prob, "similarity": v.JSSimilarity})
 	}
-	note := "概率只在数字库内的候选之间比较。凑满 3 个有效样本且归因和所选模型一致，这项才记满分。"
+	note := "概率只在数字库内的候选之间比较。从 3 个有效样本开始，顶部概率达到 90% 就停；否则最多取 10 个样本。归因和所选模型一致，这项才记满分。"
 	if bank.NumericModel(q.Model) == nil {
 		note += " 所选名称不是库内 ID，已按同家族候选直接比对。"
 	}
@@ -187,25 +198,25 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 	if a.UsedOutputs == 0 {
 		family, familyName = "unknown", "没有有效样本"
 		note = fmt.Sprintf("%d 次里没有拿到有效数字样本，这项记 0 分。", requests)
-	} else if a.UsedOutputs < wantSamples {
+	} else if a.UsedOutputs < minSamples {
 		note = "有效样本不足 3 个，这项记 0 分。"
 	}
 	topDisplay := a.TopModel
 	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.DisplayName != "" {
 		topDisplay = ref.DisplayName
 	}
-	out := map[string]any{"basis": "numeric", "family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_display": topDisplay, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < wantSamples, "evidence": evidence, "note": note}
+	out := map[string]any{"basis": "numeric", "family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_display": topDisplay, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < minSamples, "sample_min": minSamples, "sample_limit": maxSamples, "confidence_target": confidenceTarget, "confidence_reached": a.TopProb >= confidenceTarget, "evidence": evidence, "note": note}
 	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.ReferenceSamples > 0 {
 		out["reference"] = map[string]any{"source": ref.ReferenceSource, "training_samples": ref.ReferenceSamples, "aliases": ref.Aliases, "calibration": "inherited_candidate_weights_not_recalibrated"}
 	}
 	if ctx.Err() != nil {
 		return out, ctx.Err()
 	}
-	if a.UsedOutputs < wantSamples {
+	if a.UsedOutputs < minSamples {
 		if firstError == "" {
 			firstError = "上游返回的数字不足或格式无效"
 		}
-		return out, fmt.Errorf("指纹采样未完成（有效样本 %d/%d）：%s", a.UsedOutputs, wantSamples, firstError)
+		return out, fmt.Errorf("指纹采样未完成（有效样本 %d/%d）：%s", a.UsedOutputs, minSamples, firstError)
 	}
 	if a.UsedOutputs > 0 && a.LowConfidence {
 		b, e := fingerprint.CompareBehavior(ctx, behaviorAdapter{g, q.Timeout}, q.Model, bank, a)
@@ -281,8 +292,6 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 				t.Verdict.Cache = result
 			case "injection":
 				t.Verdict.Injection = result
-			case "hidden":
-				t.Verdict.Hidden = result
 			case "fingerprint":
 				t.Verdict.Fingerprint = result
 			case "thinking":
@@ -321,13 +330,6 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		v, e := inject.Measure(ctx, g, q.Model, q.Timeout)
 		if e != nil {
 			return map[string]any{"error": e.Error(), "points": v.Points}, e
-		}
-		return v, nil
-	})
-	job("hidden", func() (any, error) {
-		v, e := injection.Detect(ctx, &g, q.Model, q.Timeout)
-		if e != nil {
-			return map[string]any{"error": e.Error(), "score": v.Score}, e
 		}
 		return v, nil
 	})
@@ -633,21 +635,6 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		}
 	}
 	toolPoints, toolKnown := boolPart(v.Tools)
-	hiddenPoints, hiddenKnown := 0, false
-	if m, ok := v.Hidden.(map[string]any); ok {
-		errText, _ := m["error"].(string)
-		if errText == "" {
-			// 只有拿到明确判定（injected/suspect/clean）才计入分数；
-			// unknown/error 视为未完成，按 0 分计入，不伪装通过。
-			switch status, _ := m["status"].(string); status {
-			case "clean", "suspect", "injected":
-				hiddenKnown = true
-				if n, ok := asInt(m["score"]); ok {
-					hiddenPoints = n
-				}
-			}
-		}
-	}
 	webApply, webPoints, webKnown := webPart(v.Web)
 	thinkApply := gateway.IsClaude(model)
 	thinkPoints, thinkKnown := 0, false
@@ -693,7 +680,6 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		{Key: "fingerprint", Label: "模型指纹归因", Applicable: want("fingerprint"), Known: fpKnown, Points: fpPoints, MaxPoints: 10},
 		{Key: "iq", Label: "推理表现", Applicable: want("iq"), Known: iqKnown, Points: iqPoints, MaxPoints: 100},
 		{Key: "injection", Label: "注入大小", Applicable: want("injection"), Known: injKnown, Points: injPoints, MaxPoints: 10},
-		{Key: "hidden", Label: "隐藏指令检测", Applicable: want("hidden"), Known: hiddenKnown, Points: hiddenPoints, MaxPoints: 10},
 		{Key: "tools", Label: "工具调用", Applicable: want("tools"), Known: toolKnown, Points: toolPoints, MaxPoints: 1},
 		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},
 		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: 5},
