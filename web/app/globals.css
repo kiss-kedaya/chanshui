@@ -110,14 +110,20 @@ p {
 .skip-link {
   position: fixed;
   left: 10px;
-  top: -70px;
+  top: 10px;
   z-index: 200;
+  padding: 12px;
   background: var(--ink);
   color: white;
-  padding: 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  transform: translateY(-160%);
+  visibility: hidden;
+  transition: transform 0.18s var(--ease-out), visibility 0.18s;
 }
 .skip-link:focus {
-  top: 10px;
+  transform: translateY(0);
+  visibility: visible;
 }
 pre {
   white-space: pre-wrap;
