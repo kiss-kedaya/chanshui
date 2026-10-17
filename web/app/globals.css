@@ -3211,6 +3211,12 @@ tr:hover td {
 .theme-trigger > svg {
   transform: rotate(90deg);
 }
+.theme-trigger.github-entry > svg {
+  transform: none;
+}
+.theme-trigger.github-entry:hover > svg {
+  transform: scale(1.1);
+}
 .theme-dot {
   display: inline-block;
   width: 9px;
