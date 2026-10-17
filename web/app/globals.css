@@ -750,14 +750,8 @@ code {
   resize: vertical;
   min-height: 108px;
 }
-.model-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 9px;
+.model-field {
   margin-top: 20px;
-}
-.model-row > .field {
-  flex: 1;
 }
 .btn-secondary,
 .btn-primary,
@@ -852,13 +846,258 @@ code {
 .icon-button:hover svg {
   transform: scale(1.1);
 }
-.model-refresh {
-  height: 47px;
-  width: 47px;
+/* Model picker: a custom combobox, so the browser's native datalist popup
+   and its heavy black scrollbar never appear. */
+.model-picker {
+  position: relative;
+  z-index: 4;
 }
-.model-refresh svg {
-  width: 19px;
-  height: 19px;
+.model-picker[data-open="true"] {
+  z-index: 130;
+}
+.model-picker > input {
+  padding-right: 104px;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.model-picker[data-open="true"] > input {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: var(--card);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.model-picker-actions {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  transform: translateY(-50%);
+}
+.model-action {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  transition:
+    background var(--t-fast) ease,
+    color var(--t-fast) ease;
+}
+.model-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
+.model-action:active:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.model-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+.model-action:disabled {
+  opacity: 0.38;
+}
+.model-action svg {
+  width: 17px;
+  height: 17px;
+}
+.model-action-sep {
+  width: 1px;
+  height: 17px;
+  margin: 0 1px;
+  background: var(--line);
+}
+.model-toggle svg {
+  transform: rotate(90deg);
+  transition: transform var(--t-base) var(--ease-out);
+}
+.model-toggle[aria-expanded="true"] svg {
+  transform: rotate(-90deg);
+}
+.model-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 140;
+  display: flex;
+  max-height: min(420px, calc(100vh - 120px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow:
+    0 24px 55px color-mix(in srgb, #171416 16%, transparent),
+    0 3px 10px color-mix(in srgb, #171416 6%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--ink) 2%, transparent);
+  transform-origin: top center;
+  animation: model-pop-in 0.18s var(--ease-out);
+}
+.model-popover[data-placement="top"] {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform-origin: bottom center;
+  animation-name: model-pop-in-top;
+}
+@keyframes model-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes model-pop-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.model-popover-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+.model-popover-head strong {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.model-popover-count {
+  color: var(--muted);
+  font: 11px/1.4 Consolas, monospace;
+  white-space: nowrap;
+}
+.model-options {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink) 18%, transparent) transparent;
+}
+.model-options::-webkit-scrollbar {
+  width: 11px;
+}
+.model-options::-webkit-scrollbar-track {
+  background: transparent;
+}
+.model-options::-webkit-scrollbar-thumb {
+  border: 3px solid var(--card);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.model-options::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.model-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  transition:
+    background var(--t-fast) ease,
+    color var(--t-fast) ease;
+}
+.model-option[data-active="true"] {
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.model-option[aria-selected="true"] {
+  color: var(--accent);
+}
+.model-option[aria-selected="true"] .model-option-name {
+  font-weight: 600;
+}
+.model-family {
+  flex: 0 0 54px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.model-option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font: 500 13px/1.5 Consolas, "SFMono-Regular", monospace;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-option > svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+.model-empty,
+.model-loading {
+  display: flex;
+  min-height: 126px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
+}
+.model-empty svg,
+.model-loading svg {
+  width: 20px;
+  height: 20px;
+  opacity: 0.7;
+}
+.model-empty strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.model-empty span,
+.model-loading span {
+  font-size: 11.5px;
+}
+.model-loading {
+  min-height: 116px;
+}
+.model-popover-foot {
+  flex: none;
+  padding: 8px 14px 9px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  color: var(--muted);
+  font: 10.5px/1.4 Consolas, "SFMono-Regular", monospace;
+  letter-spacing: 0.01em;
 }
 .advanced {
   margin-top: 21px;
@@ -2246,7 +2485,7 @@ tr:hover td {
     min-height: 46px;
     font-size: 15px;
   }
-  .model-row {
+  .model-field {
     margin-top: 17px;
   }
   .form-bottom {
@@ -2674,6 +2913,11 @@ html[data-mode="dark"] .icon-button {
   background: var(--card);
   border-color: var(--line);
   color: var(--ink);
+}
+html[data-mode="dark"] .model-popover {
+  box-shadow:
+    0 26px 60px #0009,
+    0 2px 8px #0007;
 }
 html[data-mode="dark"] .select-options > button:hover,
 html[data-mode="dark"] .select-options > button:focus,

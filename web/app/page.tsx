@@ -11,6 +11,7 @@ import Hint from "@/components/Hint";
 import Icon from "@/components/Icon";
 import ErrorFold from "@/components/ErrorFold";
 import Select from "@/components/Select";
+import ModelPicker from "@/components/ModelPicker";
 import Link from "next/link";
 export default function DetectPage() {
   const { t: tr } = useI18n();
@@ -286,46 +287,21 @@ export default function DetectPage() {
               )}
             </div>
           </div>
-          <div className="model-row">
-            <div className="field">
-              <label htmlFor="model">{tr("目标模型")}</label>
-              <input
-                id="model"
-                value={model}
-                disabled={busy}
-                list="model-suggestions"
-                placeholder="例如 openai/gpt-6.1-sol"
-                maxLength={256}
-                autoComplete="off"
-                aria-describedby="model-help"
-                onChange={(e) => setModel(e.target.value)}
-              />
-              <datalist id="model-suggestions">
-                {(models ?? stats?.supported_models ?? []).map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </datalist>
-              <small id="model-help">{tr("可选择或输入自定义名称，请求时原样发送；没有对应基线时不代表已验证型号。")}</small>
-            </div>
-            <button
-              className="btn-secondary icon-button model-refresh"
-              type="button"
-              title={tr("获取模型列表")}
-              aria-label={tr("获取模型列表")}
-              aria-busy={modelBusy}
-              onClick={loadModels}
-              disabled={!baseUrl || !key || busy || modelBusy}
-            >
-              <Icon
-                name={modelBusy ? "spinner" : "refresh"}
-                className={modelBusy ? "icon-spin" : ""}
-              />
-              <span className="sr-only">
-                {modelBusy ? tr("正在获取模型") : tr("获取模型列表")}
-              </span>
-            </button>
+          <div className="field model-field">
+            <label htmlFor="model">{tr("目标模型")}</label>
+            <ModelPicker
+              id="model"
+              value={model}
+              onChange={setModel}
+              options={models ?? stats?.supported_models ?? []}
+              disabled={busy}
+              loading={modelBusy}
+              refreshDisabled={!baseUrl || !key || busy || modelBusy}
+              onRefresh={loadModels}
+              placeholder={tr("例如 claude-sonnet-5-5")}
+              describedBy="model-help"
+            />
+            <small id="model-help">{tr("可选择或输入自定义名称，请求时原样发送；没有对应基线时不代表已验证型号。")}</small>
           </div>
           <details className="advanced">
             <summary>
