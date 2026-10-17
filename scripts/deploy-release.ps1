@@ -13,7 +13,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Tag,
   [string]$SshHost = 'kedaya-new',
-  [string]$Repo = 'kiss-kedaya/chanzhushui',
+  [string]$Repo = 'kiss-kedaya/chanshui',
   [switch]$SkipDeploy
 )
 $ErrorActionPreference = 'Stop'

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"github.com/kiss-kedaya/chanzhushui/internal/history"
+	"github.com/kiss-kedaya/chanshui/internal/history"
 	"log"
 	"os"
 	"time"

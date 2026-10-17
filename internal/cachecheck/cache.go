@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
 	"math"
 	"strings"
 	"unicode/utf8"

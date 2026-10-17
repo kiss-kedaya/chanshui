@@ -3,7 +3,7 @@ package inject
 import (
 	"context"
 	"fmt"
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
 	"math"
 	"strings"
 	"time"

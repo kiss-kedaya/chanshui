@@ -2,7 +2,7 @@ package api
 
 import (
 	"context"
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
 
 	"fmt"
 	"io"

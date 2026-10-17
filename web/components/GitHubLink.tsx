@@ -1,7 +1,7 @@
 "use client";
 import { useI18n } from "@/lib/i18n";
 
-const REPOSITORY = "https://github.com/kiss-kedaya/chanzhushui";
+const REPOSITORY = "https://github.com/kiss-kedaya/chanshui";
 
 export default function GitHubLink() {
   const { t } = useI18n();

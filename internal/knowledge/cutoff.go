@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
 )
 
 // Verdict is informational only. It never contributes to IQ, integrity, or attribution.

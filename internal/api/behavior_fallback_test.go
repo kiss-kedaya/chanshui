@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanshui/internal/fingerprint"
 )
 
 func TestBehaviorFallbackUsesTopModelAndConfidence(t *testing.T) {

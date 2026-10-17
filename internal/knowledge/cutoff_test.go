@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
 )
 
 func TestFinalLineBeatsEarlierMentionAndEcho(t *testing.T) {

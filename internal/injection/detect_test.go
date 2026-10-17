@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
 )
 
 // fakeCaller 按 prompt 里的关键词返回预置回答，用来模拟不同上游行为。

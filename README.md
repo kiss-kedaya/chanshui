@@ -6,7 +6,7 @@
 
 示例部署：<https://chanshui.dev>（不依赖该站点即可自托管）
 
-源码：<https://github.com/kiss-kedaya/chanzhushui>
+源码：<https://github.com/kiss-kedaya/chanshui>
 
 ## 能查什么
 

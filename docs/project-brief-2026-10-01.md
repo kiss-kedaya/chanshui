@@ -48,7 +48,7 @@
 
 ## 工程与仓库要求
 
-- GitHub 仓库：https://github.com/kiss-kedaya/chanzhushui
+- GitHub 仓库：https://github.com/kiss-kedaya/chanshui
 - **使用 worktree 多功能多模块同时干活**；所有 worktree 收在仓库根目录附近的一个入口文件夹里，避免散落多个顶层 worktree。
 - 完成一个功能/模块就 **commit + 说明**，推到 GitHub。
 - 实施计划：`docs/superpowers/plans/2026-10-01-chanshui-detection-station.md`（v2）。

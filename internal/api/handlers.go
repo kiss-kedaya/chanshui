@@ -2,11 +2,11 @@ package api
 
 import (
 	"context"
-	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
-	"github.com/kiss-kedaya/chanzhushui/internal/history"
-	"github.com/kiss-kedaya/chanzhushui/internal/integrity"
-	"github.com/kiss-kedaya/chanzhushui/internal/iq"
+	"github.com/kiss-kedaya/chanshui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/history"
+	"github.com/kiss-kedaya/chanshui/internal/integrity"
+	"github.com/kiss-kedaya/chanshui/internal/iq"
 
 	"encoding/json"
 	"fmt"

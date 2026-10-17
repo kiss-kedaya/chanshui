@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
-	"github.com/kiss-kedaya/chanzhushui/internal/history"
+	"github.com/kiss-kedaya/chanshui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/history"
 )
 
 const customRefsStateKey = "custom-fingerprint-references-v1"

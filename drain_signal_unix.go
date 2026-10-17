@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	"github.com/kiss-kedaya/chanzhushui/internal/api"
+	"github.com/kiss-kedaya/chanshui/internal/api"
 	"os"
 	"os/signal"
 	"syscall"

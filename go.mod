@@ -1,4 +1,4 @@
-module github.com/kiss-kedaya/chanzhushui
+module github.com/kiss-kedaya/chanshui
 
 go 1.22
 

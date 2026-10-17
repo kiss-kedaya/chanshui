@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kiss-kedaya/chanzhushui/internal/fingerprint"
+	"github.com/kiss-kedaya/chanshui/internal/fingerprint"
 )
 
 func adminRequest(t *testing.T, s *Server, method, path string, body any) *httptest.ResponseRecorder {

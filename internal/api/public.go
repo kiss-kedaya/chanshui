@@ -3,9 +3,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kiss-kedaya/chanzhushui/internal/gateway"
-	"github.com/kiss-kedaya/chanzhushui/internal/history"
-	"github.com/kiss-kedaya/chanzhushui/internal/iq"
+	"github.com/kiss-kedaya/chanshui/internal/gateway"
+	"github.com/kiss-kedaya/chanshui/internal/history"
+	"github.com/kiss-kedaya/chanshui/internal/iq"
 	"math"
 	mathrand "math/rand"
 	"net"
