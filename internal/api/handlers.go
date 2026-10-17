@@ -33,8 +33,12 @@ type Options struct {
 }
 type Server struct {
 	bankMu         sync.RWMutex
+	bankWriteMu    sync.Mutex
 	feedbackMu     sync.Mutex
 	feedbackLimits map[string]feedbackWindow
+	adminRefsMu    sync.Mutex
+	captureMu      sync.Mutex
+	capture        *adminCapture
 	publicMu       sync.Mutex
 	publicHits     map[string]time.Time
 	adminMu        sync.Mutex
@@ -201,6 +205,11 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /api/admin/login", s.adminLogin)
 	m.HandleFunc("POST /api/admin/logout", s.adminLogout)
 	m.HandleFunc("GET /api/admin/feedback", s.adminFeedback)
+	m.HandleFunc("GET /api/admin/fingerprints", s.adminFingerprints)
+	m.HandleFunc("POST /api/admin/fingerprints/capture", s.adminCaptureStart)
+	m.HandleFunc("GET /api/admin/fingerprints/capture/{id}", s.adminCaptureStatus)
+	m.HandleFunc("POST /api/admin/fingerprints/capture/{id}/cancel", s.adminCaptureCancel)
+	m.HandleFunc("DELETE /api/admin/fingerprints/{id}", s.adminFingerprintDelete)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

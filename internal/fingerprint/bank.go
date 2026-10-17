@@ -27,6 +27,7 @@ type ModelDef struct {
 	Aliases          []string `json:"aliases,omitempty"`
 	ReferenceSource  string   `json:"reference_source,omitempty"`
 	ReferenceSamples int      `json:"reference_samples,omitempty"`
+	Custom           bool     `json:"custom,omitempty"`
 	ID               string   `json:"id"`
 	DisplayName      string   `json:"display_name"`
 	Family           string   `json:"family"`
