@@ -354,7 +354,31 @@ code {
   font-size: 12px;
 }
 .sidebar-admin:hover { color: #ffdac1; }
-.admin-feedback { max-width: 760px; }
+.admin-feedback {
+  max-width: 760px;
+  margin: 62px auto 24px;
+}
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.admin-actions .btn-secondary {
+  min-height: 36px;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+.admin-hint {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.admin-feedback form > .btn-primary {
+  margin-top: 14px;
+}
 .admin-list { display: flex; flex-direction: column; gap: 14px; }
 .admin-list article {
   border-top: 1px solid var(--line, #e7e1d4);
@@ -2355,6 +2379,9 @@ tr:hover td {
   }
 }
 @media (max-width: 760px) {
+  .admin-feedback {
+    margin-top: 54px;
+  }
   .sidebar {
     position: relative;
     inset: auto;

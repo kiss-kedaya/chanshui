@@ -22,7 +22,9 @@ export default function AdminFeedbackPage() {
     [show, setShow] = useState(false),
     [items, setItems] = useState<Item[] | null>(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [checking, setChecking] = useState(true),
+    [refreshing, setRefreshing] = useState(false);
 
   async function load() {
     const res = await fetch("/api/admin/feedback", { cache: "no-store", credentials: "same-origin" });
@@ -36,7 +38,10 @@ export default function AdminFeedbackPage() {
   }
 
   useEffect(() => {
-    load().catch(() => setItems(null));
+    setChecking(true);
+    load()
+      .catch(() => setItems(null))
+      .finally(() => setChecking(false));
   }, []);
 
   async function submit(e: FormEvent) {
@@ -64,19 +69,58 @@ export default function AdminFeedbackPage() {
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" });
     setItems(null);
+    setError("");
+  }
+
+  async function refresh() {
+    setRefreshing(true);
+    setError("");
+    try {
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function download() {
+    if (!items) return;
+    const blob = new Blob([JSON.stringify(items, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `chanshui-feedback-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
     <section className="result-card admin-feedback">
       <div className="rc-head">
-        <h3>{tr("反馈记录")}</h3>
+        <h3>
+          {tr("反馈记录")}
+          {items ? ` (${items.length})` : ""}
+        </h3>
         {items && (
-          <button className="btn-secondary" type="button" onClick={logout}>
-            {tr("退出")}
-          </button>
+          <div className="admin-actions">
+            <button className="btn-secondary" type="button" onClick={() => void refresh()} disabled={refreshing}>
+              {refreshing ? tr("刷新中…") : tr("刷新")}
+            </button>
+            <button className="btn-secondary" type="button" onClick={download}>
+              {tr("导出 JSON")}
+            </button>
+            <button className="btn-secondary" type="button" onClick={() => void logout()}>
+              {tr("退出")}
+            </button>
+          </div>
         )}
       </div>
-      {items === null ? (
+      {checking ? (
+        <p className="muted">{tr("正在检查管理员会话…")}</p>
+      ) : items === null ? (
         <form onSubmit={submit}>
           <div className="field">
             <label htmlFor="admin-token">{tr("管理员口令")}</label>
@@ -87,15 +131,21 @@ export default function AdminFeedbackPage() {
                 value={token}
                 autoComplete="current-password"
                 onChange={(e) => setToken(e.target.value)}
+                autoFocus
+                spellCheck={false}
+                autoCapitalize="off"
                 required
               />
               <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? tr("隐藏口令") : tr("显示口令")}>
                 <Icon name={show ? "eyeOff" : "eye"} />
               </button>
             </div>
+            <small className="admin-hint">
+              {tr("填写服务端配置的 CHANSHUI_ADMIN_TOKEN，通常为 48 位。")}
+            </small>
           </div>
-          {error && <div className="error-box">{error}</div>}
-          <button className="btn-primary" disabled={busy || token.length < 24}>
+          {error && <div className="error-box" role="alert">{error}</div>}
+          <button className="btn-primary" disabled={busy}>
             {busy ? tr("正在核对…") : tr("进入")}
           </button>
         </form>
