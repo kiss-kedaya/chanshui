@@ -671,7 +671,15 @@ export default function ResultCards({
         <section className="result-card" key={title}>
           <div className="rc-head">
             <h3>{title}</h3>
-            <ScoreShare verdict={scored} part={title === tr("工具调用检测") ? "tools" : "web"} />
+            <span className="rc-score">
+              {result?.protocol === "deepseek_search" && (
+                <span className="basis-chip behavioral">DeepSeek Search API</span>
+              )}
+              <ScoreShare
+                verdict={scored}
+                part={title === tr("工具调用检测") ? "tools" : "web"}
+              />
+            </span>
           </div>
           {!result ? (
             <ResultSkeleton label={loading ? tr("检测中…") : tr("暂无结果")} />

@@ -144,3 +144,24 @@ func fingerprintPart(total integrity.Total) integrity.Part {
 	}
 	return integrity.Part{}
 }
+
+func TestWebPartDeepSeekSearch(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		value  any
+		apply  bool
+		points int
+	}{
+		{"pass", map[string]any{"status": "pass", "pass": true, "protocol": "deepseek_search"}, true, 1},
+		{"fail", map[string]any{"status": "fail", "pass": false, "protocol": "deepseek_search"}, true, 0},
+		{"unsupported", map[string]any{"status": "unsupported", "protocol": "deepseek_search"}, false, 0},
+		{"transient", map[string]any{"status": "unknown", "protocol": "deepseek_search"}, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			apply, points, known := webPart(tc.value)
+			if apply != tc.apply || points != tc.points || known != tc.apply {
+				t.Fatalf("apply=%v points=%d known=%v", apply, points, known)
+			}
+		})
+	}
+}

@@ -341,7 +341,12 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		})
 	}
 	job("tools", func() (any, error) { return capability.Tools(ctx, g, q.Model, q.Timeout) })
-	job("web", func() (any, error) { return capability.Web(ctx, g, q.Model, q.Timeout) })
+	job("web", func() (any, error) {
+		if integrity.ModelFamily(q.Model) == "deepseek" {
+			return capability.DeepSeekSearch(ctx, g, q.Timeout)
+		}
+		return capability.Web(ctx, g, q.Model, q.Timeout)
+	})
 	job("knowledge", func() (any, error) {
 		v, e := knowledge.Check(ctx, g, q.Model, q.Timeout)
 		if e != nil {
@@ -722,6 +727,9 @@ func webPart(v any) (bool, int, bool) {
 	status, _ := m["status"].(string)
 	protocol, _ := m["protocol"].(string)
 	_, hasPass := asBoolPtr(m["pass"])
+	if !hasPass && (status == "unsupported" || (protocol == "deepseek_search" && status == "unknown")) {
+		return false, 0, false
+	}
 	if status == "unknown" && !hasPass && protocol == "chat" {
 		return false, 0, false
 	}

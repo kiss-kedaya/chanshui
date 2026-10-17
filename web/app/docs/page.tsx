@@ -114,7 +114,7 @@ const items: Item[] = [
       { name: "model", type: "string", required: true, note: "要检测的模型名" },
       { name: "protocol", type: "string", required: false, note: "auto、chat、anthropic、openai。不传就是 auto" },
       { name: "timeout", type: "integer", required: false, note: "单请求超时，10 到 600 秒。不传是 360" },
-      { name: "sections", type: "string | array", required: false, note: "不传、all，或板块数组。可选 fingerprint、injection、cache、tools、web、knowledge、thinking、iq" },
+      { name: "sections", type: "string | array", required: false, note: "不传、all，或板块数组。可选 fingerprint、injection、cache、tools、web、knowledge、thinking、iq。DeepSeek 的 web 会直接调用 /v1/tools/search" },
     ],
     example: sample,
     responses: [
