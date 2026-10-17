@@ -4,27 +4,33 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 )
 
 type fakeCaller struct {
+	mu        sync.Mutex
 	responses []string
-	i         int
 	calls     int
 	err       error
 }
 
-func (f *fakeCaller) Call(_ context.Context, _, _ string, _ int) (string, error) {
+func (f *fakeCaller) Call(_ context.Context, _, prompt string, _ int) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	if f.err != nil {
 		return "", f.err
 	}
-	if f.i >= len(f.responses) {
-		return "", nil
+	for i, probe := range BehaviorProbes {
+		if prompt == probe.Prompt {
+			if i < len(f.responses) {
+				return f.responses[i], nil
+			}
+			return "", nil
+		}
 	}
-	r := f.responses[f.i]
-	f.i++
-	return r, nil
+	return "", nil
 }
 
 func TestCompareBehaviorDisabled(t *testing.T) {

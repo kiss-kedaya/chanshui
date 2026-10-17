@@ -1,6 +1,10 @@
 package api
 
-import "testing"
+import (
+	"testing"
+
+	"chanzhushui/internal/integrity"
+)
 
 func TestBuildTotalFullPassAndDilutedFingerprint(t *testing.T) {
 	pass := true
@@ -75,4 +79,68 @@ func TestBuildTotalChatWithoutCacheStill100(t *testing.T) {
 	if fp == 0 || total.Score != 100-fp {
 		t.Fatalf("renorm score %d fingerprint coeff %d %+v", total.Score, fp, total.Parts)
 	}
+}
+
+func TestBuildTotalBehavioralAttribution(t *testing.T) {
+	cases := []struct {
+		name, family, top string
+		low               bool
+		wantPoints        int
+	}{
+		{"cross-family substitution", "openai", "openai/gpt-4o", false, 0},
+		{"current dated match", "deepseek", "deepseek-v4.1-flash-1017", false, 10},
+		{"old dated version", "deepseek", "deepseek-v4.1-flash-0910", false, 0},
+		{"weak evidence", "deepseek", "deepseek-v4.1-flash-1017", true, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := Verdict{Fingerprint: map[string]any{
+				"basis":          "behavioral",
+				"family":         tc.family,
+				"top_model":      tc.top,
+				"used_outputs":   3,
+				"low_confidence": tc.low,
+			}}
+			total := buildTotal(v, "deepseek-flash")
+			part := fingerprintPart(total)
+			if part.Points != tc.wantPoints {
+				t.Fatalf("fingerprint points %d, want %d", part.Points, tc.wantPoints)
+			}
+			if tc.wantPoints == 10 && part.Contribution != part.Coefficient {
+				t.Fatalf("matching fingerprint contribution %+v", part)
+			}
+			if tc.wantPoints == 0 && part.Contribution != 0 {
+				t.Fatalf("failed fingerprint contribution %+v", part)
+			}
+		})
+	}
+}
+
+func TestBuildTotalDatedDeepseekNumericAlias(t *testing.T) {
+	v := Verdict{Fingerprint: map[string]any{
+		"basis":        "numeric",
+		"family":       "deepseek",
+		"top_model":    "deepseek-v4.1-flash-1017",
+		"used_outputs": 3,
+	}}
+	if part := fingerprintPart(buildTotal(v, "deepseek-flash")); part.Points != 10 {
+		t.Fatalf("current numeric alias scored %+v", part)
+	}
+	v.Fingerprint.(map[string]any)["top_model"] = "deepseek-v4.1-flash-0910"
+	if part := fingerprintPart(buildTotal(v, "deepseek-flash")); part.Points != 0 {
+		t.Fatalf("old numeric alias scored %+v", part)
+	}
+	v.Fingerprint.(map[string]any)["top_model"] = "deepseek-v4.1-flash-1017"
+	if part := fingerprintPart(buildTotal(v, "deepseek-v4.1-flash")); part.Points != 10 {
+		t.Fatalf("non-dated alias scored %+v", part)
+	}
+}
+
+func fingerprintPart(total integrity.Total) integrity.Part {
+	for _, part := range total.Parts {
+		if part.Key == "fingerprint" {
+			return part
+		}
+	}
+	return integrity.Part{}
 }

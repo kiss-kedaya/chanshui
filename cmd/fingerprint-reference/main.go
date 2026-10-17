@@ -11,7 +11,9 @@ import (
 	"strings"
 )
 
-func readCapture(path string) (fingerprint.LocalReference, []fingerprint.Output) {
+func readCapture(
+	path, idOverride, displayName, extraAliases string,
+) (fingerprint.LocalReference, []fingerprint.Output) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		panic(err)
@@ -53,9 +55,31 @@ func readCapture(path string) (fingerprint.LocalReference, []fingerprint.Output)
 		panic("unsupported local reference family")
 	}
 	ref := fingerprint.LocalReference{ID: capture.Model, Family: family, FamilyName: familyName, Source: capture.BaseURL, CapturedAt: capture.StartedAt}
-	if ref.ID == "deepseek-flash" {
+	if idOverride == "" && ref.ID == "deepseek-flash" {
 		ref.ID = "deepseek-v4.1-flash"
 		ref.Aliases = []string{"deepseek-flash"}
+	}
+	if idOverride != "" {
+		ref.ID = idOverride
+	}
+	if displayName != "" {
+		ref.DisplayName = displayName
+	}
+	for _, alias := range strings.Split(extraAliases, ",") {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			continue
+		}
+		found := false
+		for _, existing := range ref.Aliases {
+			if existing == alias {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ref.Aliases = append(ref.Aliases, alias)
+		}
 	}
 	if requestModel != capture.Model {
 		ref.Aliases = append(ref.Aliases, requestModel)
@@ -78,6 +102,9 @@ func readCapture(path string) (fingerprint.LocalReference, []fingerprint.Output)
 func main() {
 	input := flag.String("capture", "", "comma-separated capture JSON files; all are validated jointly")
 	output := flag.String("out", "", "optional merged reference output")
+	id := flag.String("id", "", "override the reference model id")
+	display := flag.String("display", "", "human-readable display name")
+	aliases := flag.String("aliases", "", "comma-separated extra aliases")
 	flag.Parse()
 	bank, err := fingerprint.LoadBank()
 	if err != nil {
@@ -86,7 +113,7 @@ func main() {
 	var refs []fingerprint.LocalReference
 	var holdouts [][]fingerprint.Output
 	for _, path := range strings.Split(*input, ",") {
-		ref, holdout := readCapture(strings.TrimSpace(path))
+		ref, holdout := readCapture(strings.TrimSpace(path), *id, *display, *aliases)
 		if err = fingerprint.AddLocalReference(bank, ref); err != nil {
 			panic(err)
 		}

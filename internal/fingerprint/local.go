@@ -11,13 +11,14 @@ import (
 // again after an upstream bank changes its feature normalization. Holdout
 // responses never enter this structure.
 type LocalReference struct {
-	ID         string   `json:"id"`
-	Aliases    []string `json:"aliases"`
-	Family     string   `json:"family"`
-	FamilyName string   `json:"family_name"`
-	Source     string   `json:"source"`
-	CapturedAt string   `json:"captured_at"`
-	Samples    [][]int  `json:"samples"`
+	ID          string   `json:"id"`
+	DisplayName string   `json:"display_name,omitempty"`
+	Aliases     []string `json:"aliases"`
+	Family      string   `json:"family"`
+	FamilyName  string   `json:"family_name"`
+	Source      string   `json:"source"`
+	CapturedAt  string   `json:"captured_at"`
+	Samples     [][]int  `json:"samples"`
 }
 
 //go:embed local.references.json
@@ -71,7 +72,11 @@ func AddLocalReference(b *Bank, ref LocalReference) error {
 		add(ec, unit(ov))
 	}
 	hc, oc, ec = unit(hc), unit(oc), unit(ec)
-	model := ModelDef{ID: ref.ID, DisplayName: ref.ID, Family: ref.Family, FamilyName: ref.FamilyName, Counts: counts, Aliases: ref.Aliases, ReferenceSource: ref.Source, ReferenceSamples: len(ref.Samples)}
+	displayName := ref.DisplayName
+	if displayName == "" {
+		displayName = ref.ID
+	}
+	model := ModelDef{ID: ref.ID, DisplayName: displayName, Family: ref.Family, FamilyName: ref.FamilyName, Counts: counts, Aliases: ref.Aliases, ReferenceSource: ref.Source, ReferenceSamples: len(ref.Samples)}
 	index := -1
 	for i, m := range b.Numeric.Models {
 		if m.ID == ref.ID {

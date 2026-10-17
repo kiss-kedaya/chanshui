@@ -127,3 +127,30 @@ func TestNumericResamplesInvalidAnswersWithinChallengeBudget(t *testing.T) {
 		})
 	}
 }
+
+func TestNumericAliasUsesFamilyBaseline(t *testing.T) {
+	s, _, _, _ := testSetup(t)
+	var calls atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		answer := strings.Repeat("247,83,319,", 105)
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{
+				"message":       map[string]string{"content": answer},
+				"finish_reason": "stop",
+			}},
+		})
+	}))
+	defer up.Close()
+	result, err := s.numeric(context.Background(), gateway.Client{BaseURL: up.URL}, Request{Model: "deepseek-flash", Timeout: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := result.(map[string]any)
+	if out["basis"] != "numeric" || out["used_outputs"] != 3 || out["top_model"] == "" {
+		t.Fatalf("alias did not use numeric family baseline: %+v", out)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("calls=%d", calls.Load())
+	}
+}

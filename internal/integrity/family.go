@@ -68,7 +68,7 @@ func unqualifiedModel(model string) string {
 func CanonModel(model string) string {
 	model = unqualifiedModel(model)
 	if strings.EqualFold(strings.TrimSpace(model), "deepseek-flash") {
-		model = "deepseek-v4.1-flash"
+		model = "deepseek-v4.1-flash-1017"
 	}
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(model)) {
@@ -85,6 +85,11 @@ func Diluted(requested, family, topModel string) bool {
 	claimed := CanonModel(requested)
 	actual := CanonModel(topModel)
 	if claimed != "" && actual != "" && claimed != actual {
+		// A non-dated version claim is compatible with any dated baseline of
+		// the same version; the report still shows which date matched.
+		if claimed == "deepseekv41flash" && strings.HasPrefix(actual, "deepseekv41flash") {
+			return false
+		}
 		return true
 	}
 	want := ModelFamily(requested)

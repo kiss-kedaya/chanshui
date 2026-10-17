@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -70,12 +71,22 @@ func CompareBehavior(ctx context.Context, gw BehavioralCaller, model string, ban
 	}
 
 	responses := make([]string, len(BehaviorProbes))
+	errs := make([]error, len(BehaviorProbes))
+	var wg sync.WaitGroup
 	for i, p := range BehaviorProbes {
-		text, err := gw.Call(ctx, model, p.Prompt, behaviorMaxTokens)
+		wg.Add(1)
+		go func(i int, p BehaviorProbe) {
+			defer wg.Done()
+			text, err := gw.Call(ctx, model, p.Prompt, behaviorMaxTokens)
+			responses[i] = text
+			errs[i] = err
+		}(i, p)
+	}
+	wg.Wait()
+	for _, err := range errs {
 		if err != nil {
 			return nil, err
 		}
-		responses[i] = text
 	}
 
 	q := queryBehaviorFeature(responses)

@@ -84,12 +84,12 @@ func (a behaviorAdapter) Call(ctx context.Context, model, prompt string, max int
 }
 func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any, error) {
 	bank := s.currentBank()
-	if bank.NumericModel(q.Model) == nil && !gateway.IsClaude(q.Model) && integrity.ModelFamily(q.Model) != "gpt" {
+	if !familyHasNumericBaseline(bank, q.Model) {
 		b, e := fingerprint.CompareBehavior(ctx, behaviorAdapter{g, q.Timeout}, q.Model, bank, fingerprint.Attribution{LowConfidence: true})
 		if e != nil {
 			return nil, e
 		}
-		return map[string]any{"family": "unknown", "family_name": "未建立数字基线", "family_prob": 0, "top_model": "", "top_prob": 0, "results": []any{}, "behavioral_top3": b.Top3, "used_outputs": 0, "requests": 0, "low_confidence": true, "note": "当前模型尚未建立数字基线，这项记 0 分。", "evidence": []any{}}, nil
+		return behaviorFallback(q.Model, bank, b), nil
 	}
 	const wantSamples = 3
 	const maxRequests = 10
@@ -124,7 +124,7 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 				// Messages prefers a buffered response for long numeric samples.
 				// Responses/Chat stream by default; some gateways require it.
 				maxTokens := 4096
-				if ref := bank.NumericModel(q.Model); ref != nil && ref.ReferenceSamples > 0 {
+				if ref := bank.NumericModel(q.Model); (ref != nil && ref.ReferenceSamples > 0) || integrity.ModelFamily(q.Model) == "deepseek" {
 					maxTokens = 16384
 				}
 				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: maxTokens, Stream: g.ProtocolFor(q.Model) != "messages", TimeoutSeconds: q.Timeout})
@@ -174,9 +174,12 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 		if v.Prob <= 0 {
 			continue
 		}
-		res = append(res, map[string]any{"model": v.ModelID, "probability": v.Prob, "similarity": v.JSSimilarity})
+		res = append(res, map[string]any{"model": v.ModelID, "display": v.DisplayName, "probability": v.Prob, "similarity": v.JSSimilarity})
 	}
 	note := "概率只在数字库内的候选之间比较。凑满 3 个有效样本且归因和所选模型一致，这项才记满分。"
+	if bank.NumericModel(q.Model) == nil {
+		note += " 所选名称不是库内 ID，已按同家族候选直接比对。"
+	}
 	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.ReferenceSamples > 0 {
 		note += " 此候选为单一接口采样基线；候选权重沿用原库温度，未完成跨供应商概率校准，不能单独证明模型身份。"
 	}
@@ -187,7 +190,11 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 	} else if a.UsedOutputs < wantSamples {
 		note = "有效样本不足 3 个，这项记 0 分。"
 	}
-	out := map[string]any{"family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < wantSamples, "evidence": evidence, "note": note}
+	topDisplay := a.TopModel
+	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.DisplayName != "" {
+		topDisplay = ref.DisplayName
+	}
+	out := map[string]any{"basis": "numeric", "family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_display": topDisplay, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < wantSamples, "evidence": evidence, "note": note}
 	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.ReferenceSamples > 0 {
 		out["reference"] = map[string]any{"source": ref.ReferenceSource, "training_samples": ref.ReferenceSamples, "aliases": ref.Aliases, "calibration": "inherited_candidate_weights_not_recalibrated"}
 	}
@@ -340,7 +347,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	for _, question := range t.questions {
 		item := question
 		job(item.ID, func() (any, error) {
-			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, System: []gateway.SystemBlock{{Text: "禁止使用任何工具。请认真推导并核验；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
+			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
 				if m.StopReason == "max_tokens" || m.StopReason == "length" {
 					return fmt.Errorf("max_tokens: response truncated")
 				}
@@ -573,7 +580,15 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 			// diluted on roughly one in six live draws.
 			lowConfidence, _ := m["low_confidence"].(bool)
 			got := integrity.FingerprintFamily(family)
-			if used >= 3 && got != "" && got != "unknown" && (lowConfidence || !integrity.Diluted(model, family, top)) {
+			basis, _ := m["basis"].(string)
+			if basis == "behavioral" {
+				// Behavioral attribution is coarse. Only a confident match may
+				// prove identity; a weak match is evidence-insufficient, not a
+				// free pass and not a confirmed substitution.
+				if used >= 3 && !lowConfidence && got != "" && got != "unknown" && !integrity.Diluted(model, family, top) {
+					fpPoints = 10
+				}
+			} else if used >= 3 && got != "" && got != "unknown" && (lowConfidence || !integrity.Diluted(model, family, top)) {
 				fpPoints = 10
 			}
 		}

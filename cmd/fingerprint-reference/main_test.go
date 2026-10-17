@@ -20,7 +20,7 @@ func TestReadCaptureKeepsTrainingAndHoldoutSeparate(t *testing.T) {
 			if err := os.WriteFile(p, raw, 0600); err != nil {
 				t.Fatal(err)
 			}
-			ref, holdout := readCapture(p)
+			ref, holdout := readCapture(p, "", "", "")
 			if len(ref.Samples) != 1 || len(holdout) != 1 || ref.Samples[0][0] != 1 || holdout[0].Text != "4,5,6" {
 				t.Fatal("split or invalid filtering failed")
 			}
