@@ -178,7 +178,7 @@ Linux 部署包：
 
 ## 贡献
 
-见 `CONTRIBUTING.md`。提交前请跑完整测试，不要提交密钥、数据库、反馈导出或本地 `.env`。
+见 `CONTRIBUTING.md`。提交前请跑完整测试，不要提交密钥、数据库、反馈导出或本地 `.env`。准备公开仓库前按 `docs/open-source-checklist.md` 检查许可证、Git 历史、Security 设置和 release 资产。
 
 ## License
 
