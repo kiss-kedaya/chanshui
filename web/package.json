@@ -1,6 +1,8 @@
 {
   "name": "chanshui-web",
   "version": "0.1.0",
+  "description": "Frontend for the Chanshui LLM gateway audit station",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3300",
