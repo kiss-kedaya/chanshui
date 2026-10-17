@@ -3177,6 +3177,21 @@ tr:hover td {
   text-decoration: none;
   white-space: nowrap;
 }
+.github-entry {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  justify-content: center;
+  text-decoration: none;
+}
+.github-entry svg {
+  width: 17px;
+  height: 17px;
+  transition: transform var(--t-base) var(--ease-out);
+}
+.github-entry:hover svg {
+  transform: scale(1.1);
+}
 .docs-entry.is-on {
   color: var(--ink);
   border-color: var(--accent);
@@ -5036,6 +5051,13 @@ html[data-mode="dark"] .agent-onboard-tip {
     padding: 0;
     justify-content: center;
   }
+  .top-tools .github-entry {
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+    justify-content: center;
+  }
   .top-tools .docs-entry .tool-label,
   .top-tools .theme-menu .tool-label {
     display: none;
@@ -5054,7 +5076,7 @@ html[data-mode="dark"] .agent-onboard-tip {
   }
   .page-top {
     height: 48px;
-    padding-right: 118px;
+    padding-right: 154px;
     gap: 0;
   }
   .page-top .report-query-link {

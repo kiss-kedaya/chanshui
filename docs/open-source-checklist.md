@@ -17,11 +17,12 @@ The current tree is clean, but old commits may contain deployment details. Befor
 
 ```bash
 git log --all -S 'CHANSHUI_ADMIN_TOKEN=' --oneline
-git log --all -S '<ORIGIN_IP>' --oneline
+git log --all -S '<ORIGIN_IP>' --oneline   # 只在本地替换，不要把真实 IP 写进文档
 git log --all -S 'sk-' --oneline
+git log --all --format='%ae' | sort -u
 ```
 
-`sk-` hits in this repository are test placeholders. The old deployment IP can still appear in history. If it must not be public, rewrite history with a backup or publish from a fresh repository; do not run `git filter-repo` without taking a full backup and confirming the new remote.
+`sk-` hits in this repository are test placeholders. The origin IP and personal commit email were removed from all refs on 2026-10-18. Re-run these checks after adding new commits; do not run `git filter-repo` without taking a full backup and confirming the new remote.
 
 ## GitHub settings
 
@@ -43,3 +44,4 @@ git log --all -S 'sk-' --oneline
 
 - [ ] Rotate the admin token if it was ever pasted into a shared channel or committed. The value is not part of this repository; only its location is documented.
 - [ ] Review the deployment host and WAF/CDN configuration separately. Open-sourcing code does not imply publishing private infrastructure details.
+

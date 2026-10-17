@@ -6,6 +6,9 @@ dev-*/
 *.db-wal
 .artifacts/
 .local/
+.claude/
+.vscode/
+.idea/
 web/node_modules/
 web/out/
 web/out-build/
@@ -16,5 +19,12 @@ web/.next/
 private-feedback*.json
 feedback-export*.json
 *.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db-journal
 .DS_Store
 Thumbs.db

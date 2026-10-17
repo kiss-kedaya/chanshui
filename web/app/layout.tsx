@@ -1,5 +1,6 @@
 import "./globals.css";
 import DocsLink from "@/components/DocsLink";
+import GitHubLink from "@/components/GitHubLink";
 import LanguageMenu, { SkipLink } from "@/components/LanguageMenu";
 import ThemeMenu from "@/components/ThemeMenu";
 import Sidebar from "@/components/Sidebar";
@@ -62,6 +63,7 @@ export default function RootLayout({
               <DocsLink />
               <LanguageMenu />
               <ThemeMenu />
+              <GitHubLink />
             </div>
             {children}
           </main>
@@ -70,3 +72,4 @@ export default function RootLayout({
     </html>
   );
 }
+

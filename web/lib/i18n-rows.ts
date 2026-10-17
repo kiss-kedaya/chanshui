@@ -374,6 +374,7 @@ export const rows: [string, string, string, string, string][] = [
 ["工具调用","Tool call","工具調用","ツール呼び出し","도구 호출"],
 ["正在读取报告","Loading the report","正在讀取報告","レポートを読み込み中","보고서를 읽는 중"],
 ["接口文档","API docs","接口文檔","API 文書","API 문서"],
+["GitHub 开源仓库","GitHub repository","GitHub 開源倉庫","GitHub リポジトリ","GitHub 저장소"],
 ["公共接口","Public API","公共接口","公開 API","공개 API"],
 ["次数暂不可用","Count unavailable","次數暫不可用","回数を表示できない","횟수를 볼 수 없음"],
 ["已公益提供检测 {n} 次","{n} public audits provided","已公益提供檢測 {n} 次","公益検出 {n} 回","공익 검출 {n}회"],
@@ -472,3 +473,4 @@ export const rows: [string, string, string, string, string][] = [
 ["示例","Example","示例","例","예시"],
 ["复制一段给编程 Agent 的接入说明","Copies a setup prompt for an AI coding tool","複製一段給程式 Agent 的接入說明","コーディング Agent 向けの接続文をコピー","코딩 에이전트용 접속 안내를 복사"],
 ];
+

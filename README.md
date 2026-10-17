@@ -6,6 +6,8 @@
 
 示例部署：<https://chanshui.dev>（不依赖该站点即可自托管）
 
+源码：<https://github.com/kiss-kedaya/chanzhushui>
+
 ## 能查什么
 
 - **模型指纹归因**：数字挑战 + 行为参考，比较声称模型与实际响应的候选；置信度不足时明确显示“证据不足”，不伪造结论。
@@ -183,3 +185,4 @@ Linux 部署包：
 ## License
 
 代码默认按 MIT 发布，见 `LICENSE`。第三方数据、模型名称和依赖不自动适用 MIT，见 `THIRD_PARTY_NOTICES.md`。
+
