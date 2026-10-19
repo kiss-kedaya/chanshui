@@ -149,12 +149,25 @@ func TestCollectKeepsStablePrefixBreakpoints(t *testing.T) {
 				t.Fatal(r.Reason)
 			}
 			var system0 string
+			var session0 string
 			for i, body := range bodies {
 				system, msgs := conversation(t, mode, body)
 				if i == 0 {
 					system0 = system
 				} else if system != system0 {
 					t.Fatal("system prefix changed between rounds")
+				}
+				if mode == "anthropic" {
+					meta, _ := body["metadata"].(map[string]any)
+					got, _ := meta["user_id"].(string)
+					if got == "" {
+						t.Fatalf("turn %d missing session metadata", i+1)
+					}
+					if i == 0 {
+						session0 = got
+					} else if got != session0 {
+						t.Fatalf("turn %d session changed: %q != %q", i+1, got, session0)
+					}
 				}
 				if len(msgs) != 1+i*2 {
 					t.Fatalf("turn %d message count %d", i+1, len(msgs))
@@ -308,6 +321,37 @@ func TestReportedJobChainMidEvictionFailsDespiteALateMatch(t *testing.T) {
 	}
 }
 
+func TestCacheRequestsCarryOneSessionMetadata(t *testing.T) {
+	var bodies []map[string]any
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var q map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, q)
+		usage := map[string]int{"input_tokens": 8, "output_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 2000}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"content": []any{map[string]string{"type": "text", "text": "OK"}}, "stop_reason": "end_turn", "usage": usage})
+	}))
+	defer s.Close()
+	_, err := Measure(context.Background(), gateway.Client{BaseURL: s.URL, Mode: "anthropic", NoRetry: true}, "claude-opus-5", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first string
+	for i, body := range bodies {
+		meta, _ := body["metadata"].(map[string]any)
+		sid, _ := meta["user_id"].(string)
+		if sid == "" {
+			t.Fatalf("turn %d has no session metadata", i+1)
+		}
+		if i == 0 {
+			first = sid
+		} else if sid != first {
+			t.Fatalf("turn %d session changed", i+1)
+		}
+	}
+}
 func TestPrefixHashStaysStableWhenHistoryIsReplayed(t *testing.T) {
 	rows := [][2]int{{0, 3971}, {3971, 38}, {0, 4047}, {4047, 38}, {4085, 38}, {4123, 38}}
 	m := make([]gateway.Metrics, len(rows))

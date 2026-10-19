@@ -2,6 +2,7 @@ package cachecheck
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -348,6 +349,11 @@ func replayAnswer(answer string) string {
 func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (Collection, error) {
 	col := Collection{Metrics: make([]gateway.Metrics, 0, cacheTurns), Units: make([]int, 0, cacheTurns)}
 	systemText := cacheSystemText(prefixSentences(model))
+	var sid [16]byte
+	if _, err := rand.Read(sid[:]); err != nil {
+		return col, fmt.Errorf("generate cache session: %w", err)
+	}
+	sessionID := fmt.Sprintf("%x", sid[:])
 	sum := sha256.Sum256([]byte(systemText))
 	prefixHash := hex.EncodeToString(sum[:])
 	protocol := c.ProtocolFor(model)
@@ -388,6 +394,7 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			History:        hist,
 		}
 		if protocol == "messages" {
+			q.SessionID = sessionID
 			q.System[0].CacheControl = mark
 			q.PromptCacheControl = mark
 			for j := len(q.History) - 1; j >= 0; j-- {
