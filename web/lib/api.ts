@@ -67,6 +67,7 @@ export interface CacheSample {
   prompt_chars?: number;
   messages?: number;
   request_sha256?: string;
+  prefix_sha256?: string;
   error?: string;
 }
 export interface KnowledgeRow {

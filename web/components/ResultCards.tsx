@@ -584,6 +584,7 @@ export default function ResultCards({
                         <th>{tr("输入")}</th>
                         <th>{tr("输出")}</th>
                         <th>{tr("命中率")}</th>
+                        <th>{tr("状态")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -595,6 +596,7 @@ export default function ResultCards({
                           <td>{cacheToken(row.input, row.input_reported)}</td>
                           <td>{cacheToken(row.output, row.output_reported)}</td>
                           <td>{cacheRate(row.hit_rate)}</td>
+                          <td>{row.index > 1 && !row.error && row.read === 0 && row.write > 64 ? tr("整段重写") : ""}</td>
                         </tr>
                       ))}
                     </tbody>

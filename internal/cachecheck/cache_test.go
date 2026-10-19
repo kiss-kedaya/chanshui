@@ -290,15 +290,15 @@ func assertAnthropicBreakpoints(t *testing.T, bodies []map[string]any) {
 	}
 }
 
-func TestReportedJobChainIsOneHundredOnTheLastLink(t *testing.T) {
+func TestReportedJobChainMidEvictionFailsDespiteALateMatch(t *testing.T) {
 	rounds := [][2]int{{0, 3968}, {3968, 54}, {0, 4060}, {4060, 38}, {4098, 38}, {4136, 38}}
 	m := make([]gateway.Metrics, len(rounds))
 	for i, pair := range rounds {
 		m[i] = cacheMetric(pair[0], pair[1], 4, 6)
 	}
 	r := FromMetrics(m, "prefix", "messages", false)
-	if r.Status != "pass" || ratioText(r.ThirdReadRatio) != "100.00" || r.Delta != 0 {
-		t.Fatalf("last link = status %s ratio %s delta %d", r.Status, ratioText(r.ThirdReadRatio), r.Delta)
+	if r.Status != "mismatch" || r.Pass == nil || *r.Pass || ratioText(r.ThirdReadRatio) != "100.00" || r.Delta != 0 {
+		t.Fatalf("mid-chain eviction must not pass: status %s ratio %s delta %d", r.Status, ratioText(r.ThirdReadRatio), r.Delta)
 	}
 	if ratioText(r.Samples[2].HitRate) != "0.00" || ratioText(r.Samples[5].HitRate) != "100.00" || r.Samples[0].HitRate != nil {
 		t.Fatalf("row rates = %s %s %v", ratioText(r.Samples[2].HitRate), ratioText(r.Samples[5].HitRate), r.Samples[0].HitRate)
@@ -308,6 +308,31 @@ func TestReportedJobChainIsOneHundredOnTheLastLink(t *testing.T) {
 	}
 }
 
+func TestPrefixHashStaysStableWhenHistoryIsReplayed(t *testing.T) {
+	rows := [][2]int{{0, 3971}, {3971, 38}, {0, 4047}, {4047, 38}, {4085, 38}, {4123, 38}}
+	m := make([]gateway.Metrics, len(rows))
+	for i, row := range rows {
+		m[i] = cacheMetric(row[0], row[1], 4, 6)
+	}
+	r := FromMetrics(m, "prefix", "messages", false)
+	if len(r.Samples) != len(rows) {
+		t.Fatalf("samples %d", len(r.Samples))
+	}
+}
+func TestSingleMidChainEvictionIsNotAPass(t *testing.T) {
+	rows := [][2]int{{0, 3971}, {3971, 38}, {0, 4047}, {4047, 38}, {4085, 38}, {4123, 38}}
+	m := make([]gateway.Metrics, len(rows))
+	for i, row := range rows {
+		m[i] = cacheMetric(row[0], row[1], 4, 6)
+	}
+	r := FromMetrics(m, "prefix", "messages", false)
+	if r.Status != "mismatch" || r.Pass == nil || *r.Pass {
+		t.Fatalf("mid-chain eviction = status %s pass %v reason %s", r.Status, r.Pass, r.Reason)
+	}
+	if r.Transitions[1].Pass == nil || *r.Transitions[1].Pass {
+		t.Fatal("round 3 must stay a miss")
+	}
+}
 func TestDelayedCacheReadCanPassWhenLaterLinksAreStable(t *testing.T) {
 	m := []gateway.Metrics{
 		cacheMetric(0, 0, 6022, 8),

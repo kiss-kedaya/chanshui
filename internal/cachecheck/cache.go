@@ -16,6 +16,7 @@ const cacheTurns = 6
 
 type Sample struct {
 	Index          int      `json:"index"`
+	PrefixHash     string   `json:"prefix_sha256,omitempty"`
 	Read           int      `json:"read"`
 	Write          int      `json:"write"`
 	Input          int      `json:"input"`
@@ -176,6 +177,24 @@ func FromMetrics(metrics []gateway.Metrics, prefixHash, protocol string, retries
 		r.Pass = &fail
 		r.Status = "mismatch"
 		r.Reason = "缓存链没有建立：后续轮次没有比首轮多出一段可复用缓存。"
+		return r
+	}
+	evicted := false
+	for i := 1; i < len(r.Samples)-1; i++ {
+		s := r.Samples[i]
+		if s.Error != "" || !s.ReadReported || !s.WriteReported {
+			continue
+		}
+		if s.Read == 0 && s.Write > cacheSlack {
+			evicted = true
+			break
+		}
+	}
+	if evicted {
+		fail := false
+		r.Pass = &fail
+		r.Status = "mismatch"
+		r.Reason = "缓存链在中间轮次整段丢失：该轮读取为 0，缓存被当成新前缀重新写入。末轮命中不能掩盖中途换路或换号。"
 		return r
 	}
 	r.Pass = link.Pass
@@ -343,6 +362,7 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			col.Result.Samples[i].PromptChars = shape.PromptChars
 			col.Result.Samples[i].Messages = shape.Messages
 			col.Result.Samples[i].RequestHash = shape.RequestHash
+			col.Result.Samples[i].PrefixHash = shape.PrefixHash
 		}
 		if len(col.Result.Samples) > 0 {
 			col.Result.First = &col.Result.Samples[0]
@@ -392,7 +412,12 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			visible += "\n" + item.Content
 		}
 		hash := sha256.Sum256([]byte(visible))
-		shapes = append(shapes, Sample{PromptChars: len(visible), Messages: len(hist) + 1, RequestHash: hex.EncodeToString(hash[:])})
+		prefix := systemText
+		if len(hist) > 0 {
+			prefix = systemText + "\n" + strings.Join(historyTexts(hist), "\n")
+		}
+		ph := sha256.Sum256([]byte(prefix))
+		shapes = append(shapes, Sample{PromptChars: len(visible), Messages: len(hist) + 1, RequestHash: hex.EncodeToString(hash[:]), PrefixHash: hex.EncodeToString(ph[:])})
 		col.Units = append(col.Units, len(visible))
 		if m.Err != "" {
 			finish()
@@ -407,6 +432,14 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 	}
 	finish()
 	return col, nil
+}
+
+func historyTexts(history []gateway.ConversationMessage) []string {
+	out := make([]string, 0, len(history))
+	for _, item := range history {
+		out = append(out, item.Content)
+	}
+	return out
 }
 
 func Measure(ctx context.Context, c gateway.Client, model string, timeout int) (Result, error) {
