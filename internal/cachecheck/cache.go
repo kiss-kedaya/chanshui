@@ -2,7 +2,6 @@ package cachecheck
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -349,11 +348,6 @@ func replayAnswer(answer string) string {
 func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (Collection, error) {
 	col := Collection{Metrics: make([]gateway.Metrics, 0, cacheTurns), Units: make([]int, 0, cacheTurns)}
 	systemText := cacheSystemText(prefixSentences(model))
-	var sid [16]byte
-	if _, err := rand.Read(sid[:]); err != nil {
-		return col, fmt.Errorf("generate cache session: %w", err)
-	}
-	sessionID := fmt.Sprintf("%x", sid[:])
 	sum := sha256.Sum256([]byte(systemText))
 	prefixHash := hex.EncodeToString(sum[:])
 	protocol := c.ProtocolFor(model)
@@ -394,9 +388,21 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			History:        hist,
 		}
 		if protocol == "messages" {
-			q.SessionID = sessionID
 			q.System[0].CacheControl = mark
 			q.PromptCacheControl = mark
+			// Gateway sticky routing hashes the first message block carrying
+			// cache_control. If only the sliding tail breakpoint is marked, the
+			// hash moves from the first user line to the second on turn three
+			// and the gateway re-selects an account (cold cache, full rewrite).
+			// Mark the first user line permanently so the routing key stays
+			// fixed; the sliding tail breakpoint below still lets the cached
+			// prefix grow with each turn.
+			for j := 0; j < len(q.History); j++ {
+				if q.History[j].Role == "user" {
+					q.History[j].CacheControl = mark
+					break
+				}
+			}
 			for j := len(q.History) - 1; j >= 0; j-- {
 				if q.History[j].Role == "user" {
 					q.History[j].CacheControl = mark

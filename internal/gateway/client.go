@@ -35,9 +35,6 @@ type TextBlock struct {
 }
 
 type CallRequest struct {
-	// SessionID pins gateway-side session affinity without changing the
-	// message prefix. Gateways use metadata.user_id for sticky routing.
-	SessionID              string
 	Validate               func(Metrics) error
 	ToolReply              *ToolReply
 	Tools                  []ToolDefinition
@@ -180,7 +177,6 @@ type wireThinking struct {
 }
 
 type wireRequest struct {
-	Metadata     map[string]any    `json:"metadata,omitempty"`
 	Tools        []any             `json:"tools,omitempty"`
 	ToolChoice   any               `json:"tool_choice,omitempty"`
 	OutputConfig map[string]string `json:"output_config,omitempty"`
@@ -234,9 +230,6 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 				map[string]any{"type": "text", "text": "Done."},
 			}},
 		)
-	}
-	if req.SessionID != "" {
-		wire.Metadata = map[string]any{"user_id": "session_" + req.SessionID}
 	}
 	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: userContent(req.UserPrefix, req.Prompt, req.PromptCacheControl)})
 	if req.ToolReply != nil {
