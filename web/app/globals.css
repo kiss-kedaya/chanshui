@@ -5145,9 +5145,12 @@ html[data-mode="dark"] .agent-onboard-tip {
 
 @media (min-width: 761px) {
   .page-top {
-    padding-right: 288px;
+    /* The top-right tools row is ~309px wide plus its 38px right offset.
+       Leave enough room so the report badge and the ID lookup never slide
+       underneath the docs/language/theme/github buttons. */
+    padding-right: 360px;
   }
   .history-page > .hero-card:first-child .section-heading {
-    padding-right: 288px;
+    padding-right: 360px;
   }
 }
