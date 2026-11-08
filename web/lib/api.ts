@@ -25,6 +25,8 @@ export interface Metrics {
   CacheCreation1h: number;
   CacheRead: number;
   StopReason: string;
+  Effort?: string;
+  EffortFallback?: boolean;
 }
 export interface Question {
   id: string;

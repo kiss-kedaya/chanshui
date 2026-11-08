@@ -345,7 +345,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	}
 	t := &Task{ID: id, ReportID: id, Status: "queued", BaseURL: q.BaseURL, Model: q.Model, CreatedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(history.JobTTL).Unix(), controlHash: controlHash(token), visitorHash: visitorHashOf(r), answers: map[string]QuestionResult{}}
 	rng := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
-	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng)}
+	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge()}
 	t.Verdict.Protocol = q.Protocol
 	t.Verdict.ScoringVersion = "2026-10-02-v6-total"
 	t.Probes = []Probe{{ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}}

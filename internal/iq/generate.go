@@ -89,6 +89,27 @@ func GenAnchor() Question {
 }
 
 // ---------------------------------------------------------------------------
+// Q9 夜间过桥（定向支架版本）
+
+// GenBridge is the night bridge-crossing item. The torch has a directional
+// stand and its beam covers the whole span, so it never has to be carried
+// back: the slow pair (7+10) walks while the fast pair (1+2) follows in
+// parallel, and the makespan is 10 minutes. The textbook 17 assumes someone
+// must walk the torch back each round, i.e. that the stand is ignored.
+func GenBridge() Question {
+	prompt := "四名检修员夜间要从桥的一端全部到达另一端，单独过桥分别需要1、2、7、10分钟，每人速度恒定。桥面最多同时承载两人，通行期间须有光照。他们只有一支带定向支架、光束足以照亮全桥的手电。最少需要多少分钟？禁止联网、使用工具或写代码计算。只回答本题，不请求提示。只回答一个整数，不要单位、解释、标点或代码块。"
+	return Question{
+		ID:       "Q9",
+		Title:    "夜间过桥",
+		Prompt:   prompt,
+		MaxScore: 11,
+		LimitSec: 75,
+		Answer:   "10",
+		Tags:     []string{"最坏情况优化", "定向支架"},
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Q6 / Q8 糖果
 
 // stock: [apple, peach, melon] counts for one shape.

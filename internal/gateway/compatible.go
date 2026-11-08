@@ -46,6 +46,9 @@ func (c *Client) callCompatibleOnce(ctx context.Context, q CallRequest) (Metrics
 		if q.Stream {
 			body["stream_options"] = map[string]bool{"include_usage": true}
 		}
+		if q.Effort != "" {
+			body["reasoning_effort"] = q.Effort
+		}
 	}
 	if defs, choice := toolWire(q, protocol); len(defs) > 0 {
 		body["tools"] = defs

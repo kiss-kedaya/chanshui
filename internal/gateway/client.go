@@ -107,6 +107,11 @@ type Metrics struct {
 	SearchURLs         []string
 	Attempts           int
 	Protocol           string
+	// Effort is the reasoning effort actually sent on the final attempt; an
+	// empty value means the request went out without one. EffortFallback marks
+	// a retry that dropped the site default because the upstream rejected it.
+	Effort             string
+	EffortFallback     bool
 	CacheReadReported  bool
 	CacheWriteReported bool
 	Status             int
@@ -141,13 +146,16 @@ type Metrics struct {
 }
 
 type Client struct {
-	Mode       string
-	NoRetry    bool
-	RetryDelay time.Duration
-	BaseURL    string
-	Key        string
-	HTTP       *http.Client
-	UA         string
+	Mode string
+	// DefaultEffort is used when a request does not set one. Detection runs at
+	// "high"; a rejected effort falls back to sending nothing.
+	DefaultEffort string
+	NoRetry       bool
+	RetryDelay    time.Duration
+	BaseURL       string
+	Key           string
+	HTTP          *http.Client
+	UA            string
 }
 
 func apiBase(raw string) string {

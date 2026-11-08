@@ -190,6 +190,8 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 		earned, half, tags = judgeCandy(q, text, tail)
 	case "Q7":
 		earned, half, tags = judgeSocks(q, text, tail)
+	case "Q9":
+		earned, half, tags = judgeBridge(text, tail)
 	default:
 		return 0, false, nil
 	}
@@ -359,6 +361,27 @@ func judgeCandy(q Question, text, tail string) (int, bool, []string) {
 	}
 	if numEq(v, float64(blind)) {
 		return 8, true, []string{"替代建模"}
+	}
+	return 0, false, nil
+}
+
+// judgeBridge scores the night bridge item. 10 is the answer when the torch
+// stays on its stand and lights the whole span; 17 is the textbook answer that
+// silently assumes someone must carry the torch back every round.
+func judgeBridge(text, tail string) (int, bool, []string) {
+	v, err := parseNum(text)
+	if err != nil {
+		tv, terr := parseNum(tail)
+		if terr != nil {
+			return 0, false, nil
+		}
+		v = tv
+	}
+	if numEq(v, 10) {
+		return 11, false, nil
+	}
+	if numEq(v, 17) {
+		return 0, false, []string{"忽略定向支架"}
 	}
 	return 0, false, nil
 }

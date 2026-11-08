@@ -94,7 +94,7 @@ func (s *Server) client(q Request) (gateway.Client, error) {
 	if q.Concurrency > 0 {
 		copy.Transport = boundedTransport{base: copy.Transport, sem: make(chan struct{}, q.Concurrency)}
 	}
-	return gateway.Client{BaseURL: q.BaseURL, Key: q.Key, HTTP: &copy, Mode: q.Protocol}, nil
+	return gateway.Client{BaseURL: q.BaseURL, Key: q.Key, HTTP: &copy, Mode: q.Protocol, DefaultEffort: "high"}, nil
 }
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	var listed struct {

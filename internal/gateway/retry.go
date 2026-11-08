@@ -40,9 +40,22 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 	start := time.Now()
 	var m Metrics
 	var err error
+	// 检测默认用 high 思考程度；上游不认这个参数时，下一次请求退回到
+	// 不指定，而不是把整条探针判成失败。
+	effortUsed := ""
+	effortFallback := false
+	autoEffort := q.Effort == "" && c.DefaultEffort != ""
+	if autoEffort {
+		q.Effort = c.DefaultEffort
+	}
+	done := func(v Metrics) Metrics {
+		v.Effort = effortUsed
+		v.EffortFallback = effortFallback
+		return v
+	}
 	for attempt := 0; attempt <= c.retries(); attempt++ {
 		if ctx.Err() != nil {
-			return m, ctx.Err()
+			return done(m), ctx.Err()
 		}
 		protocol := c.ProtocolFor(q.Model)
 		if q.protocolOverride != "" {
@@ -55,6 +68,7 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 			m, err = c.callCompatibleOnce(ctx, q)
 		}
 		m.Attempts = attempt + 1
+		effortUsed = q.Effort
 		if err == nil && m.Err == "" && q.Validate != nil {
 			if validationErr := q.Validate(m); validationErr != nil {
 				m.Err = validationErr.Error()
@@ -62,10 +76,10 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 		}
 		if err == nil && m.Err == "" {
 			m.Ms = time.Since(start).Milliseconds()
-			return m, nil
+			return done(m), nil
 		}
 		if ctx.Err() != nil {
-			return m, ctx.Err()
+			return done(m), ctx.Err()
 		}
 		if q.StopOnInvalidSignature && m.Status == 400 && strings.Contains(strings.ToLower(m.Err), "signature") {
 			break
@@ -84,6 +98,13 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 				q.protocolOverride = "chat"
 				adapted = true
 			}
+		}
+		// 上游不认识 effort 字段时会回 400/422。丢掉本站默认值再试一次，
+		// 只回退一次，后续仍按普通参数错误处理。
+		if !adapted && autoEffort && q.Effort != "" && (m.Status == 400 || m.Status == 422) {
+			q.Effort = ""
+			effortFallback = true
+			adapted = true
 		}
 		// Some gateways reject forced tool selection even though they accept the
 		// declared tool. One retry may proceed without the selector; this avoids
@@ -107,6 +128,8 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 		}
 	}
 	m.Ms = time.Since(start).Milliseconds()
+	m.Effort = effortUsed
+	m.EffortFallback = effortFallback
 	message := m.Err
 	if err != nil {
 		message = err.Error()

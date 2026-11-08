@@ -500,6 +500,9 @@ export default function ResultCards({
                     value={{
                       [tr("输入")]: x.metrics.InputTokens,
                       [tr("输出")]: x.metrics.OutputTokens,
+                      [tr("思考程度")]: x.metrics.EffortFallback
+                        ? tr("high 被上游拒绝，回退不指定")
+                        : x.metrics.Effort || tr("不指定"),
                       [tr("缓存读")]: x.metrics.CacheRead,
                       [tr("缓存写")]: x.metrics.CacheCreation5m + x.metrics.CacheCreation1h,
                       [tr("耗时")]: x.ms,
