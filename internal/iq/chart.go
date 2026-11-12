@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	chartW, chartH = 1240, 760
-	chartBars      = 12
+	chartW, chartH = 1800, 900
+	chartBars      = 40
 )
 
 var (
@@ -37,6 +37,35 @@ var digitGlyphs = [10][7]uint8{
 	{0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000},
 	{0b11111, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b11111},
 	{0b11111, 0b10001, 0b10001, 0b11111, 0b00001, 0b00001, 0b11111},
+}
+
+// 5x7 bitmap capitals for the chart title; unknown runes fall back to a space.
+var letterGlyphs = map[rune][7]uint8{
+	'A': {0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001},
+	'B': {0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110},
+	'C': {0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110},
+	'D': {0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110},
+	'E': {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111},
+	'H': {0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001},
+	'I': {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b11111},
+	'K': {0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001},
+	'L': {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111},
+	'N': {0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001},
+	'R': {0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001},
+	'S': {0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110},
+	'T': {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100},
+	'Y': {0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100},
+	'(': {0b00110, 0b01000, 0b10000, 0b10000, 0b10000, 0b01000, 0b00110},
+	')': {0b01100, 0b00010, 0b00001, 0b00001, 0b00001, 0b00010, 0b01100},
+	'-': {0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000},
+}
+
+func glyphFor(r rune) ([7]uint8, bool) {
+	if r >= '0' && r <= '9' {
+		return digitGlyphs[r-'0'], true
+	}
+	g, ok := letterGlyphs[r]
+	return g, ok
 }
 
 func fillRect(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
@@ -66,13 +95,13 @@ func fillRect(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
 	}
 }
 
-func drawDigits(img *image.RGBA, x, y int, s string, scale int, c color.RGBA) int {
+func drawText(img *image.RGBA, x, y int, s string, scale int, c color.RGBA) int {
 	for _, r := range s {
-		if r < '0' || r > '9' {
+		g, ok := glyphFor(r)
+		if !ok {
 			x += 6 * scale
 			continue
 		}
-		g := digitGlyphs[r-'0']
 		for row := 0; row < 7; row++ {
 			for col := 0; col < 5; col++ {
 				if g[row]&(1<<(4-col)) != 0 {
@@ -85,7 +114,7 @@ func drawDigits(img *image.RGBA, x, y int, s string, scale int, c color.RGBA) in
 	return x
 }
 
-func digitWidth(s string, scale int) int {
+func textWidth(s string, scale int) int {
 	if s == "" {
 		return 0
 	}
@@ -122,8 +151,8 @@ func randomChartBars(seed int64) [][4]int {
 
 func drawChart(bars [][4]int) []byte {
 	const (
-		left, right = 110, 1200
-		top, bottom = 60, 650
+		left, right = 100, 1760
+		top, bottom = 110, 800
 	)
 	ymin := bars[0][2]
 	ymax := bars[0][1]
@@ -149,6 +178,7 @@ func drawChart(bars [][4]int) []byte {
 
 	img := image.NewRGBA(image.Rect(0, 0, chartW, chartH))
 	fillRect(img, 0, 0, chartW-1, chartH-1, color.RGBA{255, 255, 255, 255})
+	drawText(img, left, 34, fmt.Sprintf("DAILY K-LINE CHART (%d BARS)", len(bars)), 3, chartInk)
 
 	for v := ymin - ymin%every; v <= ymax; v += every {
 		if v < ymin {
@@ -157,7 +187,7 @@ func drawChart(bars [][4]int) []byte {
 		y := yOf(float64(v))
 		fillRect(img, left, y, right, y, chartGrid)
 		label := strconv.Itoa(v)
-		drawDigits(img, left-14-digitWidth(label, 2), y-7, label, 2, chartInk)
+		drawText(img, left-16-textWidth(label, 2), y-7, label, 2, chartInk)
 	}
 	fillRect(img, left, top, left+1, bottom, chartAxis)
 	fillRect(img, left, bottom, right, bottom+1, chartAxis)
@@ -183,8 +213,8 @@ func drawChart(bars [][4]int) []byte {
 			topY, botY = topY-3, topY+3
 		}
 		fillRect(img, cx-bodyW/2, topY, cx+bodyW/2, botY, col)
-		label := strconv.Itoa(i + 1)
-		drawDigits(img, cx-digitWidth(label, 2)/2, bottom+16, label, 2, chartInk)
+		label := fmt.Sprintf("D%02d", i+1)
+		drawText(img, cx-textWidth(label, 2)/2, bottom+16, label, 2, chartInk)
 	}
 
 	var buf bytes.Buffer
@@ -207,7 +237,7 @@ func chartFromSeed(seed int64) Question {
 		closes = append(closes, b[3])
 		sum += b[3] % 10
 	}
-	prompt := fmt.Sprintf("图中是一段 %d 根 K 线的收盘走势：绿色为上涨，红色为下跌；粗实体是开盘到收盘，上下细线是最高价与最低价，左侧纵轴是价格刻度。绿色 K 线的收盘价在实体上端，红色 K 线的收盘价在实体下端，横轴下方是 K 线编号 1-%d。\n"+
+	prompt := fmt.Sprintf("图中是一段 %d 根 K 线的收盘走势：绿色为上涨，红色为下跌；粗实体是开盘到收盘，上下细线是最高价与最低价，左侧纵轴是价格刻度。绿色 K 线的收盘价在实体上端，红色 K 线的收盘价在实体下端，横轴下方是 K 线编号 D01-D%02d。\n"+
 		"把图中 %d 根 K 线「收盘价的个位数字」全部相加。禁止联网、使用工具或写代码计算。只回答本题，不请求提示。最后单独一行以“最终答案: ”开头只写这个整数，不要单位、解释、标点或代码块。",
 		len(bars), len(bars), len(bars))
 	return Question{
