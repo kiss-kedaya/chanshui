@@ -136,3 +136,26 @@ func TestResponsesAndChatStreaming(t *testing.T) {
 		})
 	}
 }
+
+func TestAnthropicAdaptiveThinking400RetriesWithoutThinking(t *testing.T) {
+	var thinkingSeen int
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if _, ok := body["thinking"]; ok {
+			thinkingSeen++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"adaptive thinking is not supported on this model"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"content": []any{map[string]any{"type": "text", "text": "ok"}}, "usage": map[string]any{"input_tokens": 3, "output_tokens": 1}})
+	}))
+	defer s.Close()
+	c := Client{BaseURL: s.URL, Mode: "anthropic", RetryDelay: time.Millisecond}
+	m, err := c.CallMessages(context.Background(), CallRequest{Model: "claude-opus-4-5", Thinking: &ThinkingConfig{Type: "adaptive", Display: "summarized"}})
+	if err != nil || m.Err != "" || thinkingSeen != 1 || m.Attempts != 2 || m.Answer != "ok" {
+		t.Fatalf("m=%+v err=%v thinking=%d", m, err, thinkingSeen)
+	}
+}

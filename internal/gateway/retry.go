@@ -106,6 +106,11 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 			effortFallback = true
 			adapted = true
 		}
+		// 老 Claude（如 opus-4-5）不接受 adaptive thinking；丢掉该字段再试一次。
+		if !adapted && q.Thinking != nil && (m.Status == 400 || m.Status == 422) && strings.Contains(strings.ToLower(m.Err), "thinking") {
+			q.Thinking = nil
+			adapted = true
+		}
 		// Some gateways reject forced tool selection even though they accept the
 		// declared tool. One retry may proceed without the selector; this avoids
 		// spending all four attempts on identical deterministic parameter errors.
