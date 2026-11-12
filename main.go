@@ -53,6 +53,13 @@ func main() {
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		// Hashed build assets never change; HTML must revalidate so a release
+		// that ships new chunks is not hidden behind a cached page.
+		if strings.HasPrefix(r.URL.Path, "/_next/static/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		if r.URL.Path == "/history" || r.URL.Path == "/admin" || r.URL.Path == "/docs" {
 			copy := r.Clone(r.Context())
 			copy.URL.Path = r.URL.Path + ".html"
