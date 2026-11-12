@@ -26,7 +26,7 @@ func TestComposeFullClaudeWithCacheIs100(t *testing.T) {
 		got[p.Key] = p.Coefficient
 		sum += p.Contribution
 	}
-	if sum != 100 || got["fingerprint"] != 30 || got["iq"] != 20 || got["vision"] != 15 || got["injection"] != 12 || got["tools"] != 8 || got["web"] != 6 || got["thinking"] != 5 || got["cache"] != 4 {
+	if sum != 100 || got["fingerprint"] != 18 || got["iq"] != 24 || got["vision"] != 15 || got["injection"] != 13 || got["tools"] != 10 || got["web"] != 8 || got["thinking"] != 7 || got["cache"] != 5 {
 		t.Fatalf("coeffs %+v sum %d", got, sum)
 	}
 }
@@ -54,7 +54,7 @@ func TestComposeDropsOptionalSectionsAndStillTotals100(t *testing.T) {
 			}
 		}
 	}
-	if sum != 100 || fp < 30 {
+	if sum != 100 || fp != 24 {
 		t.Fatalf("renorm sum %d fingerprint %d", sum, fp)
 	}
 }

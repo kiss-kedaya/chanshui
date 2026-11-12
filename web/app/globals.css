@@ -2228,6 +2228,12 @@ code {
   font-weight: 700;
   line-height: 1;
 }
+.fake-seal.suspicious {
+  color: rgba(144, 103, 39, 0.8);
+}
+.fake-seal.suspicious span {
+  font-size: 34px;
+}
 .score-chip.is-zero {
   background: #fff1ec;
   color: #9d2f1c;
@@ -3736,6 +3742,9 @@ html[data-mode="dark"] .result-card.fingerprint-bad {
 }
 html[data-mode="dark"] .fake-seal {
   color: rgba(255, 166, 146, 0.82);
+}
+html[data-mode="dark"] .fake-seal.suspicious {
+  color: rgba(240, 194, 106, 0.85);
 }
 html[data-mode="dark"] .model-claim span {
   color: var(--muted);

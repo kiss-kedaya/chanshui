@@ -3,7 +3,7 @@ import AnimatedNumber from "@/components/AnimatedNumber";
 import ResultSkeleton from "@/components/ResultSkeleton";
 import ErrorFold from "@/components/ErrorFold";
 import Hint from "@/components/Hint";
-import { fingerprintDiluted, presentedTotal, probabilityVisible } from "@/lib/report-view";
+import { fingerprintState, presentedTotal, probabilityVisible } from "@/lib/report-view";
 import { DetectVerdict } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 function ScoreShare({ verdict, part }: { verdict: DetectVerdict; part: string }) {
@@ -110,18 +110,18 @@ export default function ResultCards({
   const behavioral = f?.basis === "behavioral";
   const sampleLimit =
     f?.sample_limit ?? (f?.confidence_reached === undefined ? 3 : 10);
-  const diluted = Boolean(
-    f &&
-      !f.error &&
-      !f.low_confidence &&
-      fingerprintDiluted(model || "", f.family, f.top_model),
-  );
+  const fpState =
+    !f || f.error || f.low_confidence
+      ? "match"
+      : fingerprintState(model || "", f.family || "", f.top_model || "");
+  const diluted = fpState === "fake";
+  const suspicious = fpState === "suspicious";
   const scored: DetectVerdict = v.total
     ? {
         ...v,
         total: {
           ...v.total,
-          ...presentedTotal(v.total.score, v.total.parts, diluted),
+          ...presentedTotal(v.total.score, v.total.parts, fpState),
         },
       }
     : v;
@@ -161,9 +161,9 @@ export default function ResultCards({
             <span className="card-number">01</span>
           </span>
         </div>
-        {diluted && (
-          <div className="fake-seal" aria-hidden="true">
-            <span>{tr("假")}</span>
+        {(diluted || suspicious) && (
+          <div className={"fake-seal" + (suspicious ? " suspicious" : "")} aria-hidden="true">
+            <span>{tr(diluted ? "假" : "可疑")}</span>
           </div>
         )}
         {!f ? (
@@ -181,7 +181,7 @@ export default function ResultCards({
                   </p>
                   <p>
                     <span>{tr("实际")}</span>
-                    <b className={diluted ? "bad" : ""}>
+                    <b className={diluted ? "bad" : suspicious ? "warn" : ""}>
                       {f.top_display || f.top_model || f.family_name || tr("未归因")}
                     </b>
                   </p>
@@ -200,7 +200,7 @@ export default function ResultCards({
                   </span>
                 </p>
                 <div className="metric-line">
-                  <strong className={diluted ? "bad family-title" : "family-title"}>
+                  <strong className={diluted ? "bad family-title" : suspicious ? "warn family-title" : "family-title"}>
                     {f.family_name || f.family}
                   </strong>
                   <span>

@@ -579,7 +579,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		if items[i].TotalScore == nil {
 			continue
 		}
-		shown := integrity.PresentedScore(*items[i].TotalScore, items[i].FingerprintContribution, integrity.Diluted(items[i].Model, items[i].Family, items[i].TopModel))
+		shown := integrity.PresentedScore(*items[i].TotalScore, items[i].FingerprintContribution, items[i].FingerprintCoefficient,
+			integrity.FingerprintState(items[i].Model, items[i].Family, items[i].TopModel))
 		items[i].TotalScore = &shown
 	}
 	w.Header().Set("Cache-Control", "public, max-age=10, s-maxage=30, stale-while-revalidate=30")

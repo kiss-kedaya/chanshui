@@ -51,35 +51,45 @@ export function canonModel(model: string): string {
   return model.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-export function fingerprintDiluted(requested: string, family: string, topModel = ""): boolean {
+export type FingerprintState = "match" | "suspicious" | "fake";
+
+// Mirrors integrity.FingerprintState on the Go side. A different family or a
+// different named Claude line is a confirmed substitution; any other name
+// mismatch may just be a name the library does not carry, so it stays
+// suspicious.
+export function fingerprintState(requested: string, family: string, topModel = ""): FingerprintState {
   const claimed = canonModel(requested);
   const actual = canonModel(topModel);
-  if (claimed && actual && claimed !== actual) {
-    // A non-dated version claim is compatible with any dated baseline of the
-    // same version; the report still shows which date matched.
-    if (claimed === "deepseekv41flash" && actual.startsWith("deepseekv41flash")) return false;
-    return true;
-  }
   const want = modelFamily(requested);
   const got = fingerprintFamily(family);
-  if (!want || !got || got === "unknown") return false;
-  if (want !== got) return true;
   const line = (value: string) => ["opus", "sonnet", "haiku"].find((item) => value.toLowerCase().includes(item)) || "";
   const wantLine = line(requested);
   const gotLine = line(topModel);
-  return Boolean(wantLine && gotLine && wantLine !== gotLine);
+  if (want && got && got !== "unknown" && want !== got) return "fake";
+  if (wantLine && gotLine && wantLine !== gotLine) return "fake";
+  if (claimed && actual && claimed !== actual) {
+    // A non-dated version claim is compatible with any dated baseline of the
+    // same version; the report still shows which date matched.
+    if (claimed === "deepseekv41flash" && actual.startsWith("deepseekv41flash")) return "match";
+    return "suspicious";
+  }
+  return "match";
 }
 
-export function presentedTotal<T extends { key: string; contribution: number; applicable?: boolean }>(
+// Rebuilds the total against the current fingerprint rule so reports saved
+// before it follow the same scoring.
+export function presentedTotal<T extends { key: string; contribution: number; coefficient?: number; applicable?: boolean }>(
   score: number,
   parts: T[] | undefined,
-  diluted: boolean,
+  state: FingerprintState,
 ): { score: number; parts: T[] } {
   const rows = parts ? parts.map((item) => ({ ...item })) : [];
-  if (!diluted) return { score, parts: rows };
   const fingerprint = rows.find((item) => item.key === "fingerprint");
-  if (!fingerprint || fingerprint.contribution <= 0) return { score, parts: rows };
-  const next = Math.max(0, score - fingerprint.contribution);
-  fingerprint.contribution = 0;
+  if (!fingerprint?.coefficient || fingerprint.coefficient <= 0) return { score, parts: rows };
+  const target =
+    state === "fake" ? 0 : state === "suspicious" ? Math.floor((fingerprint.coefficient * 2) / 5) : fingerprint.coefficient;
+  if (target === fingerprint.contribution) return { score, parts: rows };
+  const next = Math.max(0, score - fingerprint.contribution + target);
+  fingerprint.contribution = target;
   return { score: next, parts: rows };
 }

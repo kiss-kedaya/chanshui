@@ -8,10 +8,10 @@ func TestProviderAliasesDoNotImplyDilution(t *testing.T) {
 		{"openai/gpt-6.1-sol", "gpt", "gpt-6.1-sol"},
 		{"moonshotai/kimi-k3", "kimi", "kimi-k3"},
 	} {
-		if Diluted(tc.requested, tc.family, tc.top) {
-			t.Errorf("matching alias marked diluted: %s", tc.requested)
+		if FingerprintState(tc.requested, tc.family, tc.top) != FingerprintMatch {
+			t.Errorf("matching alias not accepted: %s", tc.requested)
 		}
-		if !Diluted(tc.requested, tc.family, tc.top+"-different") {
+		if FingerprintState(tc.requested, tc.family, tc.top+"-different") == FingerprintMatch {
 			t.Errorf("different version accepted: %s", tc.requested)
 		}
 		if ModelFamily(tc.requested) != tc.family {

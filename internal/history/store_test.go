@@ -263,7 +263,7 @@ func TestListReadsFingerprintForPresentedScore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verdict := `{"fingerprint":{"family":"gpt","top_model":"gpt-5.6-luna"},"total":{"score":85,"parts":[{"key":"fingerprint","contribution":32}]}}`
+	verdict := `{"fingerprint":{"family":"gpt","top_model":"gpt-5.6-luna"},"total":{"score":85,"parts":[{"key":"fingerprint","contribution":32,"coefficient":32}]}}`
 	if _, err = s.db.Exec("UPDATE detections SET model=?, family=?, total_score=85, verdict_json=? WHERE id=?", "gpt-6-astra", "gpt", verdict, id); err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestListReadsFingerprintForPresentedScore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 || list[0].TopModel != "gpt-5.6-luna" || list[0].FingerprintContribution != 32 || list[0].TotalScore == nil || *list[0].TotalScore != 85 {
+	if len(list) != 1 || list[0].TopModel != "gpt-5.6-luna" || list[0].FingerprintContribution != 32 || list[0].FingerprintCoefficient != 32 || list[0].TotalScore == nil || *list[0].TotalScore != 85 {
 		t.Fatalf("stored list view = %+v %v", list, err)
 	}
 }

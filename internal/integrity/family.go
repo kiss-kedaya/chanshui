@@ -79,40 +79,64 @@ func CanonModel(model string) string {
 	return b.String()
 }
 
-// Diluted is true when the attributed model is not the model that was requested.
-// A different product in the same family still counts. Missing baselines stay false.
-func Diluted(requested, family, topModel string) bool {
+// Fingerprint attribution states. A different family or a different named
+// Claude line is a confirmed substitution. Any other name mismatch may just be
+// a name the library does not carry, so it stays suspicious and keeps part of
+// the section's points.
+const (
+	FingerprintMatch      = "match"
+	FingerprintSuspicious = "suspicious"
+	FingerprintFake       = "fake"
+)
+
+func FingerprintState(requested, family, topModel string) string {
 	claimed := CanonModel(requested)
 	actual := CanonModel(topModel)
+	want, got := ModelFamily(requested), FingerprintFamily(family)
+	if want != "" && got != "" && got != "unknown" && want != got {
+		return FingerprintFake
+	}
+	wantLine, gotLine := lineName(requested), lineName(topModel)
+	if wantLine != "" && gotLine != "" && wantLine != gotLine {
+		return FingerprintFake
+	}
 	if claimed != "" && actual != "" && claimed != actual {
 		// A non-dated version claim is compatible with any dated baseline of
 		// the same version; the report still shows which date matched.
+		// shortcut: library membership is not consulted, so an unlisted
+		// same-family name stays suspicious instead of fake.
 		if claimed == "deepseekv41flash" && strings.HasPrefix(actual, "deepseekv41flash") {
-			return false
+			return FingerprintMatch
 		}
-		return true
+		return FingerprintSuspicious
 	}
-	want := ModelFamily(requested)
-	got := FingerprintFamily(family)
-	if want == "" || got == "" || got == "unknown" {
-		return false
-	}
-	if want != got {
-		return true
-	}
-	wantLine, gotLine := lineName(requested), lineName(topModel)
-	return wantLine != "" && gotLine != "" && wantLine != gotLine
+	return FingerprintMatch
 }
 
-// PresentedScore is the total shown to visitors. A diluted fingerprint contributes nothing,
-// including on reports saved before that rule existed.
-func PresentedScore(score, fingerprintContribution int, diluted bool) int {
-	if !diluted || fingerprintContribution <= 0 || score <= 0 {
+// Diluted is true only for a confirmed substitution.
+func Diluted(requested, family, topModel string) bool {
+	return FingerprintState(requested, family, topModel) == FingerprintFake
+}
+
+// PresentedScore is the total shown to visitors. The fingerprint share is
+// rescaled to the current rule, so reports saved earlier follow it too.
+// Coefficient is the whole section's share of the total.
+func PresentedScore(score, contribution, coefficient int, state string) int {
+	if coefficient <= 0 {
 		return score
 	}
-	next := score - fingerprintContribution
-	if next < 0 {
-		return 0
+	target := 0
+	switch state {
+	case FingerprintMatch:
+		target = coefficient
+	case FingerprintSuspicious:
+		target = coefficient * 2 / 5
 	}
-	return next
+	if target == contribution {
+		return score
+	}
+	if next := score - contribution + target; next > 0 {
+		return next
+	}
+	return 0
 }

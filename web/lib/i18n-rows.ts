@@ -226,6 +226,7 @@ export const rows: [string, string, string, string, string][] = [
 ["知识≈未知","Knowledge ≈ unknown","知識≈未知","知識 ≈ 不明","지식 ≈ 알 수 없음"],
 ["指纹归因说明","Fingerprint","指紋歸因說明","指紋の説明","지문 설명"],
 ["假","Fake","假","偽","가짜"],
+["可疑","Suspicious","可疑","不審","의심"],
 ["指纹检测中…","Checking fingerprint…","指紋檢測中…","指紋を検査中…","지문 검사 중…"],
 ["暂无结果","No result yet","暫無結果","結果はまだない","결과 없음"],
 ["声称","Claimed","聲稱","自称","주장"],

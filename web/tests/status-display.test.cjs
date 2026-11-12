@@ -93,9 +93,9 @@ test("mismatched fingerprint scores zero and stamps the card", () => {
   assert.match(html, /gpt-6-astra/);
   assert.match(html, /实际/);
   assert.match(html, /gpt-5\.6-luna/);
-  assert.match(html, /fake-seal/);
-  assert.match(html, /0\/32/);
-  assert.match(html, />53</);
+  assert.match(html, /fake-seal suspicious/);
+  assert.match(html, /12\/32/);
+  assert.match(html, />65</);
   assert.match(html, /aria-label="注入估计说明"/);
   const head = html.slice(html.indexOf("注入大小") - 80, html.indexOf("注入大小") + 220);
   assert.match(head, /rc-title[\s\S]*注入大小[\s\S]*注入估计说明/);

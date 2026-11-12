@@ -676,15 +676,22 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 			lowConfidence, _ := m["low_confidence"].(bool)
 			got := integrity.FingerprintFamily(family)
 			basis, _ := m["basis"].(string)
-			if basis == "behavioral" {
-				// Behavioral attribution is coarse. Only a confident match may
-				// prove identity; a weak match is evidence-insufficient, not a
-				// free pass and not a confirmed substitution.
-				if used >= 3 && !lowConfidence && got != "" && got != "unknown" && !integrity.Diluted(model, family, top) {
+			state := integrity.FingerprintMatch
+			if !lowConfidence {
+				state = integrity.FingerprintState(model, family, top)
+			}
+			if used >= 3 && got != "" && got != "unknown" {
+				switch {
+				case basis == "behavioral" && (lowConfidence || state != integrity.FingerprintMatch):
+					// Behavioral attribution is coarse. Only a confident match
+					// may prove identity.
+				case state == integrity.FingerprintFake:
+					// Confirmed substitution: no points.
+				case state == integrity.FingerprintSuspicious:
+					fpPoints = 4
+				default:
 					fpPoints = 10
 				}
-			} else if used >= 3 && got != "" && got != "unknown" && (lowConfidence || !integrity.Diluted(model, family, top)) {
-				fpPoints = 10
 			}
 		}
 	}

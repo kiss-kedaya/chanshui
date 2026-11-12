@@ -160,7 +160,7 @@ func TestHistoryListDropsDilutedFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := getJSON(t, s.Handler(), "/api/history?limit=50").Body.String()
-	if !strings.Contains(body, `"total_score":53`) || strings.Contains(body, `"total_score":85`) || strings.Contains(body, "gpt-5.6-luna") {
+	if !strings.Contains(body, `"total_score":65`) || strings.Contains(body, `"total_score":85`) || strings.Contains(body, "gpt-5.6-luna") {
 		t.Fatalf("history total was not presented: %s", body)
 	}
 }

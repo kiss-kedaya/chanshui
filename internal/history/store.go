@@ -70,6 +70,7 @@ type Summary struct {
 	ThinkingPass            *bool  `json:"thinking_pass,omitempty"`
 	TopModel                string `json:"-"`
 	FingerprintContribution int    `json:"-"`
+	FingerprintCoefficient  int    `json:"-"`
 }
 
 // Open opens (or creates) the database at path and ensures the schema.
@@ -185,6 +186,9 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 		json_extract(verdict_json, '$.fingerprint.top_model'),
 		CAST((SELECT json_extract(j.value, '$.contribution')
 			FROM json_each(json_extract(verdict_json, '$.total.parts')) AS j
+			WHERE json_extract(j.value, '$.key') = 'fingerprint' LIMIT 1) AS INTEGER),
+		CAST((SELECT json_extract(j.value, '$.coefficient')
+			FROM json_each(json_extract(verdict_json, '$.total.parts')) AS j
 			WHERE json_extract(j.value, '$.key') = 'fingerprint' LIMIT 1) AS INTEGER)
 		FROM detections WHERE expires_at > ?
 		AND COALESCE(total_score, iq_score, -1) != 0`
@@ -206,9 +210,9 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 		var sum Summary
 		var family, top sql.NullString
 		var pass sql.NullBool
-		var score, total, contrib sql.NullInt64
+		var score, total, contrib, coeff sql.NullInt64
 		if err := rows.Scan(&sum.ID, &sum.ReportID, &sum.Status, &sum.ExpiresAt, &sum.CreatedAt, &sum.BaseURL, &sum.Model,
-			&family, &pass, &score, &total, &top, &contrib); err != nil {
+			&family, &pass, &score, &total, &top, &contrib, &coeff); err != nil {
 			return nil, fmt.Errorf("history: scan: %w", err)
 		}
 		sum.Family = family.String
@@ -227,6 +231,9 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 		sum.TopModel = top.String
 		if contrib.Valid {
 			sum.FingerprintContribution = int(contrib.Int64)
+		}
+		if coeff.Valid {
+			sum.FingerprintCoefficient = int(coeff.Int64)
 		}
 		out = append(out, sum)
 	}
