@@ -101,7 +101,7 @@ func (c *Client) callCompatibleOnce(ctx context.Context, q CallRequest) (Metrics
 	start := time.Now()
 	resp, err := c.http().Do(req)
 	if err != nil {
-		return Metrics{}, err
+		return Metrics{}, fmt.Errorf("%s", Redact(err.Error()))
 	}
 	defer resp.Body.Close()
 	m := Metrics{Status: resp.StatusCode, Protocol: protocol, Via: "direct", FirstByteMs: time.Since(start).Milliseconds()}
@@ -118,7 +118,7 @@ func (c *Client) callCompatibleOnce(ctx context.Context, q CallRequest) (Metrics
 			} `json:"error"`
 		}
 		if json.Unmarshal(errBody, &apiErr) == nil && apiErr.Error.Message != "" {
-			m.Err = fmt.Sprintf("HTTP %d %s %s", resp.StatusCode, apiErr.Error.Type, apiErr.Error.Message)
+			m.Err = fmt.Sprintf("HTTP %d %s %s", resp.StatusCode, apiErr.Error.Type, Redact(apiErr.Error.Message))
 		} else {
 			m.Err = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		}
@@ -133,7 +133,7 @@ func (c *Client) callCompatibleOnce(ctx context.Context, q CallRequest) (Metrics
 		}
 	}
 	if err != nil {
-		m.Err = err.Error()
+		m.Err = Redact(err.Error())
 	}
 	m.Ms = time.Since(start).Milliseconds()
 	return m, nil

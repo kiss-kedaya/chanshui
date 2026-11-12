@@ -305,7 +305,7 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 	start := time.Now()
 	httpResp, err := c.http().Do(httpReq)
 	if err != nil {
-		return Metrics{Ms: time.Since(start).Milliseconds()}, fmt.Errorf("do request: %w", err)
+		return Metrics{Ms: time.Since(start).Milliseconds()}, fmt.Errorf("do request: %s", Redact(err.Error()))
 	}
 	defer httpResp.Body.Close()
 
@@ -333,7 +333,7 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 	m.Ms = time.Since(start).Milliseconds()
 	if readErr != nil {
 		if m.Err == "" {
-			m.Err = "HTTP " + itoa(httpResp.StatusCode) + " read: " + trunc(readErr.Error(), 200)
+			m.Err = "HTTP " + itoa(httpResp.StatusCode) + " read: " + trunc(Redact(readErr.Error()), 200)
 		}
 		return m, nil
 	}
@@ -452,7 +452,7 @@ type usageBlock struct {
 func parseMessagesBody(raw []byte, m *Metrics) error {
 	var apiErr apiErrorBody
 	if json.Unmarshal(raw, &apiErr) == nil && apiErr.Error != nil {
-		m.Err = fmt.Sprintf("HTTP %s %s %s", itoa(m.Status), apiErr.Error.Type, trunc(apiErr.Error.Message, 200))
+		m.Err = fmt.Sprintf("HTTP %s %s %s", itoa(m.Status), apiErr.Error.Type, trunc(Redact(apiErr.Error.Message), 200))
 	}
 	extractToolEvidence(raw, "messages", m)
 	var obj map[string]json.RawMessage

@@ -254,7 +254,7 @@ func safeDetail(reason string) string {
 	if text == "" {
 		return ""
 	}
-	text = secretDetail.ReplaceAllString(text, "[已隐藏]")
+	text = Redact(secretDetail.ReplaceAllString(text, "[已隐藏]"))
 	runes := []rune(text)
 	if len(runes) > 280 {
 		text = string(runes[:280]) + "…"
