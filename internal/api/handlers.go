@@ -579,8 +579,14 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		if items[i].TotalScore == nil {
 			continue
 		}
-		shown := integrity.PresentedScore(*items[i].TotalScore, items[i].FingerprintContribution, items[i].FingerprintCoefficient,
-			integrity.FingerprintState(items[i].Model, items[i].Family, items[i].TopModel))
+		state := integrity.FingerprintState(items[i].Model, items[i].Family, items[i].TopModel)
+		switch {
+		case !integrity.Confirmed(items[i].FingerprintBasis, items[i].FingerprintTopProb):
+			state = integrity.FingerprintMatch
+		case state != integrity.FingerprintMatch:
+			state = integrity.FingerprintFake
+		}
+		shown := integrity.PresentedScore(*items[i].TotalScore, items[i].FingerprintContribution, items[i].FingerprintCoefficient, state)
 		items[i].TotalScore = &shown
 	}
 	w.Header().Set("Cache-Control", "public, max-age=10, s-maxage=30, stale-while-revalidate=30")

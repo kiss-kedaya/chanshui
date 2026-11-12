@@ -82,7 +82,8 @@ test("behavioral attribution uses the dated display name and marks a confident m
   assert.match(html, /GPT-4o/);
   assert.match(html, /行为相似度 91\.0%/);
   assert.match(html, /数字库没有该家族/);
-  assert.match(html, /fake-seal/);
+  // No numeric baseline for the claimed model: no seal, no score change.
+  assert.doesNotMatch(html, /fake-seal/);
 });
 
 test("weak behavioral evidence is shown without a fake seal", () => {

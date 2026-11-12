@@ -37,8 +37,12 @@ test("fingerprint state separates confirmed swaps from suspicion",()=>{
   assert.equal(fingerprintState("deepseek-v4.1-flash","deepseek","deepseek-v4.1-flash-0910"), "match");
   assert.equal(fingerprintState("deepseek-v4-flash","deepseek","deepseek-flash"), "suspicious");
   assert.equal(fingerprintState("deepseek-flash","deepseek","deepseek-v4-pro"), "suspicious");
-  assert.equal(fingerprintState("claude-opus-4-6","gpt","gpt-5.4"), "fake");
-  assert.equal(fingerprintState("claude-opus-4-6","claude","claude-haiku-4-5"), "fake");
+  assert.equal(fingerprintState("claude-opus-4-6","gpt","gpt-5.4"), "suspicious");
+  assert.equal(fingerprintState("claude-opus-4-6","gpt","gpt-5.4",{prob:1}), "fake");
+  assert.equal(fingerprintState("claude-opus-4-6","claude","claude-haiku-4-5",{prob:1}), "fake");
+  assert.equal(fingerprintState("claude-opus-4-6","claude","claude-haiku-4-5",{prob:0.99}), "suspicious");
+  // Behavioral attribution is a likeness hint, never a verdict.
+  assert.equal(fingerprintState("gemini-4-carbon","gpt","gpt-5.4",{behavioral:true,prob:1}), "match");
   assert.equal(fingerprintState("claude-opus-4-6","claude","claude-opus-4-5"), "suspicious");
   assert.equal(fingerprintState("claude-fable-5-2","claude","claude-opus-5-5"), "suspicious");
   assert.equal(fingerprintState("gpt-6-astra","gpt","gpt-5.6-luna"), "suspicious");
@@ -52,9 +56,10 @@ test("fingerprint state separates confirmed swaps from suspicion",()=>{
   assert.equal(fake.score, 53);
   assert.equal(fake.parts[0].contribution, 0);
   assert.equal(fake.parts[1].contribution, 27);
+  // Unconfirmed: the section keeps its share and the score is untouched.
   const suspicious = presentedTotal(85, parts, "suspicious");
-  assert.equal(suspicious.score, 65);
-  assert.equal(suspicious.parts[0].contribution, 12);
+  assert.equal(suspicious.score, 85);
+  assert.equal(suspicious.parts[0].contribution, 32);
   const match = presentedTotal(85, parts, "match");
   assert.equal(match.score, 85);
 });

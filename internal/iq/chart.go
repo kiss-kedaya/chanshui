@@ -2,6 +2,7 @@ package iq
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"image"
 	"image/color"
@@ -10,65 +11,80 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
 )
 
+// Same canvas and layout as the reference generator (make_test.py).
 const (
-	chartW, chartH = 1800, 900
+	chartW, chartH = 1360, 1000
 	chartBars      = 40
+
+	chartLeft, chartRight      = 150, chartW - 40
+	chartTop, chartBottom      = 292, 890
+	chartBodyMax, chartBodyMin = 18, 3
 )
 
 var (
 	chartUp   = color.RGBA{0, 146, 88, 255}
 	chartDown = color.RGBA{214, 55, 55, 255}
+	chartFlat = color.RGBA{120, 124, 130, 255}
 	chartGrid = color.RGBA{226, 230, 234, 255}
 	chartAxis = color.RGBA{58, 64, 70, 255}
 	chartInk  = color.RGBA{34, 38, 42, 255}
+	chartSub  = color.RGBA{95, 101, 108, 255}
+	chartBox  = color.RGBA{24, 92, 190, 255}
+	chartBan  = color.RGBA{198, 40, 40, 255}
 )
 
-// 5x7 bitmap digits: no font file on the server, and no dependency.
-var digitGlyphs = [10][7]uint8{
-	{0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111},
-	{0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110},
-	{0b11111, 0b00001, 0b00001, 0b11111, 0b10000, 0b10000, 0b11111},
-	{0b11111, 0b00001, 0b00001, 0b01111, 0b00001, 0b00001, 0b11111},
-	{0b10001, 0b10001, 0b10001, 0b11111, 0b00001, 0b00001, 0b00001},
-	{0b11111, 0b10000, 0b10000, 0b11111, 0b00001, 0b00001, 0b11111},
-	{0b01111, 0b10000, 0b10000, 0b11111, 0b10001, 0b10001, 0b11111},
-	{0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000},
-	{0b11111, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b11111},
-	{0b11111, 0b10001, 0b10001, 0b11111, 0b00001, 0b00001, 0b11111},
+// Subset CJK faces (only the glyphs printed on the card) so the image renders
+// identically on a server with no system fonts installed.
+//
+//go:embed fonts/bold.ttf
+var chartBoldTTF []byte
+
+//go:embed fonts/reg.ttf
+var chartRegTTF []byte
+
+type chartFaceSet struct {
+	en, big, ban, sub, sm, title, tick font.Face
 }
 
-// 5x7 bitmap capitals for the chart title; unknown runes fall back to a space.
-var letterGlyphs = map[rune][7]uint8{
-	'A': {0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001},
-	'B': {0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110},
-	'C': {0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110},
-	'D': {0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110},
-	'E': {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111},
-	'H': {0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001},
-	'I': {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b11111},
-	'K': {0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001},
-	'L': {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111},
-	'N': {0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001},
-	'R': {0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001},
-	'S': {0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110},
-	'T': {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100},
-	'Y': {0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100},
-	'(': {0b00110, 0b01000, 0b10000, 0b10000, 0b10000, 0b01000, 0b00110},
-	')': {0b01100, 0b00010, 0b00001, 0b00001, 0b00001, 0b00010, 0b01100},
-	'-': {0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000},
-}
+// opentype.Face owns a rasterizer, so it cannot be shared between concurrent
+// chart jobs; only the parsed font is safe to reuse.
+var (
+	chartParseOnce sync.Once
+	chartBoldFont  *opentype.Font
+	chartRegFont   *opentype.Font
+)
 
-func glyphFor(r rune) ([7]uint8, bool) {
-	if r >= '0' && r <= '9' {
-		return digitGlyphs[r-'0'], true
+func chartFaces() *chartFaceSet {
+	chartParseOnce.Do(func() {
+		var err error
+		if chartBoldFont, err = opentype.Parse(chartBoldTTF); err != nil {
+			panic(err)
+		}
+		if chartRegFont, err = opentype.Parse(chartRegTTF); err != nil {
+			panic(err)
+		}
+	})
+	mk := func(f *opentype.Font, size float64) font.Face {
+		face, err := opentype.NewFace(f, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingNone})
+		if err != nil {
+			panic(err)
+		}
+		return face
 	}
-	g, ok := letterGlyphs[r]
-	return g, ok
+	return &chartFaceSet{
+		en: mk(chartBoldFont, 24), big: mk(chartBoldFont, 29), ban: mk(chartBoldFont, 21),
+		sub: mk(chartRegFont, 18), sm: mk(chartRegFont, 13), title: mk(chartBoldFont, 24), tick: mk(chartRegFont, 12),
+	}
 }
 
-func fillRect(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
+func fillBox(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
 	if x0 > x1 {
 		x0, x1 = x1, x0
 	}
@@ -76,18 +92,8 @@ func fillRect(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
 		y0, y1 = y1, y0
 	}
 	b := img.Bounds()
-	if x0 < b.Min.X {
-		x0 = b.Min.X
-	}
-	if y0 < b.Min.Y {
-		y0 = b.Min.Y
-	}
-	if x1 >= b.Max.X {
-		x1 = b.Max.X - 1
-	}
-	if y1 >= b.Max.Y {
-		y1 = b.Max.Y - 1
-	}
+	x0, y0 = max(x0, b.Min.X), max(y0, b.Min.Y)
+	x1, y1 = min(x1, b.Max.X-1), min(y1, b.Max.Y-1)
 	for y := y0; y <= y1; y++ {
 		for x := x0; x <= x1; x++ {
 			img.SetRGBA(x, y, c)
@@ -95,37 +101,40 @@ func fillRect(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
 	}
 }
 
-func drawText(img *image.RGBA, x, y int, s string, scale int, c color.RGBA) int {
-	for _, r := range s {
-		g, ok := glyphFor(r)
-		if !ok {
-			x += 6 * scale
-			continue
-		}
-		for row := 0; row < 7; row++ {
-			for col := 0; col < 5; col++ {
-				if g[row]&(1<<(4-col)) != 0 {
-					fillRect(img, x+col*scale, y+row*scale, x+col*scale+scale-1, y+row*scale+scale-1, c)
-				}
-			}
-		}
-		x += 6 * scale
+func strokeBox(img *image.RGBA, x0, y0, x1, y1, w int, c color.RGBA) {
+	for i := 0; i < w; i++ {
+		fillBox(img, x0+i, y0+i, x1-i, y0+i, c)
+		fillBox(img, x0+i, y1-i, x1-i, y1-i, c)
+		fillBox(img, x0+i, y0+i, x0+i, y1-i, c)
+		fillBox(img, x1-i, y0+i, x1-i, y1-i, c)
 	}
-	return x
 }
 
-func textWidth(s string, scale int) int {
-	if s == "" {
-		return 0
+// drawStr anchors text by its top-left corner, matching Pillow's default
+// "la" anchor instead of Go's baseline anchor.
+func drawStr(img *image.RGBA, f font.Face, x, y float64, s string, c color.RGBA) {
+	ascent := float64(f.Metrics().Ascent) / 64
+	d := font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(c),
+		Face: f,
+		Dot: fixed.Point26_6{
+			X: fixed.Int26_6(math.Round(x * 64)),
+			Y: fixed.Int26_6(math.Round((y + ascent) * 64)),
+		},
 	}
-	return len(s)*6*scale - scale
+	d.DrawString(s)
 }
 
-// chartBars walks a random price path and rounds every candle to whole units,
-// so the closing prices read back exactly off the axis.
+func strW(f font.Face, s string) float64 {
+	return float64(font.MeasureString(f, s)) / 64
+}
+
+// randomChartBars walks a random price path and rounds every candle to whole
+// units, mirroring the reference generator exactly.
 func randomChartBars(seed int64) [][4]int {
 	r := rand.New(rand.NewSource(seed))
-	price := 60 + r.Float64()*80
+	price := 96 + r.Float64()*40
 	drift := 0.0
 	out := make([][4]int, 0, chartBars)
 	for i := 0; i < chartBars; i++ {
@@ -150,72 +159,93 @@ func randomChartBars(seed int64) [][4]int {
 }
 
 func drawChart(bars [][4]int) []byte {
-	const (
-		left, right = 100, 1760
-		top, bottom = 110, 800
-	)
-	ymin := bars[0][2]
-	ymax := bars[0][1]
+	n := len(bars)
+	ymin, ymax := bars[0][2], bars[0][1]
 	for _, b := range bars {
 		ymin = min(ymin, b[2])
 		ymax = max(ymax, b[1])
 	}
 	ymin -= 2
 	ymax += 2
-	span := float64(ymax - ymin)
-	yOf := func(p float64) int {
-		return int(math.Round(float64(bottom) - (p-float64(ymin))/span*float64(bottom-top)))
-	}
 
-	every := 1
-	pxPerUnit := float64(bottom-top) / span
-	for _, e := range []int{1, 2, 5, 10, 20} {
-		every = e
-		if float64(e)*pxPerUnit >= 26 {
-			break
-		}
-	}
-
+	f := chartFaces()
 	img := image.NewRGBA(image.Rect(0, 0, chartW, chartH))
-	fillRect(img, 0, 0, chartW-1, chartH-1, color.RGBA{255, 255, 255, 255})
-	drawText(img, left, 34, fmt.Sprintf("DAILY K-LINE CHART (%d BARS)", len(bars)), 3, chartInk)
+	fillBox(img, 0, 0, chartW-1, chartH-1, color.RGBA{255, 255, 255, 255})
 
-	for v := ymin - ymin%every; v <= ymax; v += every {
-		if v < ymin {
-			continue
+	// ---- question panel, identical wording to the reference card ----
+	strokeBox(img, 30, 22, chartW-30, 236, 3, chartBox)
+	drawStr(img, f.en, 52, 34, "ONE INTEGER ONLY / 只回复一个整数", chartBox)
+	drawStr(img, f.big, 52, 78, fmt.Sprintf("把下图 %d 根K线的「收盘价个位数字」全部相加，只返回这个和，不要解释。", n), chartInk)
+	drawStr(img, f.sub, 52, 126, fmt.Sprintf("Sum the units digits of the %d closing prices. Reply with the number only.", n), chartSub)
+	drawStr(img, f.ban, 52, 156, "禁止联网、使用工具或写代码计算。只回答一个整数，不要单位、解释、标点或代码块。", chartBan)
+	drawStr(img, f.sm, 52, 196, "No web, no tools, no code. Reply with a single integer only -", chartBan)
+	drawStr(img, f.sm, 52, 214, "no units, no explanation, no punctuation, no code block.   Example: close 127 -> 7", chartBan)
+	drawStr(img, f.title, chartLeft, chartTop-32, fmt.Sprintf("Daily K-Line Chart (%d bars)", n), chartInk)
+
+	yOf := func(p float64) float64 {
+		return float64(chartBottom) - (p-float64(ymin))/(float64(ymax-ymin))*float64(chartBottom-chartTop)
+	}
+
+	// ---- grid + value axis ----
+	step := 2
+	if ymax-ymin <= 10 {
+		step = 1
+	}
+	labelEvery := 1
+	if ymax-ymin > 30 {
+		labelEvery = 2
+	}
+	idx := 0
+	for y := ymin - ymin%step; y <= ymax; y += step {
+		if y >= ymin {
+			yy := int(math.Round(yOf(float64(y))))
+			fillBox(img, chartLeft, yy, chartRight, yy, chartGrid)
+			if idx%labelEvery == 0 {
+				lab := strconv.Itoa(y)
+				drawStr(img, f.tick, float64(chartLeft)-10-strW(f.tick, lab), float64(yy)-7, lab, chartInk)
+			}
 		}
-		y := yOf(float64(v))
-		fillRect(img, left, y, right, y, chartGrid)
-		label := strconv.Itoa(v)
-		drawText(img, left-16-textWidth(label, 2), y-7, label, 2, chartInk)
+		idx++
 	}
-	fillRect(img, left, top, left+1, bottom, chartAxis)
-	fillRect(img, left, bottom, right, bottom+1, chartAxis)
+	fillBox(img, chartLeft, chartTop, chartLeft+1, chartBottom, chartAxis)
+	fillBox(img, chartLeft, chartBottom, chartRight, chartBottom+1, chartAxis)
 
-	slot := float64(right-left) / float64(len(bars))
-	bodyW := int(slot * 0.5)
-	if bodyW > 44 {
-		bodyW = 44
-	}
-	if bodyW < 10 {
-		bodyW = 10
+	// ---- candles ----
+	slot := float64(chartRight-chartLeft) / float64(n)
+	bodyW := int(slot * 0.62)
+	bodyW = min(max(bodyW, chartBodyMin), chartBodyMax)
+	wick := 1
+	if slot >= 12 {
+		wick = 2
 	}
 	for i, b := range bars {
 		o, hi, lo, c := b[0], b[1], b[2], b[3]
-		cx := int(float64(left) + slot*(float64(i)+0.5))
+		cx := float64(chartLeft) + slot*(float64(i)+0.5)
 		col := chartUp
 		if c < o {
 			col = chartDown
+		} else if c == o {
+			col = chartFlat
 		}
-		fillRect(img, cx-1, yOf(float64(hi)), cx+1, yOf(float64(lo)), col)
-		topY, botY := yOf(float64(max(o, c))), yOf(float64(min(o, c)))
-		if botY-topY < 6 {
-			topY, botY = topY-3, topY+3
+		x := int(math.Round(cx))
+		fillBox(img, x, int(math.Round(yOf(float64(hi)))), x+wick-1, int(math.Round(yOf(float64(lo)))), col)
+		top, bot := yOf(float64(max(o, c))), yOf(float64(min(o, c)))
+		if bot-top < 1.5 {
+			top -= 0.75
+			bot = top + 1.5
 		}
-		fillRect(img, cx-bodyW/2, topY, cx+bodyW/2, botY, col)
-		label := fmt.Sprintf("D%02d", i+1)
-		drawText(img, cx-textWidth(label, 2)/2, bottom+16, label, 2, chartInk)
+		fillBox(img, int(math.Round(cx-float64(bodyW)/2)), int(math.Round(top)),
+			int(math.Round(cx+float64(bodyW)/2)), int(math.Round(bot)), col)
 	}
+
+	// ---- index axis ----
+	labelStep := max(1, int(math.Round(float64(n)/12)))
+	for i := 0; i < n; i += labelStep {
+		cx := float64(chartLeft) + slot*(float64(i)+0.5)
+		lab := fmt.Sprintf("D%02d", i+1)
+		drawStr(img, f.tick, cx-strW(f.tick, lab)/2, float64(chartBottom+10), lab, chartInk)
+	}
+	drawStr(img, f.sm, chartLeft, chartBottom+38, fmt.Sprintf("Bar index D01-D%02d (left to right)", n), chartSub)
 
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)

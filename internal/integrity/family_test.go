@@ -30,14 +30,16 @@ func TestPresentedScore(t *testing.T) {
 	if got := PresentedScore(85, 32, 32, FingerprintFake); got != 53 {
 		t.Fatalf("fake total %d", got)
 	}
-	if got := PresentedScore(85, 32, 32, FingerprintSuspicious); got != 65 {
+	if got := PresentedScore(85, 32, 32, FingerprintSuspicious); got != 85 {
 		t.Fatalf("suspicious total %d", got)
 	}
 	if got := PresentedScore(85, 32, 32, FingerprintMatch); got != 85 {
 		t.Fatalf("matching total %d", got)
 	}
-	if got := PresentedScore(87, 8, 21, FingerprintSuspicious); got != 87 {
-		t.Fatalf("already partial total %d", got)
+	// An unconfirmed share is not scored at all, so a stored partial credit is
+	// restored to the whole section.
+	if got := PresentedScore(87, 8, 21, FingerprintSuspicious); got != 100 {
+		t.Fatalf("unconfirmed total %d", got)
 	}
 	if got := PresentedScore(20, 32, 32, FingerprintFake); got != 0 {
 		t.Fatalf("floor %d", got)

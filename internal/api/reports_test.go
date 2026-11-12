@@ -143,24 +143,46 @@ func TestHistoryAndReportsMaskSiteUnlessMatchingJobKey(t *testing.T) {
 	}
 }
 
-func TestHistoryListDropsDilutedFingerprint(t *testing.T) {
-	s, _, _, _ := testSetup(t)
-	verdict := json.RawMessage(`{"fingerprint":{"family":"gpt","top_model":"gpt-5.6-luna"},"total":{"score":85,"parts":[{"key":"fingerprint","contribution":32,"coefficient":32}]}}`)
-	id := strings.Repeat("ab", 16)
-	if _, err := s.store.CreateJob(context.Background(), history.Record{
-		ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339),
-		BaseURL: "https://gw.example.com/v1", Model: "gpt-6-astra", Verdict: verdict,
-	}, json.RawMessage(`[]`), "hash", ""); err != nil {
-		t.Fatal(err)
+func TestHistoryListOnlyDropsConfirmedFingerprint(t *testing.T) {
+	cases := []struct {
+		name    string
+		verdict string
+		want    string
+	}{
+		{
+			// No numeric baseline recorded: the list must not lower the score.
+			name:    "unconfirmed",
+			verdict: `{"fingerprint":{"family":"gpt","top_model":"gpt-5.6-luna"},"total":{"score":85,"parts":[{"key":"fingerprint","contribution":32,"coefficient":32}]}}`,
+			want:    `"total_score":85`,
+		},
+		{
+			// Numeric baseline at 100% on another family: section goes to zero.
+			name:    "confirmed",
+			verdict: `{"fingerprint":{"basis":"numeric","top_prob":1,"family":"anthropic","top_model":"claude-opus-4-6"},"total":{"score":85,"parts":[{"key":"fingerprint","contribution":32,"coefficient":32}]}}`,
+			want:    `"total_score":53`,
+		},
 	}
-	score := 85
-	if err := s.store.UpdateJob(context.Background(), history.Record{
-		ReportID: id, Status: "done", Family: "gpt", Verdict: verdict, TotalScore: &score,
-	}, json.RawMessage(`[]`)); err != nil {
-		t.Fatal(err)
-	}
-	body := getJSON(t, s.Handler(), "/api/history?limit=50").Body.String()
-	if !strings.Contains(body, `"total_score":65`) || strings.Contains(body, `"total_score":85`) || strings.Contains(body, "gpt-5.6-luna") {
-		t.Fatalf("history total was not presented: %s", body)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _, _, _ := testSetup(t)
+			verdict := json.RawMessage(tc.verdict)
+			id := strings.Repeat("ab", 16)
+			if _, err := s.store.CreateJob(context.Background(), history.Record{
+				ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339),
+				BaseURL: "https://gw.example.com/v1", Model: "gpt-6-astra", Verdict: verdict,
+			}, json.RawMessage(`[]`), "hash", ""); err != nil {
+				t.Fatal(err)
+			}
+			score := 85
+			if err := s.store.UpdateJob(context.Background(), history.Record{
+				ReportID: id, Status: "done", Family: "gpt", Verdict: verdict, TotalScore: &score,
+			}, json.RawMessage(`[]`)); err != nil {
+				t.Fatal(err)
+			}
+			body := getJSON(t, s.Handler(), "/api/history?limit=50").Body.String()
+			if !strings.Contains(body, tc.want) || strings.Contains(body, "gpt-5.6-luna") {
+				t.Fatalf("history total was not presented: %s", body)
+			}
+		})
 	}
 }

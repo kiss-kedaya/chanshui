@@ -56,24 +56,39 @@ export type FingerprintState = "match" | "suspicious" | "fake";
 // Mirrors integrity.FingerprintState on the Go side. A different family or a
 // different named Claude line is a confirmed substitution; any other name
 // mismatch may just be a name the library does not carry, so it stays
-// suspicious.
-export function fingerprintState(requested: string, family: string, topModel = ""): FingerprintState {
-  const claimed = canonModel(requested);
-  const actual = canonModel(topModel);
+// suspicious. Without a numeric baseline for the claimed model (behavioral
+// fallback) there is no verdict at all, and a substitution only counts as
+// confirmed at 99.9% or better.
+export function fingerprintState(
+  requested: string,
+  family: string,
+  topModel = "",
+  opts: { behavioral?: boolean; prob?: number } = {},
+): FingerprintState {
+  // Behavioral attribution has no numeric baseline, so it never judges a model.
+  if (opts.behavioral) return "match";
+  const differs = claimDiffers(requested, family, topModel);
+  if (!differs) return "match";
+  return (opts.prob ?? 0) >= 0.999 ? "fake" : "suspicious";
+}
+
+function claimDiffers(requested: string, family: string, topModel: string): boolean {
   const want = modelFamily(requested);
   const got = fingerprintFamily(family);
+  if (want && got && got !== "unknown" && want !== got) return true;
   const line = (value: string) => ["opus", "sonnet", "haiku"].find((item) => value.toLowerCase().includes(item)) || "";
   const wantLine = line(requested);
   const gotLine = line(topModel);
-  if (want && got && got !== "unknown" && want !== got) return "fake";
-  if (wantLine && gotLine && wantLine !== gotLine) return "fake";
+  if (wantLine && gotLine && wantLine !== gotLine) return true;
+  const claimed = canonModel(requested);
+  const actual = canonModel(topModel);
   if (claimed && actual && claimed !== actual) {
     // A non-dated version claim is compatible with any dated baseline of the
     // same version; the report still shows which date matched.
-    if (claimed === "deepseekv41flash" && actual.startsWith("deepseekv41flash")) return "match";
-    return "suspicious";
+    if (claimed === "deepseekv41flash" && actual.startsWith("deepseekv41flash")) return false;
+    return true;
   }
-  return "match";
+  return false;
 }
 
 // Rebuilds the total against the current fingerprint rule so reports saved
@@ -86,8 +101,7 @@ export function presentedTotal<T extends { key: string; contribution: number; co
   const rows = parts ? parts.map((item) => ({ ...item })) : [];
   const fingerprint = rows.find((item) => item.key === "fingerprint");
   if (!fingerprint?.coefficient || fingerprint.coefficient <= 0) return { score, parts: rows };
-  const target =
-    state === "fake" ? 0 : state === "suspicious" ? Math.floor((fingerprint.coefficient * 2) / 5) : fingerprint.coefficient;
+  const target = state === "fake" ? 0 : fingerprint.coefficient;
   if (target === fingerprint.contribution) return { score, parts: rows };
   const next = Math.max(0, score - fingerprint.contribution + target);
   fingerprint.contribution = target;

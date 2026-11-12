@@ -22,7 +22,7 @@ func TestBuildTotalFullPassAndDilutedFingerprint(t *testing.T) {
 	if total.Score != 100 {
 		t.Fatalf("full score %d %+v", total.Score, total.Parts)
 	}
-	v.Fingerprint = map[string]any{"family": "claude", "top_model": "claude-sonnet-4-5", "used_outputs": 3}
+	v.Fingerprint = map[string]any{"basis": "numeric", "top_prob": 1.0, "family": "claude", "top_model": "claude-sonnet-4-5", "used_outputs": 3}
 	total = buildTotal(v, "claude-opus-4-6")
 	if total.Score != 79 {
 		t.Fatalf("diluted score %d", total.Score)
@@ -51,9 +51,13 @@ func TestBuildTotalLowConfidenceTieIsNotDiluted(t *testing.T) {
 	if total := buildTotal(v, "gpt-6.1-sol"); total.Score != 100 {
 		t.Fatalf("low-confidence tie scored %d, want 100", total.Score)
 	}
-	v.Fingerprint = map[string]any{"family": "gpt", "top_model": "gpt-6-astra", "top_prob": 0.95, "used_outputs": 3, "low_confidence": false}
-	if total := buildTotal(v, "gpt-6.1-sol"); total.Score != 86 {
-		t.Fatalf("confident mismatch scored %d, want 86", total.Score)
+	v.Fingerprint = map[string]any{"basis": "numeric", "family": "gpt", "top_model": "gpt-6-astra", "top_prob": 0.95, "used_outputs": 3, "low_confidence": false}
+	if total := buildTotal(v, "gpt-6.1-sol"); total.Score != 100 {
+		t.Fatalf("under-certain mismatch scored %d, want 100", total.Score)
+	}
+	v.Fingerprint = map[string]any{"basis": "numeric", "family": "gpt", "top_model": "gpt-6-astra", "top_prob": 1.0, "used_outputs": 3, "low_confidence": false}
+	if part := fingerprintPart(buildTotal(v, "gpt-6.1-sol")); part.Points != 0 || part.Contribution != 0 {
+		t.Fatalf("confirmed mismatch scored %+v", part)
 	}
 }
 
@@ -81,16 +85,17 @@ func TestBuildTotalChatWithoutCacheStill100(t *testing.T) {
 	}
 }
 
-func TestBuildTotalBehavioralAttribution(t *testing.T) {
+// Behavioral attribution has no numeric baseline, so it can never take points
+// away: it is a likeness hint, not proof of substitution.
+func TestBuildTotalBehavioralAttributionNeverCostsPoints(t *testing.T) {
 	cases := []struct {
 		name, family, top string
 		low               bool
-		wantPoints        int
 	}{
-		{"cross-family substitution", "openai", "openai/gpt-4o", false, 0},
-		{"current dated match", "deepseek", "deepseek-v4.1-flash-1017", false, 10},
-		{"old dated version", "deepseek", "deepseek-v4.1-flash-0910", false, 0},
-		{"weak evidence", "deepseek", "deepseek-v4.1-flash-1017", true, 0},
+		{"cross-family substitution", "openai", "openai/gpt-4o", false},
+		{"current dated match", "deepseek", "deepseek-v4.1-flash-1017", false},
+		{"old dated version", "deepseek", "deepseek-v4.1-flash-0910", false},
+		{"weak evidence", "deepseek", "deepseek-v4.1-flash-1017", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -98,19 +103,13 @@ func TestBuildTotalBehavioralAttribution(t *testing.T) {
 				"basis":          "behavioral",
 				"family":         tc.family,
 				"top_model":      tc.top,
+				"top_prob":       0.934,
 				"used_outputs":   3,
 				"low_confidence": tc.low,
 			}}
-			total := buildTotal(v, "deepseek-flash")
-			part := fingerprintPart(total)
-			if part.Points != tc.wantPoints {
-				t.Fatalf("fingerprint points %d, want %d", part.Points, tc.wantPoints)
-			}
-			if tc.wantPoints == 10 && part.Contribution != part.Coefficient {
-				t.Fatalf("matching fingerprint contribution %+v", part)
-			}
-			if tc.wantPoints == 0 && part.Contribution != 0 {
-				t.Fatalf("failed fingerprint contribution %+v", part)
+			part := fingerprintPart(buildTotal(v, "deepseek-flash"))
+			if part.Points != 10 || part.Contribution != part.Coefficient {
+				t.Fatalf("behavioral fingerprint scored %+v", part)
 			}
 		})
 	}
@@ -127,8 +126,13 @@ func TestBuildTotalDatedDeepseekNumericAlias(t *testing.T) {
 		t.Fatalf("current numeric alias scored %+v", part)
 	}
 	v.Fingerprint.(map[string]any)["top_model"] = "deepseek-v4.1-flash-0910"
-	if part := fingerprintPart(buildTotal(v, "deepseek-flash")); part.Points != 4 {
+	if part := fingerprintPart(buildTotal(v, "deepseek-flash")); part.Points != 10 {
 		t.Fatalf("old numeric alias scored %+v", part)
+	}
+	v.Fingerprint.(map[string]any)["top_model"] = "deepseek-v4.1-flash-0910"
+	v.Fingerprint.(map[string]any)["top_prob"] = 1.0
+	if part := fingerprintPart(buildTotal(v, "deepseek-v4.1-flash-1017")); part.Points != 0 {
+		t.Fatalf("confirmed date substitution scored %+v", part)
 	}
 	v.Fingerprint.(map[string]any)["top_model"] = "deepseek-v4.1-flash-1017"
 	if part := fingerprintPart(buildTotal(v, "deepseek-v4.1-flash")); part.Points != 10 {

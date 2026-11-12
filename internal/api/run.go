@@ -676,20 +676,16 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 			lowConfidence, _ := m["low_confidence"].(bool)
 			got := integrity.FingerprintFamily(family)
 			basis, _ := m["basis"].(string)
-			state := integrity.FingerprintMatch
-			if !lowConfidence {
-				state = integrity.FingerprintState(model, family, top)
-			}
+			prob, _ := m["top_prob"].(float64)
+			// Only a numeric baseline that pins a different model outright may
+			// cost points. Behavioral attribution, close candidates and thin
+			// samples keep the section whole, so it never scores on guesswork.
+			confirmed := !lowConfidence && integrity.Confirmed(basis, prob) &&
+				integrity.FingerprintState(model, family, top) != integrity.FingerprintMatch
 			if used >= 3 && got != "" && got != "unknown" {
-				switch {
-				case basis == "behavioral" && (lowConfidence || state != integrity.FingerprintMatch):
-					// Behavioral attribution is coarse. Only a confident match
-					// may prove identity.
-				case state == integrity.FingerprintFake:
-					// Confirmed substitution: no points.
-				case state == integrity.FingerprintSuspicious:
-					fpPoints = 4
-				default:
+				if confirmed {
+					fpPoints = 0
+				} else {
 					fpPoints = 10
 				}
 			}

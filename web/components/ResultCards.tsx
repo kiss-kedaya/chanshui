@@ -113,7 +113,10 @@ export default function ResultCards({
   const fpState =
     !f || f.error || f.low_confidence
       ? "match"
-      : fingerprintState(model || "", f.family || "", f.top_model || "");
+      : fingerprintState(model || "", f.family || "", f.top_model || "", {
+          behavioral,
+          prob: f.top_prob,
+        });
   const diluted = fpState === "fake";
   const suspicious = fpState === "suspicious";
   const scored: DetectVerdict = v.total

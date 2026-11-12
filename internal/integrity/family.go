@@ -118,19 +118,24 @@ func Diluted(requested, family, topModel string) bool {
 	return FingerprintState(requested, family, topModel) == FingerprintFake
 }
 
+// Confirmed reports whether a numeric baseline pinned the model with certainty.
+// Behavioral attribution and anything below 99.9% never move the score.
+func Confirmed(basis string, prob float64) bool {
+	return basis != "behavioral" && prob >= 0.999
+}
+
 // PresentedScore is the total shown to visitors. The fingerprint share is
 // rescaled to the current rule, so reports saved earlier follow it too.
-// Coefficient is the whole section's share of the total.
+// Coefficient is the whole section's share of the total. Only a confirmed
+// substitution costs points; every other state keeps the section whole so the
+// fingerprint never scores on weak evidence.
 func PresentedScore(score, contribution, coefficient int, state string) int {
 	if coefficient <= 0 {
 		return score
 	}
-	target := 0
-	switch state {
-	case FingerprintMatch:
-		target = coefficient
-	case FingerprintSuspicious:
-		target = coefficient * 2 / 5
+	target := coefficient
+	if state == FingerprintFake {
+		target = 0
 	}
 	if target == contribution {
 		return score
