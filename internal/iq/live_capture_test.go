@@ -24,7 +24,7 @@ func TestCapturedLivePillAnswer(t *testing.T) {
 	for _, q := range r.Verdict.IQ.Questions {
 		if q.ID == "Q1" {
 			score, _, _ := Judge(GenPill(), q.Answer)
-			if score != 6 {
+			if score != 5 {
 				t.Fatalf("captured natural answer scored %d", score)
 			}
 			return

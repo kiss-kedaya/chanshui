@@ -114,20 +114,23 @@ type Task struct {
 	answers     map[string]QuestionResult
 }
 type QuestionResult struct {
-	ID           string          `json:"id"`
-	Title        string          `json:"title"`
-	Max          int             `json:"max"`
-	Earned       int             `json:"earned"`
-	Half         bool            `json:"half"`
-	Tags         []string        `json:"tags"`
-	Prompt       string          `json:"prompt"`
-	Expected     string          `json:"expected"`
-	Answer       string          `json:"answer"`
-	ThinkingText string          `json:"thinking_text"`
-	Signature    string          `json:"signature"`
-	Ms           int64           `json:"ms"`
-	Error        string          `json:"error,omitempty"`
-	Metrics      gateway.Metrics `json:"metrics"`
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Max          int      `json:"max"`
+	Earned       int      `json:"earned"`
+	Half         bool     `json:"half"`
+	Tags         []string `json:"tags"`
+	Prompt       string   `json:"prompt"`
+	Expected     string   `json:"expected"`
+	Answer       string   `json:"answer"`
+	ThinkingText string   `json:"thinking_text"`
+	Signature    string   `json:"signature"`
+	Ms           int64    `json:"ms"`
+	Error        string   `json:"error,omitempty"`
+	// Image is the Q10 chart as a data URI so the report stays verifiable.
+	Image   string          `json:"image,omitempty"`
+	Skipped bool            `json:"skipped,omitempty"`
+	Metrics gateway.Metrics `json:"metrics"`
 }
 
 func New(store *history.Store, opts Options) (*Server, error) {
@@ -345,7 +348,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	}
 	t := &Task{ID: id, ReportID: id, Status: "queued", BaseURL: q.BaseURL, Model: q.Model, CreatedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(history.JobTTL).Unix(), controlHash: controlHash(token), visitorHash: visitorHashOf(r), answers: map[string]QuestionResult{}}
 	rng := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
-	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge()}
+	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge(), iq.GenChart(rng)}
 	t.Verdict.Protocol = q.Protocol
 	t.Verdict.ScoringVersion = "2026-10-02-v6-total"
 	t.Probes = []Probe{{ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}}

@@ -32,9 +32,12 @@ func TestQuestionBatteryIncludesBridgeItem(t *testing.T) {
 	seen := false
 	for _, q := range task.questions {
 		sum += q.MaxScore
+		if q.ID == "Q10" && (q.MaxScore != 20 || len(q.ImagePNG) == 0) {
+			t.Fatalf("Q10 = %+v", q)
+		}
 		if q.ID == "Q9" {
 			seen = true
-			if q.Title != "夜间过桥" || q.Answer != "10" || q.MaxScore != 11 {
+			if q.Title != "夜间过桥" || q.Answer != "10" || q.MaxScore != 8 {
 				t.Fatalf("Q9 = %+v", q)
 			}
 		}
@@ -70,7 +73,7 @@ func TestPublicAuditIQSectionActuallyRunsTheQuestions(t *testing.T) {
 	if !ok {
 		t.Fatalf("per_question type %T", iq["per_question"])
 	}
-	if len(lines) != 9 {
+	if len(lines) != 10 {
 		t.Fatalf("per_question = %d, want 9", len(lines))
 	}
 	for _, line := range lines {
@@ -78,7 +81,7 @@ func TestPublicAuditIQSectionActuallyRunsTheQuestions(t *testing.T) {
 			t.Fatalf("%s did not run: %s", line.ID, line.Error)
 		}
 	}
-	if lines[8].ID != "Q9" {
+	if lines[9].ID != "Q10" {
 		t.Fatalf("last question = %s, want Q9", lines[8].ID)
 	}
 }

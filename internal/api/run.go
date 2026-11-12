@@ -7,6 +7,7 @@ import (
 	"github.com/kiss-kedaya/chanshui/internal/gateway"
 
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/kiss-kedaya/chanshui/internal/inject"
@@ -367,9 +368,9 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		})
 	}
 	for _, question := range t.questions {
-		item := question
+		item := iq.WithChartImage(question)
 		job(item.ID, func() (any, error) {
-			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
+			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
 				if m.StopReason == "max_tokens" || m.StopReason == "length" {
 					return fmt.Errorf("max_tokens: response truncated")
 				}
@@ -400,10 +401,17 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			}
 			m.SSEFrames = nil
 			v := QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Prompt: item.Prompt, Expected: item.Answer, Answer: m.Answer, ThinkingText: m.ThinkingText, Signature: m.Signature, Ms: m.Ms, Tags: []string{}, Metrics: m}
+			if len(item.ImagePNG) > 0 {
+				v.Image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(item.ImagePNG)
+			}
 			// Text evidence already lives on the question, not twice in metrics.
 			v.Metrics.Answer, v.Metrics.ThinkingText, v.Metrics.Signature = "", "", ""
 			if e != nil {
 				v.Error = redact(e.Error(), q.Key)
+				if item.ID == "Q10" && unsupportedImage(v.Error) {
+					v.Skipped = true
+					v.Error = "该模型不接受图片输入，本题不计分"
+				}
 			} else {
 				earned, half, tags := iq.Judge(item, text)
 				if earned == 0 {
@@ -461,10 +469,13 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		if v.ID == "" {
 			v = QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Error: "请求未完成", Tags: []string{}}
 		}
-		if v.Error != "" {
+		if v.Error != "" && !v.Skipped {
 			complete = false
 		}
 		lines = append(lines, v)
+		if v.Skipped {
+			continue
+		}
 		items = append(items, iq.QItem{ID: v.ID, Title: v.Title, Max: v.Max, Earned: v.Earned, Half: v.Half, Tags: v.Tags})
 	}
 	if len(t.questions) > 0 {
@@ -721,4 +732,30 @@ func webPart(v any) (bool, int, bool) {
 	}
 	points, known := boolPart(v)
 	return true, points, known
+}
+
+// questionImages hands Q10's rendered chart to the gateway.
+func questionImages(q iq.Question) []gateway.Image {
+	if len(q.ImagePNG) == 0 {
+		return nil
+	}
+	return []gateway.Image{{MIME: "image/png", Data: q.ImagePNG}}
+}
+
+// unsupportedImage recognises an upstream that rejects inline images, so the
+// vision item is scored "not applicable" instead of nulling the whole IQ
+// section on text-only models.
+// shortcut: keyword match on the 400/422 detail; revisit if upstreams start
+// returning structured error codes.
+func unsupportedImage(msg string) bool {
+	lower := strings.ToLower(msg)
+	if !strings.Contains(lower, "http 400") && !strings.Contains(lower, "http 422") {
+		return false
+	}
+	for _, kw := range []string{"image", "vision", "multimodal", "图片"} {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }

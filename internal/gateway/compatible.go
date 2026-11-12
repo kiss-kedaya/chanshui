@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,19 +19,19 @@ func (c *Client) callCompatibleOnce(ctx context.Context, q CallRequest) (Metrics
 		protocol = q.protocolOverride
 	}
 	base := apiBase(c.BaseURL)
-	messages := []map[string]string{}
+	messages := []map[string]any{}
 	var system strings.Builder
 	for _, b := range q.System {
 		system.WriteString(b.Text)
 		system.WriteByte('\n')
 	}
 	if system.Len() > 0 {
-		messages = append(messages, map[string]string{"role": "system", "content": system.String()})
+		messages = append(messages, map[string]any{"role": "system", "content": system.String()})
 	}
 	for _, message := range q.History {
-		messages = append(messages, map[string]string{"role": message.Role, "content": message.Content})
+		messages = append(messages, map[string]any{"role": message.Role, "content": message.Content})
 	}
-	messages = append(messages, map[string]string{"role": "user", "content": userPlain(q)})
+	messages = append(messages, map[string]any{"role": "user", "content": userWireContent(q, protocol)})
 	body := map[string]any{"model": q.Model, "stream": q.Stream}
 	path := "/chat/completions"
 	if protocol == "responses" {
@@ -401,4 +402,30 @@ func parseCompatibleStream(body io.Reader, protocol string, m *Metrics) error {
 		return fmt.Errorf("upstream stream interrupted")
 	}
 	return nil
+}
+
+// userWireContent renders the prompt plus any inline images in the shape the
+// selected OpenAI-compatible protocol expects.
+func userWireContent(q CallRequest, protocol string) any {
+	text := userPlain(q)
+	if len(q.Images) == 0 {
+		return text
+	}
+	parts := []any{}
+	if protocol == "responses" {
+		parts = append(parts, map[string]any{"type": "input_text", "text": text})
+		for _, img := range q.Images {
+			parts = append(parts, map[string]any{"type": "input_image", "image_url": dataURL(img)})
+		}
+		return parts
+	}
+	parts = append(parts, map[string]any{"type": "text", "text": text})
+	for _, img := range q.Images {
+		parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]string{"url": dataURL(img)}})
+	}
+	return parts
+}
+
+func dataURL(img Image) string {
+	return "data:" + img.MIME + ";base64," + base64.StdEncoding.EncodeToString(img.Data)
 }

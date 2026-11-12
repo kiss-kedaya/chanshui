@@ -10,7 +10,7 @@ const tailLine = "请在最后单独一行以“最终答案: ”开头给出短
 
 func TestGenPill(t *testing.T) {
 	q := GenPill()
-	if q.ID != "Q1" || q.MaxScore != 6 || q.LimitSec != 55 {
+	if q.ID != "Q1" || q.MaxScore != 5 || q.LimitSec != 55 {
 		t.Fatalf("pill meta: %+v", q)
 	}
 	if q.Prompt == "" || strings.Contains(q.Prompt, "\n\n\n") {
@@ -25,7 +25,7 @@ func TestGenColorBlindVariants(t *testing.T) {
 	seen := map[string]int{}
 	for seed := int64(42); seed < 62; seed++ {
 		q := GenColorBlind(newRand(seed))
-		if q.ID != "Q4" || q.MaxScore != 14 || q.LimitSec != 90 {
+		if q.ID != "Q4" || q.MaxScore != 12 || q.LimitSec != 90 {
 			t.Fatalf("Q4 meta: %+v", q)
 		}
 		if q.Answer != "非亲生" {
@@ -55,7 +55,7 @@ func TestGenColorBlindVariants(t *testing.T) {
 
 func TestGenCandyClassicFixed(t *testing.T) {
 	q := GenCandyClassic(newRand(42))
-	if q.ID != "Q6" || q.MaxScore != 16 || q.LimitSec != 120 {
+	if q.ID != "Q6" || q.MaxScore != 12 || q.LimitSec != 120 {
 		t.Fatalf("Q6 meta: %+v", q)
 	}
 	if q.Answer != "21" {
@@ -96,7 +96,7 @@ func TestGenCandyVariant(t *testing.T) {
 	changed := 0
 	for seed := int64(42); seed < 62; seed++ {
 		q := GenCandyVariant(newRand(seed))
-		if q.ID != "Q8" || q.MaxScore != 16 || q.LimitSec != 120 {
+		if q.ID != "Q8" || q.MaxScore != 12 || q.LimitSec != 120 {
 			t.Fatalf("Q8 meta: %+v", q)
 		}
 		if q.Answer == "" {
@@ -137,7 +137,7 @@ func TestGenSocksRejectsFormulaInstances(t *testing.T) {
 	fellBack := 0
 	for seed := int64(42); seed < 62; seed++ {
 		q := GenSocks(newRand(seed))
-		if q.ID != "Q7" || q.MaxScore != 16 || q.LimitSec != 120 {
+		if q.ID != "Q7" || q.MaxScore != 14 || q.LimitSec != 120 {
 			t.Fatalf("Q7 meta: %+v", q)
 		}
 		counts, p, worst, ok := socksParamsOf(q)

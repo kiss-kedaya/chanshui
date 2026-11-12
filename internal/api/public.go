@@ -228,7 +228,7 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if selected["iq"] {
 		rng := mathrand.New(mathrand.NewSource(now.UnixNano()))
-		t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge()}
+		t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge(), iq.GenChart(rng)}
 		for _, item := range t.questions {
 			t.Probes = append(t.Probes, Probe{ID: item.ID, Name: item.Title, Status: "queued"})
 			// 题库按题号报告结果，但选择器只有 iq 这个板块；不展开的话

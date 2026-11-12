@@ -2432,6 +2432,14 @@ tr:hover td {
   white-space: nowrap;
   font-weight: 400;
 }
+.question-image {
+  display: block;
+  max-width: 100%;
+  margin: 10px 0 4px;
+  border: 1px solid #eeece2;
+  border-radius: 8px;
+}
+
 .question h4 {
   font-size: 11px;
   font-weight: 500;

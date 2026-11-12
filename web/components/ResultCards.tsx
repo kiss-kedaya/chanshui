@@ -471,17 +471,27 @@ export default function ResultCards({
                     </span>
                     <b
                       className={
-                        x.error ? "bad" : x.earned === x.max ? "good" : "warn"
+                        x.skipped
+                          ? "warn"
+                          : x.error
+                            ? "bad"
+                            : x.earned === x.max
+                              ? "good"
+                              : "warn"
                       }
                     >
-                      {x.error
-                        ? tr("请求失败")
-                        : x.earned + " / " + x.max + (x.half ? tr("（半分）") : "")}
+                      {x.skipped
+                        ? tr("不适用")
+                        : x.error
+                          ? tr("请求失败")
+                          : x.earned + " / " + x.max + (x.half ? tr("（半分）") : "")}
                     </b>
                   </summary>
-                  {x.error && <ErrorFold text={x.error} />}
+                  {x.skipped && <p>{x.error}</p>}
+                  {x.error && !x.skipped && <ErrorFold text={x.error} />}
                   <h4>{tr("题目")}</h4>
                   <pre>{x.prompt}</pre>
+                  {x.image && <img className="question-image" src={x.image} alt="" />}
                   <h4>{tr("标准结论")}</h4>
                   <pre>{x.expected}</pre>
                   <h4>{tr("模型回答")}</h4>

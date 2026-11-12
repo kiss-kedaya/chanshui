@@ -57,10 +57,10 @@ func TestJudgePill(t *testing.T) {
 		want int
 		half bool
 	}{
-		{"不叫醒，暂缓给药，持药观察", 6, false},
-		{"不喂药，继续观察，他已经睡着", 6, false},
-		{"无需服药，等他自然醒", 6, false},
-		{"暂不给药，先观察呼吸", 6, false},
+		{"不叫醒，暂缓给药，持药观察", 5, false},
+		{"不喂药，继续观察，他已经睡着", 5, false},
+		{"无需服药，等他自然醒", 5, false},
+		{"暂不给药，先观察呼吸", 5, false},
 		{"应该叫醒他再喂一粒", 0, false},
 		{"把老人唤醒补服一片", 0, false},
 		{"可以叫醒，但先喂水", 0, false},
@@ -74,7 +74,7 @@ func TestJudgePill(t *testing.T) {
 	}
 	// “不叫醒” must NOT be treated as a wake action
 	earned, _, _ := Judge(q, "推理……\n最终答案: 不叫醒")
-	if earned != 6 {
+	if earned != 5 {
 		t.Fatalf("不叫醒 must pass, got %d", earned)
 	}
 }
@@ -87,15 +87,15 @@ func TestJudgeColorBlind(t *testing.T) {
 		half bool
 		tag  string
 	}{
-		{"非亲生", 14, false, ""},
-		{"女儿不是亲生的", 14, false, ""},
-		{"不可能是亲生，伴X隐性遗传女儿发病父亲必病", 14, false, ""},
-		{"排除亲生关系", 14, false, ""},
+		{"非亲生", 12, false, ""},
+		{"女儿不是亲生的", 12, false, ""},
+		{"不可能是亲生，伴X隐性遗传女儿发病父亲必病", 12, false, ""},
+		{"排除亲生关系", 12, false, ""},
 		{"亲生的可能性极低", 0, false, ""},
-		{"并非常见的亲生判断，应属非亲生", 14, false, ""},
-		{"红绿色盲是伴X隐性遗传，父亲正常则女儿不该发病", 7, true, "仅遗传链"},
-		{"这是隔代遗传，外公传给女儿", 7, true, "仅遗传链"},
-		{"色盲基因来自外祖父", 7, true, "仅遗传链"},
+		{"并非常见的亲生判断，应属非亲生", 12, false, ""},
+		{"红绿色盲是伴X隐性遗传，父亲正常则女儿不该发病", 6, true, "仅遗传链"},
+		{"这是隔代遗传，外公传给女儿", 6, true, "仅遗传链"},
+		{"色盲基因来自外祖父", 6, true, "仅遗传链"},
 		{"亲生，可能是基因突变", 0, false, ""},
 		{"父亲色觉正常，女儿也正常", 0, false, ""},
 		{"", 0, false, ""},
@@ -121,14 +121,14 @@ func TestJudgeCandyClassic(t *testing.T) {
 		want int
 		half bool
 	}{
-		{"21", 16, false},
-		{"21 颗", 16, false},
-		{"至少 21.0", 16, false},
-		{"二十一", 16, false},
+		{"21", 12, false},
+		{"21 颗", 12, false},
+		{"至少 21.0", 12, false},
+		{"二十一", 12, false},
 		{"0.10 颗", 0, false},
-		{"29", 8, true},
-		{"29 颗", 8, true},
-		{"二十九", 8, true},
+		{"29", 6, true},
+		{"29 颗", 6, true},
+		{"二十九", 6, true},
 		{"30", 0, false},
 		{"8", 0, false},
 	}
@@ -148,12 +148,12 @@ func TestJudgeCandyChainTailFallback(t *testing.T) {
 	// no slot at all; the chain tail ends with the number
 	in := "思考：先算苹果侧……再算桃子侧……综合两种情况，最少需要取 21 颗糖。"
 	earned, half, _ := Judge(q, in)
-	if earned != 16 || half {
+	if earned != 12 || half {
 		t.Fatalf("chain-tail fallback for 21 → (%d,%v), want (16,false)", earned, half)
 	}
 	// markdown-fenced slot still found after stripping
 	earned, _, _ = Judge(q, "```\n算出来是 29\n```\n最终答案: 29")
-	if earned != 8 {
+	if earned != 6 {
 		t.Fatalf("fenced 29 → %d, want 8", earned)
 	}
 }
@@ -174,9 +174,9 @@ func TestJudgeCandyVariant(t *testing.T) {
 			half bool
 			tag  string
 		}{
-			{q.Answer, 16, false, ""},
+			{q.Answer, 12, false, ""},
 			{strconvI(21), 0, false, "疑似套用经典答案"},
-			{formula, 8, true, "替代建模"},
+			{formula, 6, true, "替代建模"},
 		}
 		// solver+1 must be rejected; skip when it collides with 21/25/blind
 		if solver+1 != 21 && solver+1 != blind && solver+1 != 25 {
@@ -232,8 +232,8 @@ func TestJudgeSocks(t *testing.T) {
 			earn int
 			half bool
 		}{
-			{q.Answer, 16, false},
-			{strconvI(formula), 8, true},
+			{q.Answer, 14, false},
+			{strconvI(formula), 7, true},
 			{strconvI(wrong), 0, false},
 		}
 		for _, c := range cases {
@@ -282,12 +282,12 @@ func TestJudgeAnchorLevelDrop(t *testing.T) {
 	}
 	for _, text := range full {
 		score, half, _ := Judge(q, text)
-		if score != 10 || half {
+		if score != 8 || half {
 			t.Fatalf("full %q => %d half=%v", text, score, half)
 		}
 	}
 	score, half, tags := Judge(q, "最终答案: 下降")
-	if score != 5 || !half || len(tags) == 0 {
+	if score != 4 || !half || len(tags) == 0 {
 		t.Fatalf("direction only => %d half=%v tags=%v", score, half, tags)
 	}
 	score, _, _ = Judge(q, "最终答案: 上升")
@@ -312,7 +312,7 @@ func ExampleJudge_slotPriority() {
 	q := GenCandyClassic(newRand(42))
 	e, _, _ := Judge(q, "中间过程提到 29。最终答案: 21")
 	fmt.Println(e)
-	// Output: 16
+	// Output: 12
 }
 
 func mustNum(s string) float64 {
@@ -331,7 +331,7 @@ func TestSocksAnswerSixWithoutSlot(t *testing.T) {
 	q.Answer = "6"
 	q.Tags = []string{"plain"}
 	earned, half, _ := Judge(q, "count the socks\nso the number is 6")
-	if earned != 16 || half {
+	if earned != 14 || half {
 		t.Fatalf("essay 6 -> %d half=%v", earned, half)
 	}
 	earned, _, _ = Judge(q, "mentions 6\n"+"\u6700\u7ec8\u7b54\u6848: 11")

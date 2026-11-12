@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,6 +30,13 @@ type SystemBlock struct {
 	CacheControl *CacheControl
 }
 
+// Image is one inline prompt image; Data is raw bytes and each protocol
+// encodes it as base64 itself.
+type Image struct {
+	MIME string
+	Data []byte
+}
+
 type TextBlock struct {
 	Text         string
 	CacheControl *CacheControl
@@ -45,6 +53,7 @@ type CallRequest struct {
 	Model                  string
 	MaxTokens              int
 	Prompt                 string
+	Images                 []Image
 	PromptCacheControl     *CacheControl
 	UserPrefix             []TextBlock
 	History                []ConversationMessage
@@ -239,7 +248,7 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 			}},
 		)
 	}
-	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: userContent(req.UserPrefix, req.Prompt, req.PromptCacheControl)})
+	wire.Messages = append(wire.Messages, wireMessage{Role: "user", Content: userContent(req.UserPrefix, req.Prompt, req.PromptCacheControl, req.Images)})
 	if req.ToolReply != nil {
 		reply := req.ToolReply
 		wire.Messages = append(wire.Messages, wireMessage{Role: "assistant", Content: []any{map[string]any{"type": "tool_use", "id": reply.Call.ID, "name": reply.Call.Name, "input": reply.Call.Arguments}}}, wireMessage{Role: "user", Content: []any{map[string]any{"type": "tool_result", "tool_use_id": reply.Call.ID, "content": reply.Output}}})
@@ -338,15 +347,25 @@ func messageContent(text string, cache *CacheControl) any {
 	return []any{textPart(text, cache)}
 }
 
-func userContent(prefix []TextBlock, prompt string, promptCache *CacheControl) any {
-	if len(prefix) == 0 {
+func userContent(prefix []TextBlock, prompt string, promptCache *CacheControl, images []Image) any {
+	if len(prefix) == 0 && len(images) == 0 {
 		return messageContent(prompt, promptCache)
 	}
-	blocks := make([]any, 0, len(prefix)+1)
+	blocks := make([]any, 0, len(prefix)+len(images)+1)
 	for _, block := range prefix {
 		blocks = append(blocks, textPart(block.Text, block.CacheControl))
 	}
 	blocks = append(blocks, textPart(prompt, promptCache))
+	for _, img := range images {
+		blocks = append(blocks, map[string]any{
+			"type": "image",
+			"source": map[string]any{
+				"type":       "base64",
+				"media_type": img.MIME,
+				"data":       base64.StdEncoding.EncodeToString(img.Data),
+			},
+		})
+	}
 	return blocks
 }
 

@@ -42,6 +42,8 @@ export interface Question {
   signature: string;
   ms: number;
   error?: string;
+  skipped?: boolean;
+  image?: string;
   metrics: Metrics;
 }
 export interface CapabilityResult {
