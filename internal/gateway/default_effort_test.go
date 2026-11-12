@@ -121,3 +121,27 @@ func TestChatProtocolCarriesReasoningEffort(t *testing.T) {
 		t.Fatalf("metrics effort = %q", m.Effort)
 	}
 }
+
+func TestSuppressDefaultEffortSendsNothing(t *testing.T) {
+	var got map[string]any
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		got = map[string]any{}
+		_ = json.Unmarshal(raw, &got)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1}}`)
+	}))
+	defer up.Close()
+
+	c := Client{BaseURL: up.URL, Key: "sk-test", DefaultEffort: "high"}
+	m, err := c.CallMessages(context.Background(), CallRequest{Model: "deepseek-flash", Prompt: "hi", SuppressDefaultEffort: true})
+	if err != nil || m.Err != "" {
+		t.Fatalf("call: %+v %v", m, err)
+	}
+	if _, ok := got["reasoning_effort"]; ok {
+		t.Fatalf("fingerprint sampling must not carry a reasoning level: %#v", got)
+	}
+	if m.Effort != "" || m.EffortFallback {
+		t.Fatalf("metrics = %+v", m)
+	}
+}

@@ -73,7 +73,7 @@ type behaviorAdapter struct {
 }
 
 func (a behaviorAdapter) Call(ctx context.Context, model, prompt string, max int) (string, error) {
-	m, e := a.g.CallMessages(ctx, gateway.CallRequest{Model: model, Prompt: prompt, MaxTokens: max, Stream: true, TimeoutSeconds: a.timeout})
+	m, e := a.g.CallMessages(ctx, gateway.CallRequest{Model: model, Prompt: prompt, MaxTokens: max, Stream: true, TimeoutSeconds: a.timeout, SuppressDefaultEffort: true})
 	if e != nil {
 		return "", e
 	}
@@ -133,7 +133,7 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 				if ref := bank.NumericModel(q.Model); (ref != nil && ref.ReferenceSamples > 0) || integrity.ModelFamily(q.Model) == "deepseek" {
 					maxTokens = 16384
 				}
-				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: maxTokens, Stream: g.ProtocolFor(q.Model) != "messages", TimeoutSeconds: q.Timeout})
+				m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: ch.Prompt, MaxTokens: maxTokens, Stream: g.ProtocolFor(q.Model) != "messages", TimeoutSeconds: q.Timeout, SuppressDefaultEffort: true})
 				errText := m.Err
 				if e != nil {
 					errText = e.Error()
@@ -297,6 +297,8 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 				t.Verdict.Fingerprint = result
 			case "thinking":
 				t.Verdict.Thinking = result
+			case "vision":
+				t.Verdict.Vision = result
 			}
 			for i := range t.Probes {
 				if t.Probes[i].ID == id {
@@ -368,95 +370,25 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		})
 	}
 	for _, question := range t.questions {
+		if question.ID == "vision" {
+			continue
+		}
 		item := iq.WithChartImage(question)
 		job(item.ID, func() (any, error) {
-			m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
-				if m.StopReason == "max_tokens" || m.StopReason == "length" {
-					return fmt.Errorf("max_tokens: response truncated")
-				}
-				if strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
-					return fmt.Errorf("empty response")
-				}
-				return nil
-			}})
-			if e == nil && m.Err != "" {
-				e = fmt.Errorf("%s", m.Err)
-			}
-			if e == nil && m.StopReason == "max_tokens" {
-				e = fmt.Errorf("输出被 max_tokens 截断，未作为错误答案判分")
-			}
-			text := m.Answer
-			if strings.TrimSpace(text) == "" {
-				if gateway.IsClaude(q.Model) {
-					text = m.ThinkingText
-				}
-			}
-			if e == nil && strings.TrimSpace(text) == "" {
-				e = fmt.Errorf("正文与思考均为空")
-			}
-			if !gateway.IsClaude(q.Model) {
-				m.ThinkingText = ""
-				m.Signature = ""
-				m.SSEFrames = nil
-			}
-			m.SSEFrames = nil
-			v := QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Prompt: item.Prompt, Expected: item.Answer, Answer: m.Answer, ThinkingText: m.ThinkingText, Signature: m.Signature, Ms: m.Ms, Tags: []string{}, Metrics: m}
-			if len(item.ImagePNG) > 0 {
-				v.Image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(item.ImagePNG)
-			}
-			// Text evidence already lives on the question, not twice in metrics.
-			v.Metrics.Answer, v.Metrics.ThinkingText, v.Metrics.Signature = "", "", ""
-			if e != nil {
-				v.Error = redact(e.Error(), q.Key)
-				if item.ID == "Q10" && unsupportedImage(v.Error) {
-					v.Skipped = true
-					v.Error = "该模型不接受图片输入，本题不计分"
-				}
-			} else {
-				earned, half, tags := iq.Judge(item, text)
-				if earned == 0 {
-					grade, ge := g.CallMessages(ctx, gateway.CallRequest{
-						Model: q.Model,
-						History: []gateway.ConversationMessage{
-							{Role: "user", Content: item.Prompt},
-							{Role: "assistant", Content: text},
-						},
-						Prompt:         fmt.Sprintf("评分开始。标准答案是：%s。本题满分 %d。对照你上一轮的回答，完全符合只返回 %d，部分符合返回中间的整数，完全不对返回最低分。返回的是本题得分，不要把标准答案再写一遍。只返回一个整数。", item.Answer, item.MaxScore, item.MaxScore),
-						System:         []gateway.SystemBlock{{Text: "沿用上一轮对话。现在只给自己的上一轮回答打分，只返回一个整数。"}},
-						Thinking:       gradeThinking(q.Model),
-						MaxTokens:      256,
-						Stream:         true,
-						TimeoutSeconds: q.Timeout,
-					})
-					if ge == nil && grade.Err == "" {
-						scored, ok := iq.ParseSelfScore(grade.Answer, item.MaxScore)
-						if !ok && gateway.IsClaude(q.Model) {
-							scored, ok = iq.ParseSelfScore(grade.ThinkingText, item.MaxScore)
-						}
-						if ok {
-							earned = scored
-							half = false
-							if scored > 0 {
-								tags = []string{"自评"}
-							} else {
-								tags = nil
-							}
-						}
-					}
-				}
-				v.Earned = earned
-				v.Half = half
-				if tags == nil {
-					tags = []string{}
-				}
-				v.Tags = tags
-			}
-			raw, _ := json.Marshal(sanitize(v, q.Key))
-			_ = json.Unmarshal(raw, &v)
+			v, e := s.askQuestion(ctx, g, q, item)
 			t.mu.Lock()
 			t.answers[item.ID] = v
 			t.mu.Unlock()
 			return v, e
+		})
+	}
+	if item, ok := visionQuestion(t.questions); ok {
+		job("vision", func() (any, error) {
+			v, e := s.askQuestion(ctx, g, q, item)
+			if v.Skipped {
+				e = nil
+			}
+			return visionResult(item, v, e), e
 		})
 	}
 	wg.Wait()
@@ -465,6 +397,9 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	lines := []QuestionResult{}
 	complete := true
 	for _, item := range t.questions {
+		if item.ID == "vision" {
+			continue
+		}
 		v := t.answers[item.ID]
 		if v.ID == "" {
 			v = QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Error: "请求未完成", Tags: []string{}}
@@ -478,7 +413,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		}
 		items = append(items, iq.QItem{ID: v.ID, Title: v.Title, Max: v.Max, Earned: v.Earned, Half: v.Half, Tags: v.Tags})
 	}
-	if len(t.questions) > 0 {
+	if len(lines) > 0 {
 		score := iq.Score(items)
 		var validScore any
 		if complete {
@@ -507,6 +442,133 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
 	t.mu.Unlock()
 	s.persist(t)
+}
+
+// askQuestion runs one IQ or vision item. It is shared so the standalone
+// vision section never forks the judging and self-score path.
+func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, item iq.Question) (QuestionResult, error) {
+	m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
+		if m.StopReason == "max_tokens" || m.StopReason == "length" {
+			return fmt.Errorf("max_tokens: response truncated")
+		}
+		if strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
+			return fmt.Errorf("empty response")
+		}
+		return nil
+	}})
+	if e == nil && m.Err != "" {
+		e = fmt.Errorf("%s", m.Err)
+	}
+	if e == nil && m.StopReason == "max_tokens" {
+		e = fmt.Errorf("输出被 max_tokens 截断，未作为错误答案判分")
+	}
+	text := m.Answer
+	if strings.TrimSpace(text) == "" {
+		if gateway.IsClaude(q.Model) {
+			text = m.ThinkingText
+		}
+	}
+	if e == nil && strings.TrimSpace(text) == "" {
+		e = fmt.Errorf("正文与思考均为空")
+	}
+	if !gateway.IsClaude(q.Model) {
+		m.ThinkingText = ""
+		m.Signature = ""
+		m.SSEFrames = nil
+	}
+	m.SSEFrames = nil
+	v := QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Prompt: item.Prompt, Expected: item.Answer, Answer: m.Answer, ThinkingText: m.ThinkingText, Signature: m.Signature, Ms: m.Ms, Tags: []string{}, Metrics: m}
+	if len(item.ImagePNG) > 0 {
+		v.Image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(item.ImagePNG)
+	}
+	// Text evidence already lives on the question, not twice in metrics.
+	v.Metrics.Answer, v.Metrics.ThinkingText, v.Metrics.Signature = "", "", ""
+	if e != nil {
+		v.Error = redact(e.Error(), q.Key)
+		if item.ID == "vision" && unsupportedImage(v.Error) {
+			v.Skipped = true
+			v.Error = "该模型不接受图片输入，识图项记 0 分"
+		}
+	} else {
+		earned, half, tags := iq.Judge(item, text)
+		// The chart answer is an exact integer; a self-grade would only make
+		// the correctness half of the vision score softer.
+		if item.ID != "vision" && earned == 0 {
+			grade, ge := g.CallMessages(ctx, gateway.CallRequest{
+				Model: q.Model,
+				History: []gateway.ConversationMessage{
+					{Role: "user", Content: item.Prompt},
+					{Role: "assistant", Content: text},
+				},
+				Prompt:         fmt.Sprintf("评分开始。标准答案是：%s。本题满分 %d。对照你上一轮的回答，完全符合只返回 %d，部分符合返回中间的整数，完全不对返回最低分。返回的是本题得分，不要把标准答案再写一遍。只返回一个整数。", item.Answer, item.MaxScore, item.MaxScore),
+				System:         []gateway.SystemBlock{{Text: "沿用上一轮对话。现在只给自己的上一轮回答打分，只返回一个整数。"}},
+				Thinking:       gradeThinking(q.Model),
+				MaxTokens:      256,
+				Stream:         true,
+				TimeoutSeconds: q.Timeout,
+			})
+			if ge == nil && grade.Err == "" {
+				scored, ok := iq.ParseSelfScore(grade.Answer, item.MaxScore)
+				if !ok && gateway.IsClaude(q.Model) {
+					scored, ok = iq.ParseSelfScore(grade.ThinkingText, item.MaxScore)
+				}
+				if ok {
+					earned = scored
+					half = false
+					if scored > 0 {
+						tags = []string{"自评"}
+					} else {
+						tags = nil
+					}
+				}
+			}
+		}
+		v.Earned = earned
+		v.Half = half
+		if tags == nil {
+			tags = []string{}
+		}
+		v.Tags = tags
+	}
+	raw, _ := json.Marshal(sanitize(v, q.Key))
+	_ = json.Unmarshal(raw, &v)
+	return v, e
+}
+
+func visionQuestion(list []iq.Question) (iq.Question, bool) {
+	for _, q := range list {
+		if q.ID == "vision" {
+			return iq.WithChartImage(q), true
+		}
+	}
+	return iq.Question{}, false
+}
+
+// visionResult scores the two dimensions separately: whether the image was
+// read at all (50) and whether the closing digits were summed correctly (50).
+func visionResult(item iq.Question, v QuestionResult, e error) map[string]any {
+	recognized := e == nil && v.Error == "" && !v.Skipped && iq.NumericAnswer(v.Answer)
+	seen := 0
+	if recognized {
+		seen = 50
+	}
+	answer := 0
+	if item.MaxScore > 0 {
+		answer = (v.Earned*50 + item.MaxScore/2) / item.MaxScore
+	}
+	out := map[string]any{
+		"score": seen + answer, "max": 100,
+		"recognized": recognized, "recognized_score": seen, "recognized_max": 50,
+		"answer_score": answer, "answer_max": 50,
+		"correct": v.Earned == item.MaxScore && !v.Skipped,
+		"half":    v.Half, "earned": v.Earned, "question_max": item.MaxScore,
+		"skipped": v.Skipped, "question": v,
+		"note": "识图 50 分看图片是否被接受并读出一个整数；答对 50 分按 12 根 K 线收盘价的个位数字之和判分，误差 ±2 记一半。",
+	}
+	if v.Error != "" {
+		out["error"] = v.Error
+	}
+	return out
 }
 
 func buildIntegrity(v Verdict, results []QuestionResult, model string, selected map[string]bool) any {
@@ -635,6 +697,24 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 			}
 		}
 	}
+	visionApply := false
+	if selected == nil {
+		visionApply = v.Vision != nil
+	} else {
+		visionApply = selected["vision"]
+	}
+	visionPoints, visionKnown := 0, false
+	if m, ok := v.Vision.(map[string]any); ok {
+		visionKnown = true
+		if errText, _ := m["error"].(string); errText == "" {
+			if n, ok := asInt(m["score"]); ok {
+				visionPoints = n
+			}
+		}
+	}
+	if !visionApply {
+		visionKnown, visionPoints = false, 0
+	}
 	injPoints, injKnown := 0, false
 	if m, ok := v.Injection.(map[string]any); ok {
 		injKnown = true
@@ -690,6 +770,7 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 	return integrity.Compose([]integrity.Part{
 		{Key: "fingerprint", Label: "模型指纹归因", Applicable: want("fingerprint"), Known: fpKnown, Points: fpPoints, MaxPoints: 10},
 		{Key: "iq", Label: "推理表现", Applicable: want("iq"), Known: iqKnown, Points: iqPoints, MaxPoints: 100},
+		{Key: "vision", Label: "识图能力", Applicable: visionApply, Known: visionKnown, Points: visionPoints, MaxPoints: 100},
 		{Key: "injection", Label: "注入大小", Applicable: want("injection"), Known: injKnown, Points: injPoints, MaxPoints: 10},
 		{Key: "tools", Label: "工具调用", Applicable: want("tools"), Known: toolKnown, Points: toolPoints, MaxPoints: 1},
 		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},

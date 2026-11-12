@@ -78,6 +78,7 @@ export default function ResultCards({
   // v0.1.27/28 落库的报告里 signals/asks 可能是 null（后端 nil 切片），
   // 旧报告不会被重写，所以前端必须兜底。
   const knowledge = v.knowledge;
+  const vision = v.vision;
   const integrity = v.integrity;
   const claude = (model || "").toLowerCase().startsWith("claude-");
   const cache = v.cache;
@@ -525,6 +526,80 @@ export default function ResultCards({
           </>
         )}
       </section>
+      {(vision || loading) && (
+        <section className="result-card vision-card">
+          <div className="rc-head">
+            <CardTitle
+              title={tr("识图能力")}
+              label={tr("评分说明")}
+              text={vision?.note}
+            />
+            <span className="rc-score">
+              <ScoreShare verdict={scored} part="vision" />
+              <span className="card-number">05</span>
+            </span>
+          </div>
+          {!vision ? (
+            <ResultSkeleton label={loading ? tr("识图测试中…") : tr("暂无结果")} />
+          ) : (
+            <>
+              <div className="metric-line">
+                <strong className={vision.recognized ? "good" : "bad"}>
+                  {vision.recognized ? tr("识图成功") : tr("识图失败")}
+                </strong>
+                <span>{tr("识图")}</span>
+                <b className="score-chip">
+                  {vision.recognized_score} / {vision.recognized_max}
+                </b>
+              </div>
+              <div className="metric-line">
+                <strong
+                  className={
+                    vision.correct ? "good" : vision.answer_score > 0 ? "warn" : "bad"
+                  }
+                >
+                  {vision.correct
+                    ? tr("答对")
+                    : vision.answer_score > 0
+                      ? tr("部分正确")
+                      : tr("答错")}
+                </strong>
+                <span>{tr("答对")}</span>
+                <b className="score-chip">
+                  {vision.answer_score} / {vision.answer_max}
+                </b>
+              </div>
+              {vision.error && <p className="muted">{tr(vision.error)}</p>}
+              {vision.question && (
+                <details className="question" open>
+                  <summary>
+                    <span>{tr("K线读数")}</span>
+                    <b
+                      className={
+                        vision.correct
+                          ? "good"
+                          : vision.answer_score > 0
+                            ? "warn"
+                            : "bad"
+                      }
+                    >
+                      {vision.earned ?? 0} / {vision.question_max ?? vision.question.max}
+                    </b>
+                  </summary>
+                  <pre>{vision.question.prompt}</pre>
+                  {vision.question.image && (
+                    <img className="question-image" src={vision.question.image} alt="" />
+                  )}
+                  <h4>{tr("标准结论")}</h4>
+                  <pre>{vision.question.expected}</pre>
+                  <h4>{tr("模型回答")}</h4>
+                  <pre>{vision.question.answer || tr("正文为空，使用已返回思考文本判分")}</pre>
+                </details>
+              )}
+            </>
+          )}
+        </section>
+      )}
       {(showCache || cache) && <section className="result-card cache-card">
         <div className="rc-head">
           <h3>{tr("缓存读写验证")}</h3>

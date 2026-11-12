@@ -10,11 +10,11 @@ import (
 
 func TestGenChartMeta(t *testing.T) {
 	q := GenChart(rand.New(rand.NewSource(7)))
-	if q.ID != "Q10" || q.Title != "K线读数" || q.MaxScore != 20 || q.LimitSec != 150 {
-		t.Fatalf("Q10 meta: %+v", q)
+	if q.ID != "vision" || q.Title != "K线读数" || q.MaxScore != 20 || q.LimitSec != 150 {
+		t.Fatalf("vision meta: %+v", q)
 	}
 	if len(q.ImagePNG) == 0 {
-		t.Fatal("Q10 has no image")
+		t.Fatal("vision has no image")
 	}
 	img, err := png.Decode(bytes.NewReader(q.ImagePNG))
 	if err != nil {

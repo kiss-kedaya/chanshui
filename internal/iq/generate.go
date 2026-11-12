@@ -36,7 +36,7 @@ func GenPill() Question {
 		ID:       "Q1",
 		Title:    "安眠药",
 		Prompt:   prompt,
-		MaxScore: 5,
+		MaxScore: 6,
 		LimitSec: 55,
 		Answer:   "不叫醒，暂缓给药，持药观察",
 		Tags:     []string{"安全判断"},
@@ -45,12 +45,12 @@ func GenPill() Question {
 
 // GenCarWash is iqbench Q2, a simple instruction-following control.
 func GenCarWash() Question {
-	return Question{ID: "Q2", Title: "洗车路径", Prompt: "车在楼下，洗车店 4 公里。请问应该如何前往？\n" + answerTail, MaxScore: 4, LimitSec: 45, Answer: "开车去", Tags: []string{"认知反射"}}
+	return Question{ID: "Q2", Title: "洗车路径", Prompt: "车在楼下，洗车店 4 公里。请问应该如何前往？\n" + answerTail, MaxScore: 5, LimitSec: 45, Answer: "开车去", Tags: []string{"认知反射"}}
 }
 
 // GenBatBall is iqbench Q3, the classic bat-and-ball numerical trap.
 func GenBatBall() Question {
-	return Question{ID: "Q3", Title: "球拍与球", Prompt: "球拍和球一共 1.10 元，球拍比球贵 1 元。球多少钱？\n" + answerTail, MaxScore: 5, LimitSec: 45, Answer: "0.05", Tags: []string{"认知反射", "数值等价"}}
+	return Question{ID: "Q3", Title: "球拍与球", Prompt: "球拍和球一共 1.10 元，球拍比球贵 1 元。球多少钱？\n" + answerTail, MaxScore: 6, LimitSec: 45, Answer: "0.05", Tags: []string{"认知反射", "数值等价"}}
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ func GenColorBlind(r *rand.Rand) Question {
 		ID:       "Q4",
 		Title:    "红绿色盲",
 		Prompt:   prompt,
-		MaxScore: 12,
+		MaxScore: 14,
 		LimitSec: 90,
 		Answer:   "非亲生",
 		Tags:     []string{"伴X隐性遗传", "参数化"},
@@ -88,7 +88,7 @@ func GenColorBlind(r *rand.Rand) Question {
 // GenAnchor is iqbench Q5. Full credit requires 水位下降, or the direction plus its
 // displacement/weighting explanation; direction alone receives half credit.
 func GenAnchor() Question {
-	return Question{ID: "Q5", Title: "船锚水位", Prompt: "船停在池塘中，铁锚原本在船上，后来被扔进池底。池塘水位会上升、下降，还是不变？请说明理由。\n" + answerTail, MaxScore: 8, LimitSec: 60, Answer: "下降", Tags: []string{"多步科学演绎"}}
+	return Question{ID: "Q5", Title: "船锚水位", Prompt: "船停在池塘中，铁锚原本在船上，后来被扔进池底。池塘水位会上升、下降，还是不变？请说明理由。\n" + answerTail, MaxScore: 10, LimitSec: 60, Answer: "下降", Tags: []string{"多步科学演绎"}}
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ func GenBridge() Question {
 		ID:       "Q9",
 		Title:    "夜间过桥",
 		Prompt:   prompt,
-		MaxScore: 8,
+		MaxScore: 11,
 		LimitSec: 75,
 		Answer:   "10",
 		Tags:     []string{"最坏情况优化", "定向支架"},
@@ -209,7 +209,7 @@ func GenCandyClassic(r *rand.Rand) Question {
 		ID:       "Q6",
 		Title:    "经典糖果",
 		Prompt:   candyPrompt(7, 9, 8, 7, 6, 4, true),
-		MaxScore: 12,
+		MaxScore: 16,
 		LimitSec: 120,
 		Answer:   "21",
 		Tags:     []string{"最坏情况保证"},
@@ -235,7 +235,7 @@ func GenCandyVariant(r *rand.Rand) Question {
 		ID:       "Q8",
 		Title:    "糖果变体",
 		Prompt:   candyPrompt(circ[0], circ[1], circ[2], star[0], star[1], star[2], true),
-		MaxScore: 12,
+		MaxScore: 16,
 		LimitSec: 120,
 		Answer:   strconv.Itoa(ans),
 		Tags: []string{"最坏情况保证", "参数化",
@@ -396,7 +396,7 @@ func GenSocks(r *rand.Rand) Question {
 		ID:       "Q7",
 		Title:    "袜子配对",
 		Prompt:   prompt,
-		MaxScore: 14,
+		MaxScore: 16,
 		LimitSec: 120,
 		Answer:   strconv.Itoa(worst),
 		Tags:     tags,

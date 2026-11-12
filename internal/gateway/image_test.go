@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// Q10 only works if every protocol carries the PNG as an inline image.
+// The vision item only works if every protocol carries the PNG as an inline image.
 func TestInlineImagesPerProtocol(t *testing.T) {
 	img := Image{MIME: "image/png", Data: []byte{1, 2, 3}}
 	cases := []struct {

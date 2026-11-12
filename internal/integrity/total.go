@@ -25,11 +25,12 @@ type Total struct {
 	Reason string `json:"reason"`
 }
 
-// Raw weights. Fingerprint is the largest share. The seven weights sum to 100
+// Raw weights. Fingerprint is the largest share. The eight weights sum to 100
 // when cache and thinking both apply; otherwise they are rescaled.
 var sectionWeight = map[string]int{
 	"fingerprint": 30,
-	"iq":          25,
+	"iq":          20,
+	"vision":      15,
 	"injection":   12,
 	"tools":       8,
 	"web":         6,

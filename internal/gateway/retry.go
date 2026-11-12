@@ -44,7 +44,7 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 	// 不指定，而不是把整条探针判成失败。
 	effortUsed := ""
 	effortFallback := false
-	autoEffort := q.Effort == "" && c.DefaultEffort != ""
+	autoEffort := q.Effort == "" && !q.SuppressDefaultEffort && c.DefaultEffort != ""
 	if autoEffort {
 		q.Effort = c.DefaultEffort
 	}

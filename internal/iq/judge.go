@@ -43,6 +43,20 @@ func ExtractAnswer(text string) (slot, chainTail string) {
 	return rest, chainTail
 }
 
+// NumericAnswer reports whether the answer slot or the tail contains a
+// number. The vision section uses it to tell "saw the chart" from "request
+// failed" without reimplementing the answer parser.
+func NumericAnswer(fullText string) bool {
+	slot, tail := ExtractAnswer(fullText)
+	if slot != "" {
+		if _, err := parseNum(slot); err == nil {
+			return true
+		}
+	}
+	_, err := parseNum(tail)
+	return err == nil
+}
+
 func indexRune(s string, r rune) int {
 	for i, c := range s {
 		if c == r {
@@ -192,7 +206,7 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 		earned, half, tags = judgeSocks(q, text, tail)
 	case "Q9":
 		earned, half, tags = judgeBridge(text, tail)
-	case "Q10":
+	case "vision":
 		earned, half, tags = judgeChart(q, text, tail)
 	default:
 		return 0, false, nil
@@ -253,7 +267,7 @@ var carWashFailRe = regexp.MustCompile(`走路|步行|打车|出租|骑车|骑�
 
 func judgeCarWash(text string) (int, bool, []string) {
 	if carWashPassRe.MatchString(text) && !carWashFailRe.MatchString(text) {
-		return 4, false, nil
+		return 5, false, nil
 	}
 	return 0, false, nil
 }
@@ -261,7 +275,7 @@ func judgeCarWash(text string) (int, bool, []string) {
 func judgeBatBall(text string) (int, bool, []string) {
 	v, err := parseNum(text)
 	if err == nil && numEq(v, 0.05) {
-		return 5, false, nil
+		return 6, false, nil
 	}
 	return 0, false, nil
 }
@@ -273,15 +287,15 @@ var anchorUpRe = regexp.MustCompile(`上升|不变|不会下降|没有下降|未
 
 func judgeAnchor(text, tail string) (int, bool, []string) {
 	if anchorLevelDownRe.MatchString(text) || (anchorLevelDownRe.MatchString(tail) && !anchorUpRe.MatchString(text)) {
-		return 8, false, nil
+		return 10, false, nil
 	}
 	if !anchorDownRe.MatchString(text) {
 		return 0, false, nil
 	}
 	if anchorReasonRe.MatchString(text) {
-		return 8, false, nil
+		return 10, false, nil
 	}
-	return 4, true, []string{"只答方向"}
+	return 5, true, []string{"只答方向"}
 }
 
 var pillPassRe = regexp.MustCompile(`不叫醒|不喂|暂缓(?:给药|发放|发药|用药)|持药观察|无需服药|不给药|不发药|不發药|不必吃药|已经睡着就不用|暂不给药|无必要叫醒|没必要叫醒`)
@@ -296,7 +310,7 @@ func judgePill(text string) (int, bool, []string) {
 		return 0, false, nil
 	}
 	if pillPassRe.MatchString(text) && !pillWakeRe.MatchString(pillNegWakeRe.ReplaceAllString(text, "")) {
-		return 5, false, nil
+		return 6, false, nil
 	}
 	return 0, false, nil
 }
@@ -313,10 +327,10 @@ func judgeColorBlind(text string) (int, bool, []string) {
 		return 0, false, nil
 	}
 	if cbFullRe.MatchString(text) {
-		return 12, false, nil
+		return 14, false, nil
 	}
 	if cbChainRe.MatchString(text) {
-		return 6, true, []string{"仅遗传链"}
+		return 7, true, []string{"仅遗传链"}
 	}
 	// (亲生|正常) without negation → 0 (affirmation is wrong)
 	stripped := cbNegPrefix.ReplaceAllString(text, "")
@@ -354,7 +368,7 @@ func judgeCandy(q Question, text, tail string) (int, bool, []string) {
 		_ = usedTail
 	}
 	if numEq(v, float64(solver)) {
-		return 12, false, nil
+		return 16, false, nil
 	}
 	if q.ID == "Q8" && numEq(v, 21) {
 		// 21 is the classic's (often non-optimal here) guarantee — parroting
@@ -362,7 +376,7 @@ func judgeCandy(q Question, text, tail string) (int, bool, []string) {
 		return 0, false, []string{"疑似套用经典答案"}
 	}
 	if numEq(v, float64(blind)) {
-		return 6, true, []string{"替代建模"}
+		return 8, true, []string{"替代建模"}
 	}
 	return 0, false, nil
 }
@@ -380,7 +394,7 @@ func judgeBridge(text, tail string) (int, bool, []string) {
 		v = tv
 	}
 	if numEq(v, 10) {
-		return 8, false, nil
+		return 11, false, nil
 	}
 	if numEq(v, 17) {
 		return 0, false, []string{"忽略定向支架"}
@@ -403,10 +417,10 @@ func judgeSocks(q Question, text, tail string) (int, bool, []string) {
 		v = tv
 	}
 	if numEq(v, float64(worst)) {
-		return 14, false, nil
+		return 16, false, nil
 	}
 	if numEq(v, float64(formula)) {
-		return 7, true, []string{"替代建模"}
+		return 8, true, []string{"替代建模"}
 	}
 	return 0, false, nil
 }
@@ -443,7 +457,7 @@ func variantStockOf(q Question) (circ, star [3]int) {
 	return [3]int{}, [3]int{}
 }
 
-// judgeChart scores Q10. The answer is the sum of the closing prices' units
+// judgeChart scores the vision item. The answer is the sum of the closing prices' units
 // digits, which only exists inside the generated image. A one-or-two unit
 // miss is a reading slip worth the half flag; anything else is a miss.
 func judgeChart(q Question, text, tail string) (int, bool, []string) {

@@ -128,12 +128,30 @@ export interface TotalVerdict {
   reason: string;
   parts: TotalPart[];
 }
+export interface VisionVerdict {
+  score: number | null;
+  max: number;
+  recognized: boolean;
+  recognized_score: number;
+  recognized_max: number;
+  answer_score: number;
+  answer_max: number;
+  correct: boolean;
+  half?: boolean;
+  earned?: number;
+  question_max?: number;
+  skipped?: boolean;
+  question?: Question;
+  note?: string;
+  error?: string;
+}
 export interface DetectVerdict {
   timing?: { started_at: string; finished_at?: string; total_ms: number; last_run_ms: number; runs: number };
   protocol?: string;
   tools?: CapabilityResult | null;
   web?: CapabilityResult | null;
   knowledge?: KnowledgeVerdict | null;
+  vision?: VisionVerdict | null;
   integrity?: IntegrityVerdict | null;
   total?: TotalVerdict | null;
   cache?: {

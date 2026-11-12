@@ -43,13 +43,16 @@ type TextBlock struct {
 }
 
 type CallRequest struct {
-	Validate               func(Metrics) error
-	ToolReply              *ToolReply
-	Tools                  []ToolDefinition
-	ForceTool              string
-	WebSearch              bool
-	protocolOverride       string
-	Effort                 string
+	Validate         func(Metrics) error
+	ToolReply        *ToolReply
+	Tools            []ToolDefinition
+	ForceTool        string
+	WebSearch        bool
+	protocolOverride string
+	Effort           string
+	// SuppressDefaultEffort keeps the client-wide default out of this request.
+	// Fingerprint sampling must not add a reasoning level of its own.
+	SuppressDefaultEffort  bool
 	Model                  string
 	MaxTokens              int
 	Prompt                 string

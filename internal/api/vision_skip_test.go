@@ -9,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/kiss-kedaya/chanshui/internal/history"
+	"github.com/kiss-kedaya/chanshui/internal/iq"
 )
 
-// A text-only upstream rejects Q10's image. That must mark only Q10 as not
-// applicable; the rest of the IQ paper still scores.
-func TestVisionUnsupportedSkipsOnlyQ10(t *testing.T) {
+// A text-only upstream rejects the vision image. The vision section records
+// zero recognition while the IQ paper still scores on its own.
+func TestVisionUnsupportedScoresZero(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			fmt.Fprint(w, `{"data":[{"id":"claude-opus-5"}]}`)
@@ -62,20 +63,51 @@ func TestVisionUnsupportedSkipsOnlyQ10(t *testing.T) {
 		t.Fatalf("missing IQ verdict: %#v", task.Verdict.IQ)
 	}
 	if done, _ := iq["complete"].(bool); !done {
-		t.Fatalf("skipping Q10 must not mark the paper incomplete: %#v", iq)
+		t.Fatalf("the vision item must not mark the IQ paper incomplete: %#v", iq)
 	}
 	if _, ok := asInt(iq["score"]); !ok {
 		t.Fatalf("paper score missing: %#v", iq["score"])
 	}
 	lines, _ := iq["per_question"].([]QuestionResult)
-	if len(lines) != 10 {
-		t.Fatalf("per_question = %d, want 10", len(lines))
+	if len(lines) != 9 {
+		t.Fatalf("per_question = %d, want 9", len(lines))
 	}
-	last := lines[9]
-	if last.ID != "Q10" || !last.Skipped {
-		t.Fatalf("Q10 not marked skipped: %+v", last)
+	vision, ok := task.Verdict.Vision.(map[string]any)
+	if !ok {
+		t.Fatalf("missing vision verdict: %#v", task.Verdict.Vision)
 	}
-	if !strings.Contains(last.Error, "图片") {
-		t.Fatalf("skip reason lost: %q", last.Error)
+	if skipped, _ := vision["skipped"].(bool); !skipped {
+		t.Fatalf("vision not marked skipped: %#v", vision)
+	}
+	if recognized, _ := vision["recognized"].(bool); recognized {
+		t.Fatalf("a rejected image cannot count as recognized: %#v", vision)
+	}
+	if n, _ := asInt(vision["score"]); n != 0 {
+		t.Fatalf("skipped vision score = %d, want 0", n)
+	}
+	if reason, _ := vision["error"].(string); !strings.Contains(reason, "图片") {
+		t.Fatalf("skip reason lost: %q", reason)
+	}
+}
+
+func TestVisionResultScoresTwoDimensions(t *testing.T) {
+	item := iq.Question{ID: "vision", MaxScore: 20}
+	cases := []struct {
+		name       string
+		result     QuestionResult
+		recognized bool
+		score      int
+	}{
+		{"exact", QuestionResult{ID: "vision", Answer: "66", Earned: 20}, true, 100},
+		{"near", QuestionResult{ID: "vision", Answer: "64", Earned: 10, Half: true}, true, 75},
+		{"wrong but seen", QuestionResult{ID: "vision", Answer: "12", Earned: 0}, true, 50},
+		{"no number", QuestionResult{ID: "vision", Answer: "看不懂"}, false, 0},
+		{"skipped", QuestionResult{ID: "vision", Skipped: true, Error: "该模型不接受图片输入，识图项记 0 分"}, false, 0},
+	}
+	for _, tc := range cases {
+		out := visionResult(item, tc.result, nil)
+		if out["recognized"] != tc.recognized || out["score"] != tc.score {
+			t.Fatalf("%s: %+v", tc.name, out)
+		}
 	}
 }

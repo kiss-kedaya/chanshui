@@ -24,12 +24,12 @@ func TestBuildTotalFullPassAndDilutedFingerprint(t *testing.T) {
 	}
 	v.Fingerprint = map[string]any{"family": "claude", "top_model": "claude-sonnet-4-5", "used_outputs": 3}
 	total = buildTotal(v, "claude-opus-4-6")
-	if total.Score != 67 {
+	if total.Score != 65 {
 		t.Fatalf("diluted score %d", total.Score)
 	}
 	v.Fingerprint = map[string]any{"family": "claude", "top_model": "claude-opus-4-6", "used_outputs": 0}
 	total = buildTotal(v, "claude-opus-4-6")
-	if total.Score != 67 {
+	if total.Score != 65 {
 		t.Fatalf("empty fingerprint score %d", total.Score)
 	}
 }
@@ -52,7 +52,7 @@ func TestBuildTotalLowConfidenceTieIsNotDiluted(t *testing.T) {
 		t.Fatalf("low-confidence tie scored %d, want 100", total.Score)
 	}
 	v.Fingerprint = map[string]any{"family": "gpt", "top_model": "gpt-6-astra", "top_prob": 0.95, "used_outputs": 3, "low_confidence": false}
-	if total := buildTotal(v, "gpt-6.1-sol"); total.Score != 65 {
+	if total := buildTotal(v, "gpt-6.1-sol"); total.Score != 62 {
 		t.Fatalf("confident mismatch scored %d, want 65", total.Score)
 	}
 }

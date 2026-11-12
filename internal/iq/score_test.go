@@ -138,7 +138,7 @@ func TestScoreFromRealJudges(t *testing.T) {
 	items[4].Earned = 7
 	items[4].Half = true
 	items[4].Tags = []string{"替代建模"}
-	if got := Score(items).Score; got != 75 {
+	if got := Score(items).Score; got != 76 {
 		t.Fatalf("Q7-half Score = %d, want 76", got)
 	}
 }

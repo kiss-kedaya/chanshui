@@ -10,6 +10,7 @@ func TestComposeFullClaudeWithCacheIs100(t *testing.T) {
 	r := Compose([]Part{
 		full("fingerprint", "模型指纹归因", 10),
 		full("iq", "推理表现", 100),
+		full("vision", "识图能力", 100),
 		full("injection", "注入大小", 10),
 		full("tools", "工具调用", 1),
 		full("web", "联网检测", 1),
@@ -25,7 +26,7 @@ func TestComposeFullClaudeWithCacheIs100(t *testing.T) {
 		got[p.Key] = p.Coefficient
 		sum += p.Contribution
 	}
-	if sum != 100 || got["fingerprint"] != 33 || got["iq"] != 28 || got["injection"] != 13 || got["tools"] != 9 || got["web"] != 7 || got["thinking"] != 6 || got["cache"] != 4 {
+	if sum != 100 || got["fingerprint"] != 30 || got["iq"] != 20 || got["vision"] != 15 || got["injection"] != 12 || got["tools"] != 8 || got["web"] != 6 || got["thinking"] != 5 || got["cache"] != 4 {
 		t.Fatalf("coeffs %+v sum %d", got, sum)
 	}
 }
@@ -77,7 +78,7 @@ func TestComposeFingerprintMissAndPartialInjection(t *testing.T) {
 			inj = p.Contribution
 		}
 	}
-	if fp != 0 || inj <= 0 || inj >= 13 || r.Score >= 100 {
+	if fp != 0 || inj <= 0 || inj >= 22 || r.Score >= 100 {
 		t.Fatalf("score %d fp %d inj %d", r.Score, fp, inj)
 	}
 }

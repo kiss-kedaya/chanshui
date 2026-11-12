@@ -7,7 +7,7 @@ import (
 
 func TestGenBridge(t *testing.T) {
 	q := GenBridge()
-	if q.ID != "Q9" || q.Title != "夜间过桥" || q.MaxScore != 8 || q.LimitSec != 75 {
+	if q.ID != "Q9" || q.Title != "夜间过桥" || q.MaxScore != 11 || q.LimitSec != 75 {
 		t.Fatalf("Q9 meta: %+v", q)
 	}
 	if q.Answer != "10" {
@@ -27,10 +27,10 @@ func TestJudgeBridge(t *testing.T) {
 		half bool
 		tag  string
 	}{
-		{"10", 8, false, ""},
-		{"10分钟", 8, false, ""},
-		{"最终答案: 10", 8, false, ""},
-		{"**10**", 8, false, ""},
+		{"10", 11, false, ""},
+		{"10分钟", 11, false, ""},
+		{"最终答案: 10", 11, false, ""},
+		{"**10**", 11, false, ""},
 		{"17", 0, false, "忽略定向支架"},
 		{"最终答案: 17", 0, false, "忽略定向支架"},
 		{"13", 0, false, ""},

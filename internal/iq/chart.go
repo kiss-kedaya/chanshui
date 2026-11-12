@@ -192,7 +192,7 @@ func drawChart(bars [][4]int) []byte {
 	return buf.Bytes()
 }
 
-// GenChart is Q10: a freshly randomized K-line chart plus the sum of the
+// GenChart is the standalone vision section: a freshly randomized K-line chart plus the sum of the
 // closing prices' units digits. The answer is only in the image, so a model
 // that cannot see it cannot shortcut the item.
 func GenChart(r *rand.Rand) Question {
@@ -211,7 +211,7 @@ func chartFromSeed(seed int64) Question {
 		"把图中 %d 根 K 线「收盘价的个位数字」全部相加。禁止联网、使用工具或写代码计算。只回答本题，不请求提示。最后单独一行以“最终答案: ”开头只写这个整数，不要单位、解释、标点或代码块。",
 		len(bars), len(bars), len(bars))
 	return Question{
-		ID:       "Q10",
+		ID:       "vision",
 		Title:    "K线读数",
 		Prompt:   prompt,
 		MaxScore: 20,
@@ -225,7 +225,7 @@ func chartFromSeed(seed int64) Question {
 // WithChartImage restores the image after a report is reloaded from the
 // database (the PNG is not persisted; the seed is).
 func WithChartImage(q Question) Question {
-	if len(q.ImagePNG) > 0 || q.ID != "Q10" {
+	if len(q.ImagePNG) > 0 || q.ID != "vision" {
 		return q
 	}
 	for _, tag := range q.Tags {

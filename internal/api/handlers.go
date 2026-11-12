@@ -85,6 +85,7 @@ type Verdict struct {
 	Hidden         any     `json:"hidden"`
 	Fingerprint    any     `json:"fingerprint"`
 	Thinking       any     `json:"thinking"`
+	Vision         any     `json:"vision"`
 	Cache          any     `json:"cache"`
 	Knowledge      any     `json:"knowledge"`
 	Integrity      any     `json:"integrity"`
@@ -351,7 +352,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge(), iq.GenChart(rng)}
 	t.Verdict.Protocol = q.Protocol
 	t.Verdict.ScoringVersion = "2026-10-02-v6-total"
-	t.Probes = []Probe{{ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}}
+	t.Probes = []Probe{{ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}, {ID: "vision", Name: "识图能力", Status: "queued"}}
 	if q.Cache {
 		t.Probes = append(t.Probes[:2], append([]Probe{{ID: "cache", Name: "缓存读写验证", Status: "queued"}}, t.Probes[2:]...)...)
 	}
@@ -359,6 +360,9 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 		t.Probes = append(t.Probes, Probe{ID: "thinking", Name: "思维链回传", Status: "queued"})
 	}
 	for _, item := range t.questions {
+		if item.ID == "vision" {
+			continue
+		}
 		t.Probes = append(t.Probes, Probe{ID: item.ID, Name: item.Title, Status: "queued"})
 	}
 	ctx, cancel := s.executionContext(q, t.ExpiresAt)

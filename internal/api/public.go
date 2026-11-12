@@ -16,7 +16,7 @@ import (
 
 const publicRate = time.Minute
 
-var publicSectionOrder = []string{"fingerprint", "injection", "cache", "tools", "web", "knowledge", "thinking", "iq"}
+var publicSectionOrder = []string{"fingerprint", "injection", "cache", "tools", "web", "knowledge", "thinking", "iq", "vision"}
 
 func clientHost(r *http.Request) string {
 	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("CF-Connecting-IP"))); ip != nil {
@@ -219,6 +219,7 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 	names := map[string]string{
 		"fingerprint": "模型指纹归因", "injection": "注入大小", "cache": "缓存读写验证",
 		"tools": "工具调用检测", "web": "联网检测", "knowledge": "知识截止日期", "thinking": "思维链回传",
+		"vision": "识图能力",
 	}
 	for _, section := range orderedSections(selected) {
 		if section == "iq" {
@@ -226,15 +227,18 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		t.Probes = append(t.Probes, Probe{ID: section, Name: names[section], Status: "queued"})
 	}
+	rng := mathrand.New(mathrand.NewSource(now.UnixNano()))
 	if selected["iq"] {
-		rng := mathrand.New(mathrand.NewSource(now.UnixNano()))
-		t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge(), iq.GenChart(rng)}
+		t.questions = append(t.questions, iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge())
 		for _, item := range t.questions {
 			t.Probes = append(t.Probes, Probe{ID: item.ID, Name: item.Title, Status: "queued"})
 			// 题库按题号报告结果，但选择器只有 iq 这个板块；不展开的话
 			// run() 会按题号过滤，公共接口的推理题一道都不会执行。
 			selected[item.ID] = true
 		}
+	}
+	if selected["vision"] {
+		t.questions = append(t.questions, iq.GenChart(rng))
 	}
 	ctx, cancel := s.executionContext(q, t.ExpiresAt)
 	t.cancel = cancel
@@ -292,13 +296,13 @@ func (s *Server) publicGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func publicOpenAPI() map[string]any {
-	sectionEnum := []any{"fingerprint", "injection", "cache", "tools", "web", "knowledge", "thinking", "iq"}
+	sectionEnum := []any{"fingerprint", "injection", "cache", "tools", "web", "knowledge", "thinking", "iq", "vision"}
 	return map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{
 			"title":       "掺水？公共检测 API",
 			"version":     "v1",
-			"description": "给 Agent 和接入方调用。POST /api/v1/audits 每个客户端 IP 每 60 秒 1 次。轮询不计数。结果只留在内存 24 小时，不写入全站检测历史。省略 sections 或传 all 时跑全部板块，包含缓存。非 claude- 模型会跳过 thinking。只传 thinking 且模型不是 claude- 前缀时返回 400。总分只按本次选中的板块重算到 100。知识截止日期不进总分。",
+			"description": "给 Agent 和接入方调用。POST /api/v1/audits 每个客户端 IP 每 60 秒 1 次。轮询不计数。结果只留在内存 24 小时，不写入全站检测历史。省略 sections 或传 all 时跑全部板块，包含缓存和识图。非 claude- 模型会跳过 thinking。只传 thinking 且模型不是 claude- 前缀时返回 400。总分只按本次选中的板块重算到 100。知识截止日期不进总分。",
 		},
 		"servers": []any{map[string]any{"url": "/"}},
 		"paths": map[string]any{
