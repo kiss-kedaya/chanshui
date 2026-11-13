@@ -208,7 +208,7 @@ func (s *Server) numeric(ctx context.Context, g gateway.Client, q Request) (any,
 	}
 	out := map[string]any{"basis": "numeric", "family": family, "family_name": familyName, "family_prob": a.FamilyProb, "top_model": a.TopModel, "top_display": topDisplay, "top_prob": a.TopProb, "results": res, "used_outputs": a.UsedOutputs, "requests": requests, "low_confidence": a.LowConfidence || a.UsedOutputs < minSamples, "sample_min": minSamples, "sample_limit": maxSamples, "confidence_target": confidenceTarget, "confidence_reached": a.TopProb >= confidenceTarget, "evidence": evidence, "note": note}
 	if ref := bank.NumericModel(a.TopModel); ref != nil && ref.ReferenceSamples > 0 {
-		out["reference"] = map[string]any{"source": ref.ReferenceSource, "training_samples": ref.ReferenceSamples, "aliases": ref.Aliases, "calibration": "inherited_candidate_weights_not_recalibrated"}
+		out["reference"] = map[string]any{"training_samples": ref.ReferenceSamples, "aliases": ref.Aliases, "calibration": "inherited_candidate_weights_not_recalibrated"}
 	}
 	if ctx.Err() != nil {
 		return out, ctx.Err()

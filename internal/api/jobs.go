@@ -198,6 +198,11 @@ func (s *Server) authorize(r *http.Request, t *Task) bool {
 func (s *Server) fromRecord(r *history.Record) *Task {
 	t := &Task{ID: r.ReportID, ReportID: r.ReportID, HistoryID: r.ID, CreatedAt: r.CreatedAt, BaseURL: r.BaseURL, Model: r.Model, Status: r.Status, ExpiresAt: r.ExpiresAt}
 	json.Unmarshal(r.Verdict, &t.Verdict)
+	if fp, ok := t.Verdict.Fingerprint.(map[string]any); ok {
+		if ref, ok := fp["reference"].(map[string]any); ok {
+			delete(ref, "source")
+		}
+	}
 	json.Unmarshal(r.Progress, &t.Probes)
 	json.Unmarshal(r.Questions, &t.questions)
 	t.answers = map[string]QuestionResult{}

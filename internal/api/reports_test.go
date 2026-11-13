@@ -93,7 +93,7 @@ func TestHistoryAndReportsNeverExposeUpstreamSite(t *testing.T) {
 	base := "https://private-gateway.example:9443/prefix/v1?token=should-not-return"
 	historyID, err := s.store.CreateJob(context.Background(), history.Record{
 		ReportID: id, CreatedAt: time.Now().UTC().Format(time.RFC3339),
-		BaseURL: base, Model: "claude-opus-5", Verdict: json.RawMessage(`{"protocol":"anthropic"}`),
+		BaseURL: base, Model: "claude-opus-5", Verdict: json.RawMessage(`{"protocol":"anthropic","fingerprint":{"reference":{"source":"https://api.deepseek.com","training_samples":36}}}`),
 	}, json.RawMessage(`[]`), controlHash(key), "")
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestHistoryAndReportsNeverExposeUpstreamSite(t *testing.T) {
 			}
 			body := w.Body.String()
 			if strings.Contains(body, "private-gateway.example") || strings.Contains(body, "/prefix/v1") ||
-				strings.Contains(body, ":9443") || strings.Contains(body, `"base_url"`) || strings.Contains(body, `"host"`) {
+				strings.Contains(body, ":9443") || strings.Contains(body, "api.deepseek.com") || strings.Contains(body, `"base_url"`) || strings.Contains(body, `"host"`) {
 				t.Fatalf("%s leaked upstream site: %s", path, body)
 			}
 		}
@@ -156,6 +156,15 @@ func TestHistoryDefaultsToTenAndPaginates(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &next)
 	if len(next) != 2 {
 		t.Fatalf("second page = %d, want 2", len(next))
+	}
+	var capped []history.Summary
+	w = getJSON(t, s.Handler(), "/api/history?limit=50")
+	if w.Code != 200 {
+		t.Fatalf("history capped: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &capped)
+	if len(capped) != 10 {
+		t.Fatalf("limit=50 page = %d, want 10", len(capped))
 	}
 }
 

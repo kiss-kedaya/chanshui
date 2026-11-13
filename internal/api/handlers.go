@@ -544,7 +544,7 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	n, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if n < 1 || n > 50 {
+	if n < 1 || n > 10 {
 		n = 10
 	}
 	before := int64(0)
@@ -614,8 +614,35 @@ func reportPayload(id int64, reportID, model, createdAt, status string, expiresA
 		"id": id, "report_id": reportID, "job_id": reportID,
 		"model":      model,
 		"created_at": createdAt, "status": status, "expires_at": expiresAt,
-		"probes": probes, "verdict_json": verdict,
+		"probes": probes, "verdict_json": scrubReferenceSource(verdict),
 	}
+}
+
+// 旧快照把采集端点写进了 reference.source，出站前统一摘掉。
+func scrubReferenceSource(verdict json.RawMessage) json.RawMessage {
+	var doc map[string]json.RawMessage
+	if len(verdict) == 0 || json.Unmarshal(verdict, &doc) != nil {
+		return verdict
+	}
+	var fp map[string]json.RawMessage
+	if raw, ok := doc["fingerprint"]; !ok || json.Unmarshal(raw, &fp) != nil {
+		return verdict
+	}
+	var ref map[string]json.RawMessage
+	if raw, ok := fp["reference"]; !ok || json.Unmarshal(raw, &ref) != nil {
+		return verdict
+	}
+	if _, ok := ref["source"]; !ok {
+		return verdict
+	}
+	delete(ref, "source")
+	fp["reference"], _ = json.Marshal(ref)
+	doc["fingerprint"], _ = json.Marshal(fp)
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return verdict
+	}
+	return out
 }
 
 // setReportCacheHeaders keeps running and retryable reports uncached while
