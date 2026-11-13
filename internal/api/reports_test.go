@@ -36,10 +36,9 @@ func TestSavedReportShareIndependentFromTask(t *testing.T) {
 	}
 	var detail struct {
 		ReportID string `json:"report_id"`
-		Host     string `json:"host"`
 	}
 	json.Unmarshal(response.Body.Bytes(), &detail)
-	if detail.Host != maskedHost(up.URL) || detail.ReportID != oldID {
+	if detail.ReportID != oldID || strings.Contains(response.Body.String(), "base_url") || strings.Contains(response.Body.String(), `"host"`) {
 		t.Fatal(detail)
 	}
 	fail.Store(false)
@@ -85,14 +84,9 @@ func TestReportIDsAndHostValidation(t *testing.T) {
 			t.Errorf("%s: %d", c.path, w.Code)
 		}
 	}
-	for _, c := range []struct{ base, want string }{{"https://gateway.example/v1", "gateway.example"}, {"https://gateway.example:8443/prefix/v1", "gateway.example:8443"}, {"http://[::1]:8770/v1", "[::1]:8770"}} {
-		if got := displayHost(c.base); got != c.want {
-			t.Errorf("host %s: %s", c.base, got)
-		}
-	}
 }
 
-func TestHistoryAndReportsMaskSiteUnlessMatchingJobKey(t *testing.T) {
+func TestHistoryAndReportsNeverExposeUpstreamSite(t *testing.T) {
 	s, _, _, _ := testSetup(t)
 	id := strings.Repeat("cd", 16)
 	key := "job-capability-secret"
@@ -109,9 +103,9 @@ func TestHistoryAndReportsMaskSiteUnlessMatchingJobKey(t *testing.T) {
 	s.tasks[id] = task
 	s.mu.Unlock()
 
-	paths := []string{"/api/detect/" + id, "/api/reports/" + id, "/api/history/" + fmt.Sprint(historyID)}
+	paths := []string{"/api/detect/" + id, "/api/reports/" + id, "/api/history/" + fmt.Sprint(historyID), "/api/history?limit=50"}
 	for _, path := range paths {
-		for _, token := range []string{"", "wrong-key"} {
+		for _, token := range []string{"", "wrong-key", key} {
 			r := httptest.NewRequest("GET", path, nil)
 			if token != "" {
 				r.Header.Set("X-Job-Token", token)
@@ -119,27 +113,49 @@ func TestHistoryAndReportsMaskSiteUnlessMatchingJobKey(t *testing.T) {
 			w := httptest.NewRecorder()
 			s.Handler().ServeHTTP(w, r)
 			if w.Code != 200 {
-				t.Fatalf("public read %s: HTTP %d", path, w.Code)
+				t.Fatalf("%s: HTTP %d", path, w.Code)
 			}
 			body := w.Body.String()
-			if strings.Contains(body, "private-gateway.example") || strings.Contains(body, "/prefix/v1") || strings.Contains(body, ":9443") {
-				t.Fatalf("unmatched key exposed upstream site on %s: %s", path, body)
+			if strings.Contains(body, "private-gateway.example") || strings.Contains(body, "/prefix/v1") ||
+				strings.Contains(body, ":9443") || strings.Contains(body, `"base_url"`) || strings.Contains(body, `"host"`) {
+				t.Fatalf("%s leaked upstream site: %s", path, body)
 			}
-			if !strings.Contains(body, "p***.e***") {
-				t.Fatalf("masked site missing on %s: %s", path, body)
-			}
-		}
-		ok := httptest.NewRequest("GET", path, nil)
-		ok.Header.Set("X-Job-Token", key)
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, ok)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `"host":"private-gateway.example:9443"`) || strings.Contains(w.Body.String(), "/prefix/v1") {
-			t.Fatalf("matching key did not reveal host only on %s: HTTP %d %s", path, w.Code, w.Body.String())
 		}
 	}
-	list := getJSON(t, s.Handler(), "/api/history?limit=50")
-	if list.Code != 200 || strings.Contains(list.Body.String(), "private-gateway.example") || !strings.Contains(list.Body.String(), "p***.e***") {
-		t.Fatalf("global history leaked or omitted masked site: HTTP %d %s", list.Code, list.Body.String())
+}
+
+func TestHistoryDefaultsToTenAndPaginates(t *testing.T) {
+	s, _, _, _ := testSetup(t)
+	for i := 1; i <= 12; i++ {
+		score := 60 + i
+		if _, err := s.store.Save(history.Record{
+			ReportID:  fmt.Sprintf("%032x", i),
+			CreatedAt: time.Now().UTC().Format(time.RFC3339),
+			BaseURL:   "https://gw.example.com/v1",
+			Model:     "gpt-6-astra",
+			IQScore:   &score,
+			Verdict:   json.RawMessage(`{}`),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var first []history.Summary
+	w := getJSON(t, s.Handler(), "/api/history")
+	if w.Code != 200 {
+		t.Fatalf("history: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &first)
+	if len(first) != 10 {
+		t.Fatalf("default page = %d, want 10", len(first))
+	}
+	var next []history.Summary
+	w = getJSON(t, s.Handler(), "/api/history?before="+fmt.Sprint(first[len(first)-1].ID))
+	if w.Code != 200 {
+		t.Fatalf("history before: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &next)
+	if len(next) != 2 {
+		t.Fatalf("second page = %d, want 2", len(next))
 	}
 }
 

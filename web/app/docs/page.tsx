@@ -179,8 +179,6 @@ const items: Item[] = [
   "id": "b6c1d0e29f4a4780a1b2c3d4e5f60718",
   "status": "done",
   "model": "claude-sonnet-5",
-  "base_url": "https://example.com/v1",
-  "host": "example.com",
   "created_at": 1710000000,
   "expires_at": 1710086400,
   "probes": {},
@@ -188,7 +186,6 @@ const items: Item[] = [
 }`,
         fields: [
           { name: "status", type: "string", required: true, note: "queued、running 或 done" },
-          { name: "host", type: "string", required: true, note: "上游主机，不含路径" },
           { name: "probes", type: "object", required: true, note: "各板块结果" },
           { name: "verdict", type: "object", required: true, note: "总分和结论" },
         ],

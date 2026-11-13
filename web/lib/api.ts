@@ -312,7 +312,6 @@ export interface Probe {
 export interface DetectTask {
   id: string;
   status: string;
-  base_url: string;
   model: string;
   created_at: string;
   probes: Probe[];
@@ -335,7 +334,6 @@ export interface HistorySummary {
   report_id: string;
   id: number;
   created_at: string;
-  base_url: string;
   model: string;
   iq_score: number | null;
   total_score: number | null;
@@ -418,10 +416,10 @@ export const startDetect = (q: DetectRequest) =>
   }>("/api/detect", q);
 export const getDetect = (id: string, signal?: AbortSignal, token?: string) =>
   request<DetectTask>("/api/detect/" + encodeURIComponent(id), undefined, token, signal);
-export const retryDetect = (id: string, q: DetectRequest, token: string) =>
+export const retryDetect = (id: string, q: Omit<DetectRequest, "base_url">, token: string) =>
   request<{ task_id: string }>("/api/detect/" + encodeURIComponent(id) + "/retry", q, token);
 export const getBankStats = () => request<BankStats>("/api/bank/stats");
-export const getHistory = (limit = 50, before?: number) =>
+export const getHistory = (limit = 10, before?: number) =>
   request<HistorySummary[]>(
     "/api/history?limit=" + limit + (before ? "&before=" + before : ""),
   );
@@ -431,9 +429,7 @@ export interface SavedReport {
   probes: Probe[];
   id: number;
   report_id: string;
-  host: string;
   created_at: string;
-  base_url: string;
   model: string;
   verdict_json: DetectVerdict;
 }

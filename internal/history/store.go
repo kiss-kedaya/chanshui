@@ -39,7 +39,7 @@ type Record struct {
 	ReportID     string          `json:"report_id"`
 	ID           int64           `json:"id"`
 	CreatedAt    string          `json:"created_at"`
-	BaseURL      string          `json:"base_url"`
+	BaseURL      string          `json:"-"`
 	Model        string          `json:"model"`
 	Injection    *int            `json:"injection,omitempty"`
 	Slope        *float64        `json:"slope,omitempty"`
@@ -62,7 +62,7 @@ type Summary struct {
 	ReportID                string  `json:"report_id"`
 	ID                      int64   `json:"id"`
 	CreatedAt               string  `json:"created_at"`
-	BaseURL                 string  `json:"base_url"`
+	BaseURL                 string  `json:"-"`
 	Model                   string  `json:"model"`
 	IQScore                 *int    `json:"iq_score,omitempty"`
 	TotalScore              *int    `json:"total_score,omitempty"`

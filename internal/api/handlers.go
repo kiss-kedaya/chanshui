@@ -95,7 +95,7 @@ type Verdict struct {
 type Task struct {
 	ID          string  `json:"id"`
 	Status      string  `json:"status"`
-	BaseURL     string  `json:"base_url"`
+	BaseURL     string  `json:"-"`
 	Model       string  `json:"model"`
 	CreatedAt   string  `json:"created_at"`
 	Probes      []Probe `json:"probes"`
@@ -417,16 +417,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		reply(w, 410, map[string]string{"error": "检测报告已超过24小时有效期"})
 		return
 	}
-	reveal := s.canReveal(r, t.ID, t.controlHash)
-	base := maskedBaseURL(t.BaseURL)
-	host := maskedHost(t.BaseURL)
-	if reveal {
-		base = publicBaseURL(t.BaseURL)
-		host = displayHost(t.BaseURL)
-	}
 	payload := map[string]any{
 		"id": t.ID, "task_id": t.ID, "job_id": t.ID, "report_id": t.ID,
-		"status": t.Status, "base_url": base, "host": host, "model": t.Model,
+		"status": t.Status, "model": t.Model,
 		"created_at": t.CreatedAt, "expires_at": t.ExpiresAt,
 		"probes": t.Probes, "verdict": t.Verdict,
 	}
@@ -552,7 +545,7 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	n, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if n < 1 || n > 50 {
-		n = 50
+		n = 10
 	}
 	before := int64(0)
 	if value := r.URL.Query().Get("before"); value != "" {
@@ -571,11 +564,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []history.Summary{}
 	}
-	// History is a global, public index.  Keep the site signal, but never
-	// return the upstream URL/path from this endpoint.  A report detail can
-	// reveal the host only when its matching job capability is presented.
 	for i := range items {
-		items[i].BaseURL = maskedBaseURL(items[i].BaseURL)
 		if items[i].TotalScore == nil {
 			continue
 		}
@@ -603,76 +592,8 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"error": "历史记录不存在"})
 		return
 	}
-	reveal := s.canReveal(r, rec.ReportID, "")
 	setReportCacheHeaders(w, rec.Status, rec.Progress)
-	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.BaseURL, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict, reveal))
-}
-
-func displayHost(base string) string {
-	u, e := url.Parse(base)
-	if e != nil || u.Host == "" {
-		return "未知站点"
-	}
-	return u.Host
-}
-
-// maskedHost intentionally keeps only a tiny, deterministic site hint.  It
-// does not expose the original hostname, path, query, credentials, or port.
-func maskedHost(base string) string {
-	u, e := url.Parse(base)
-	if e != nil || u.Hostname() == "" {
-		return "已脱敏站点"
-	}
-	name := u.Hostname()
-	labels := strings.Split(name, ".")
-	for i, label := range labels {
-		if len(label) <= 1 {
-			labels[i] = "*"
-			continue
-		}
-		labels[i] = label[:1] + "***"
-	}
-	return strings.Join(labels, ".")
-}
-
-// maskedBaseURL is the public representation used by history and reports.
-// It remains a URL so existing clients can derive a display host, but has no
-// path (including /v1), query, credentials, port, or full hostname.
-func maskedBaseURL(base string) string {
-	u, e := url.Parse(base)
-	if e != nil || u.Scheme == "" || u.Hostname() == "" {
-		return "https://已脱敏站点"
-	}
-	return u.Scheme + "://" + maskedHost(base)
-}
-
-func publicBaseURL(base string) string {
-	u, e := url.Parse(base)
-	if e != nil || u.Scheme == "" || u.Host == "" {
-		return "https://未知站点"
-	}
-	// Host excludes userinfo; deliberately discard path/query/fragment.
-	return u.Scheme + "://" + u.Host
-}
-
-// canReveal decides whether this request may see the unmasked report. Two
-// capabilities are accepted:
-//
-//  1. X-Job-Token — the per-job secret handed out at creation. Strongest, but
-//     only exists in the browser session that created the job.
-//  2. X-Visitor-ID — the anonymous browser identifier that submitted the job.
-//     Persisted on purpose so the same browser can return later. It carries no
-//     secret and never unlocks anything by itself: it only matches jobs that
-//     this same browser created.
-func (s *Server) canReveal(r *http.Request, reportID, inMemoryHash string) bool {
-	expected := inMemoryHash
-	if expected == "" && s.store != nil {
-		expected, _ = s.store.ControlHash(reportID)
-	}
-	if controlHashMatches(r.Header.Get("X-Job-Token"), expected) {
-		return true
-	}
-	return s.visitorMatches(r, reportID)
+	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict))
 }
 
 // visitorMatches reports whether the request's visitor identifier owns this job.
@@ -688,16 +609,10 @@ func (s *Server) visitorMatches(r *http.Request, reportID string) bool {
 	return controlHashMatches(raw, expected)
 }
 
-func reportPayload(id int64, reportID, baseURL, model, createdAt, status string, expiresAt int64, probes, verdict json.RawMessage, reveal bool) map[string]any {
-	base := maskedBaseURL(baseURL)
-	host := maskedHost(baseURL)
-	if reveal {
-		base = publicBaseURL(baseURL)
-		host = displayHost(baseURL)
-	}
+func reportPayload(id int64, reportID, model, createdAt, status string, expiresAt int64, probes, verdict json.RawMessage) map[string]any {
 	return map[string]any{
 		"id": id, "report_id": reportID, "job_id": reportID,
-		"host": host, "base_url": base, "model": model,
+		"model":      model,
 		"created_at": createdAt, "status": status, "expires_at": expiresAt,
 		"probes": probes, "verdict_json": verdict,
 	}
@@ -705,8 +620,7 @@ func reportPayload(id int64, reportID, baseURL, model, createdAt, status string,
 
 // setReportCacheHeaders keeps running and retryable reports uncached while
 // allowing a completed, stable report to be reused by the same browser.  The
-// response is still private because a matching job token or visitor ID can
-// reveal the upstream host.
+// response stays private because job tokens vary per viewer.
 func setReportCacheHeaders(w http.ResponseWriter, status string, probes json.RawMessage) {
 	w.Header().Set("Vary", "X-Job-Token, X-Visitor-ID")
 	if status != "done" || hasRetryableProbe(probes) {
@@ -744,11 +658,10 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 			reply(w, 410, map[string]string{"error": "报告已过期"})
 			return
 		}
-		reveal := s.canReveal(r, t.ID, t.controlHash)
 		verdict, _ := json.Marshal(t.Verdict)
 		probes, _ := json.Marshal(t.Probes)
 		setReportCacheHeaders(w, t.Status, probes)
-		replyConditional(w, r, reportPayload(t.HistoryID, t.ID, t.BaseURL, t.Model, t.CreatedAt, t.Status, t.ExpiresAt, probes, verdict, reveal))
+		replyConditional(w, r, reportPayload(t.HistoryID, t.ID, t.Model, t.CreatedAt, t.Status, t.ExpiresAt, probes, verdict))
 		return
 	}
 	rec, e := s.store.GetByReportID(id)
@@ -756,7 +669,6 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"error": "报告不存在或已过期（有效期24小时）"})
 		return
 	}
-	reveal := s.canReveal(r, rec.ReportID, "")
 	setReportCacheHeaders(w, rec.Status, rec.Progress)
-	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.BaseURL, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict, reveal))
+	replyConditional(w, r, reportPayload(rec.ID, rec.ReportID, rec.Model, rec.CreatedAt, rec.Status, rec.ExpiresAt, rec.Progress, rec.Verdict))
 }

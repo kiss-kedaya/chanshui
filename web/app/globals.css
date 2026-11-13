@@ -331,6 +331,9 @@ code {
 .empty-lines i:last-child {
   width: 65%;
 }
+.history-sentinel {
+  height: 1px;
+}
 .history-more {
   width: 100%;
   border: 1px solid #414033;

@@ -161,7 +161,7 @@ function HistoryDetailInner() {
       const control = getJobControl(data.report_id);
       await retryDetect(
         data.report_id,
-        { base_url: data.base_url, key: saved, model: data.model, protocol: "auto" },
+        { key: saved, model: data.model, protocol: "auto" },
         control?.token || "",
       );
       setRetryKey("");

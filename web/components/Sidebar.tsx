@@ -9,6 +9,7 @@ import { getHistory, HistorySummary } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 const HISTORY_REFRESH_MS = 45000;
+const HISTORY_PAGE = 10;
 
 export default function Sidebar() {
   const { t: tr, locale } = useI18n();
@@ -21,7 +22,8 @@ export default function Sidebar() {
     [ready, setReady] = useState(false);
   const alive = useRef(true),
     busy = useRef(false),
-    lastRefresh = useRef(0);
+    lastRefresh = useRef(0),
+    sentinel = useRef<HTMLDivElement | null>(null);
   const refresh = useCallback(async (force = false) => {
     if (
       busy.current ||
@@ -32,11 +34,11 @@ export default function Sidebar() {
     busy.current = true;
     lastRefresh.current = Date.now();
     try {
-      const page = await getHistory(50);
+      const page = await getHistory(HISTORY_PAGE);
       if (!alive.current) return;
       setItems((prev) => {
         const older =
-          page.length === 50
+          page.length === HISTORY_PAGE
             ? prev.filter((x) => x.id < page[page.length - 1].id)
             : [];
         const next = [...page, ...older];
@@ -54,7 +56,7 @@ export default function Sidebar() {
           return prev;
         return next;
       });
-      setHasMore(page.length === 50);
+      setHasMore(page.length === HISTORY_PAGE);
       setError("");
     } catch (e) {
       if (alive.current) setError((e as Error).message);
@@ -63,18 +65,18 @@ export default function Sidebar() {
       if (alive.current) setReady(true);
     }
   }, []);
-  async function more() {
+  const more = useCallback(async () => {
     if (busy.current || !items.length) return;
     busy.current = true;
     setLoadingMore(true);
     try {
-      const page = await getHistory(50, items[items.length - 1].id);
+      const page = await getHistory(HISTORY_PAGE, items[items.length - 1].id);
       if (!alive.current) return;
       setItems((prev) => {
         const ids = new Set(prev.map((x) => x.id));
         return [...prev, ...page.filter((x) => !ids.has(x.id))];
       });
-      setHasMore(page.length === 50);
+      setHasMore(page.length === HISTORY_PAGE);
       setError("");
     } catch (e) {
       if (alive.current) setError((e as Error).message);
@@ -82,7 +84,19 @@ export default function Sidebar() {
       busy.current = false;
       if (alive.current) setLoadingMore(false);
     }
-  }
+  }, [items]);
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasMore) return;
+    const io = new IntersectionObserver(
+      (rows) => {
+        if (rows.some((row) => row.isIntersecting)) void more();
+      },
+      { root: node.parentElement, rootMargin: "160px" },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [hasMore, loadingMore, more]);
   useEffect(() => {
     alive.current = true;
     let idle = 0;
@@ -201,15 +215,7 @@ export default function Sidebar() {
             </Link>
           ))
         )}
-        {hasMore && (
-          <button
-            className="history-more"
-            onClick={more}
-            disabled={loadingMore}
-          >
-            {loadingMore ? tr("正在加载…") : tr("加载更多全站记录")}
-          </button>
-        )}
+        {hasMore && <div ref={sentinel} className="history-sentinel" aria-hidden="true" />}
       </div>
       <div className="sidebar-bottom">
         <Feedback />

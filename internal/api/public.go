@@ -288,7 +288,6 @@ func (s *Server) publicGet(w http.ResponseWriter, r *http.Request) {
 	}
 	payload := map[string]any{
 		"id": t.ID, "status": t.Status, "model": t.Model,
-		"base_url": t.BaseURL, "host": displayHost(t.BaseURL),
 		"created_at": t.CreatedAt, "expires_at": t.ExpiresAt,
 		"probes": t.Probes, "verdict": t.Verdict,
 	}
