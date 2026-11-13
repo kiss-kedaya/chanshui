@@ -49,7 +49,7 @@ func TestBoundedQueueAndGlobalRequests(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	q := Request{BaseURL: up.URL, Key: "fixture", Model: "claude-opus-5", Timeout: 10}
+	q := Request{BaseURL: up.URL, Key: "fixture", Model: "claude-opus-5", Timeout: 60}
 	first := post(t, s, "/api/detect", q)
 	if first.Code != 202 {
 		t.Fatal(first.Body.String())
@@ -112,7 +112,7 @@ func TestNonClaudeJobHasNoThinkingProbe(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	w := post(t, s, "/api/detect", Request{BaseURL: up.URL, Key: "fixture", Model: "gemini-3.1-pro-preview", Timeout: 10})
+	w := post(t, s, "/api/detect", Request{BaseURL: up.URL, Key: "fixture", Model: "gemini-3.1-pro-preview", Timeout: 60})
 	var d map[string]any
 	json.Unmarshal(w.Body.Bytes(), &d)
 	task := waitTask(t, s, d["task_id"].(string))
@@ -131,7 +131,7 @@ func TestNonClaudeJobHasNoThinkingProbe(t *testing.T) {
 func TestRetryAfterMemoryEvictionKeepsJobID(t *testing.T) {
 	s, up, fail, calls := testSetup(t)
 	fail.Store(true)
-	q := Request{BaseURL: up.URL, Key: "fixture", Model: "claude-opus-5", Timeout: 10}
+	q := Request{BaseURL: up.URL, Key: "fixture", Model: "claude-opus-5", Timeout: 60}
 	w := post(t, s, "/api/detect", q)
 	var created map[string]any
 	json.Unmarshal(w.Body.Bytes(), &created)
