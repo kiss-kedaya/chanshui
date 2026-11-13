@@ -135,7 +135,7 @@ func TestVisionTruncationFallsBackWithoutThinking(t *testing.T) {
 		atomic.AddInt32(&calls, 1)
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(string(raw), `"thinking"`) {
-			fmt.Fprint(w, `{"content":[],"stop_reason":"max_tokens","usage":{"input_tokens":10,"output_tokens":8192}}`)
+			fmt.Fprint(w, `{"content":[{"type":"thinking","thinking":"先逐根数收盘价","signature":"sig-test"}],"stop_reason":"max_tokens","usage":{"input_tokens":10,"output_tokens":8192}}`)
 			return
 		}
 		fmt.Fprint(w, `{"content":[{"type":"text","text":"最终答案: 66"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":4}}`)

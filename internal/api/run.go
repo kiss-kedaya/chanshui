@@ -458,10 +458,12 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 	}
 	// 截断不等于失败：先按已经吐出的正文判分；整段只剩思考或空白时，
 	// 去掉 thinking 与 effort 再要一次短答，别把 8192 全花在推理上。
+	truncated := func(m gateway.Metrics) bool {
+		return m.StopReason == "max_tokens" || m.StopReason == "length"
+	}
 	ask := func(plain bool) (gateway.Metrics, error) {
 		req := gateway.CallRequest{Model: q.Model, Prompt: prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
-			if m.StopReason != "max_tokens" && m.StopReason != "length" &&
-				strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
+			if !truncated(m) && strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
 				return fmt.Errorf("empty response")
 			}
 			return nil
@@ -476,8 +478,9 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 	if e == nil && m.Err != "" {
 		e = fmt.Errorf("%s", m.Err)
 	}
+	// 截断的思考不是答案，别拿它冒充识图结果。
 	text := m.Answer
-	if strings.TrimSpace(text) == "" && gateway.IsClaude(q.Model) {
+	if strings.TrimSpace(text) == "" && gateway.IsClaude(q.Model) && !truncated(m) {
 		text = m.ThinkingText
 	}
 	if strings.TrimSpace(text) == "" && (e == nil || m.Status == 200) {
@@ -487,13 +490,13 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 				e = fmt.Errorf("%s", m.Err)
 			}
 			text = m.Answer
-			if strings.TrimSpace(text) == "" {
+			if strings.TrimSpace(text) == "" && !truncated(m) {
 				text = m.ThinkingText
 			}
 		}
 	}
 	if e == nil && strings.TrimSpace(text) == "" {
-		if m.StopReason == "max_tokens" || m.StopReason == "length" {
+		if truncated(m) {
 			e = fmt.Errorf("输出被 max_tokens 截断，未作为错误答案判分")
 		} else {
 			e = fmt.Errorf("正文与思考均为空")
