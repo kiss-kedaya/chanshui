@@ -396,6 +396,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	items := []iq.QItem{}
 	lines := []QuestionResult{}
 	complete := true
+	answered := 0
 	for _, item := range t.questions {
 		if item.ID == "vision" {
 			continue
@@ -407,6 +408,9 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		if v.Error != "" && !v.Skipped {
 			complete = false
 		}
+		if v.Error == "" && !v.Skipped {
+			answered++
+		}
 		lines = append(lines, v)
 		if v.Skipped {
 			continue
@@ -416,10 +420,10 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	if len(lines) > 0 {
 		score := iq.Score(items)
 		var validScore any
-		if complete {
+		if answered > 0 {
 			validScore = score.Score
 		}
-		t.Verdict.IQ = map[string]any{"score": validScore, "max": 100, "paper_max": score.Max, "complete": complete, "per_question": lines, "note": fmt.Sprintf("当前卷面 %d；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，不伪装为模型答错。", score.Max)}
+		t.Verdict.IQ = map[string]any{"score": validScore, "max": 100, "paper_max": score.Max, "complete": complete, "per_question": lines, "note": fmt.Sprintf("当前卷面 %d；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，但已答题目照常计分，不伪装为模型答错。", score.Max)}
 	}
 	sections := selected
 	if t.Source != "api" {
@@ -552,6 +556,7 @@ func visionQuestion(list []iq.Question) (iq.Question, bool) {
 // visionResult scores the two dimensions separately: whether the image was
 // read at all (50) and whether the closing digits were summed correctly (50).
 func visionResult(item iq.Question, v QuestionResult, e error) map[string]any {
+	v.Prompt = "" // 题面只在图上，报告里不再回显文字。
 	recognized := e == nil && v.Error == "" && !v.Skipped && iq.NumericAnswer(v.Answer)
 	seen := 0
 	if recognized {
@@ -568,7 +573,7 @@ func visionResult(item iq.Question, v QuestionResult, e error) map[string]any {
 		"correct": v.Earned == item.MaxScore && !v.Skipped,
 		"half":    v.Half, "earned": v.Earned, "question_max": item.MaxScore,
 		"skipped": v.Skipped, "question": v,
-		"note": "识图 50 分看图片是否被接受并读出一个整数；答对 50 分按 12 根 K 线收盘价的个位数字之和判分，误差 ±2 记一半。",
+		"note": "识图 50 分看图片是否被接受并读出一个整数；答对 50 分按 40 根 K 线收盘价的个位数字之和判分，误差 ±2 记一半。",
 	}
 	if v.Error != "" {
 		out["error"] = v.Error
@@ -699,10 +704,8 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 	iqPoints, iqKnown := 0, false
 	if m, ok := v.IQ.(map[string]any); ok {
 		iqKnown = true
-		if complete, _ := m["complete"].(bool); complete {
-			if n, ok := asInt(m["score"]); ok {
-				iqPoints = n
-			}
+		if n, ok := asInt(m["score"]); ok {
+			iqPoints = n
 		}
 	}
 	visionApply := false

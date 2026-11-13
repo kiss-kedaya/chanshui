@@ -589,7 +589,6 @@ export default function ResultCards({
                       {vision.earned ?? 0} / {vision.question_max ?? vision.question.max}
                     </b>
                   </summary>
-                  <pre>{vision.question.prompt}</pre>
                   {vision.question.image && (
                     <img className="question-image" src={vision.question.image} alt="" />
                   )}

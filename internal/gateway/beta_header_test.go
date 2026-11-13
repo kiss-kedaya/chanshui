@@ -35,22 +35,23 @@ func TestBetaHeaderMergesWithoutDropping(t *testing.T) {
 	}
 }
 
-func TestBackoffIsLongerFor5xx(t *testing.T) {
+func TestBackoffIsLongerFor5xxAnd429(t *testing.T) {
 	c := &Client{}
 	for attempt := 0; attempt < 3; attempt++ {
-		short := c.backoff(attempt, 429)
-		long := c.backoff(attempt, 500)
-		minLong := Upstream5xxBackoff * time.Duration(1<<attempt)
-		if long < minLong || long > minLong+minLong/4 {
-			t.Fatalf("attempt %d: 5xx backoff %v outside [%v, %v]", attempt, long, minLong, minLong+minLong/4)
+		for _, status := range []int{429, 500} {
+			long := c.backoff(attempt, status)
+			minLong := Upstream5xxBackoff * time.Duration(1<<attempt)
+			if long < minLong || long > minLong+minLong/4 {
+				t.Fatalf("attempt %d status %d: backoff %v outside [%v, %v]", attempt, status, long, minLong, minLong+minLong/4)
+			}
 		}
-		if short >= minLong {
-			t.Fatalf("attempt %d: non-5xx backoff %v should stay short", attempt, short)
+		if short := c.backoff(attempt, 400); short >= Upstream5xxBackoff*time.Duration(1<<attempt) {
+			t.Fatalf("attempt %d: parameter error backoff %v should stay short", attempt, short)
 		}
 	}
 	fast := &Client{RetryDelay: time.Millisecond}
-	if d := fast.backoff(2, 500); d > 6*time.Millisecond {
-		t.Fatalf("RetryDelay override ignored for 5xx: %v", d)
+	if d := fast.backoff(2, 429); d > 6*time.Millisecond {
+		t.Fatalf("RetryDelay override ignored for 429: %v", d)
 	}
 }
 

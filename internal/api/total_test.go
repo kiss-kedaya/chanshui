@@ -169,3 +169,18 @@ func TestWebPartDeepSeekSearch(t *testing.T) {
 		})
 	}
 }
+
+// 一题请求失败时，其余题目照常计分，不能把整个推理板块清零。
+func TestBuildTotalPartialIQStillScores(t *testing.T) {
+	v := Verdict{IQ: map[string]any{"complete": false, "score": 88}}
+	for _, part := range buildTotal(v, "gemini-2.5-pro").Parts {
+		if part.Key != "iq" {
+			continue
+		}
+		if part.Points != 88 || part.Contribution == 0 {
+			t.Fatalf("partial IQ scored %+v", part)
+		}
+		return
+	}
+	t.Fatal("iq part missing")
+}

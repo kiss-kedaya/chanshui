@@ -111,3 +111,12 @@ func TestVisionResultScoresTwoDimensions(t *testing.T) {
 		}
 	}
 }
+
+// 题面只画在图片里，报告不能再把文字题面回显出来。
+func TestVisionResultDropsPromptText(t *testing.T) {
+	out := visionResult(iq.Question{ID: "vision", MaxScore: 20}, QuestionResult{ID: "vision", Prompt: "把下图 40 根 K 线..."}, nil)
+	q, _ := out["question"].(QuestionResult)
+	if q.Prompt != "" {
+		t.Fatalf("vision prompt echoed: %q", q.Prompt)
+	}
+}

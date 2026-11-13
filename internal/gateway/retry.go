@@ -156,16 +156,17 @@ func requiresStream(reason string) bool {
 		strings.Contains(lower, `only accepts "stream": true`) || strings.Contains(lower, "only supports streaming"))
 }
 
-// Upstream5xxBackoff is the first wait after a 5xx. Some gateways answer an
-// over-concurrency burst of long requests with 500 new_api_error; retrying
-// 250ms later lands in the same burst, so 5xx waits longer: 2s, 4s, 8s.
+// Upstream5xxBackoff is the first wait after a 5xx or a 429. Some gateways
+// answer an over-concurrency burst with 500 new_api_error, and rate limits need
+// room to reset; retrying 250ms later lands in the same burst, so both wait
+// longer: 2s, 4s, 8s.
 var Upstream5xxBackoff = 2 * time.Second
 
 // backoff returns the wait before the next attempt. RetryDelay, when set,
 // replaces both bases (tests use it to stay fast).
 func (c *Client) backoff(attempt, status int) time.Duration {
 	base := 250 * time.Millisecond
-	if status >= 500 {
+	if status >= 500 || status == 429 {
 		base = Upstream5xxBackoff
 	}
 	if c.RetryDelay > 0 {
