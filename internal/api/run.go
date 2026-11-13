@@ -456,29 +456,48 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 		// 题面已经画在图上，再发一遍文字等于把题泄给看不到图的接口。
 		prompt = ""
 	}
-	m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
-		if m.StopReason == "max_tokens" || m.StopReason == "length" {
-			return fmt.Errorf("max_tokens: response truncated")
+	// 截断不等于失败：先按已经吐出的正文判分；整段只剩思考或空白时，
+	// 去掉 thinking 与 effort 再要一次短答，别把 8192 全花在推理上。
+	ask := func(plain bool) (gateway.Metrics, error) {
+		req := gateway.CallRequest{Model: q.Model, Prompt: prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
+			if m.StopReason != "max_tokens" && m.StopReason != "length" &&
+				strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
+				return fmt.Errorf("empty response")
+			}
+			return nil
+		}}
+		if plain {
+			req.Thinking = nil
+			req.SuppressDefaultEffort = true
 		}
-		if strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
-			return fmt.Errorf("empty response")
-		}
-		return nil
-	}})
+		return g.CallMessages(ctx, req)
+	}
+	m, e := ask(false)
 	if e == nil && m.Err != "" {
 		e = fmt.Errorf("%s", m.Err)
 	}
-	if e == nil && m.StopReason == "max_tokens" {
-		e = fmt.Errorf("输出被 max_tokens 截断，未作为错误答案判分")
-	}
 	text := m.Answer
-	if strings.TrimSpace(text) == "" {
-		if gateway.IsClaude(q.Model) {
-			text = m.ThinkingText
+	if strings.TrimSpace(text) == "" && gateway.IsClaude(q.Model) {
+		text = m.ThinkingText
+	}
+	if strings.TrimSpace(text) == "" && (e == nil || m.Status == 200) {
+		if m2, e2 := ask(true); e2 == nil && m2.Status == 200 {
+			m, e = m2, nil
+			if m.Err != "" {
+				e = fmt.Errorf("%s", m.Err)
+			}
+			text = m.Answer
+			if strings.TrimSpace(text) == "" {
+				text = m.ThinkingText
+			}
 		}
 	}
 	if e == nil && strings.TrimSpace(text) == "" {
-		e = fmt.Errorf("正文与思考均为空")
+		if m.StopReason == "max_tokens" || m.StopReason == "length" {
+			e = fmt.Errorf("输出被 max_tokens 截断，未作为错误答案判分")
+		} else {
+			e = fmt.Errorf("正文与思考均为空")
+		}
 	}
 	if !gateway.IsClaude(q.Model) {
 		m.ThinkingText = ""

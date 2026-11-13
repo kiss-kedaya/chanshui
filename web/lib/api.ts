@@ -416,8 +416,6 @@ export const startDetect = (q: DetectRequest) =>
   }>("/api/detect", q);
 export const getDetect = (id: string, signal?: AbortSignal, token?: string) =>
   request<DetectTask>("/api/detect/" + encodeURIComponent(id), undefined, token, signal);
-export const retryDetect = (id: string, q: Omit<DetectRequest, "base_url">, token: string) =>
-  request<{ task_id: string }>("/api/detect/" + encodeURIComponent(id) + "/retry", q, token);
 export const getBankStats = () => request<BankStats>("/api/bank/stats");
 export const getHistory = (limit = 10, before?: number) =>
   request<HistorySummary[]>(

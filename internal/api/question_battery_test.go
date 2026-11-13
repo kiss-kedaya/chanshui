@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-func TestDetectionClientDefaultsToHighEffort(t *testing.T) {
+func TestDetectionClientDefaultsToMediumEffort(t *testing.T) {
 	s, _, _, _ := testSetup(t)
 	g, err := s.client(Request{BaseURL: "https://example.com", Key: "sk-test", Model: "claude-opus-5", Timeout: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.DefaultEffort != "high" {
-		t.Fatalf("DefaultEffort = %q, want high", g.DefaultEffort)
+	if g.DefaultEffort != "medium" {
+		t.Fatalf("DefaultEffort = %q, want medium", g.DefaultEffort)
 	}
 }
 

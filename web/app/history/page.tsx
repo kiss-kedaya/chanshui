@@ -2,15 +2,13 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getDetection, getHistory, getReport, retryDetect, HistorySummary, SavedReport } from "@/lib/api";
+import { getDetection, getHistory, getReport, HistorySummary, SavedReport } from "@/lib/api";
 import { parseReportID, reportPath } from "@/lib/report-view";
 import { getJobControl, reconcileJobControl } from "@/lib/job-controls";
 import { watchResource } from "@/lib/polling";
 import ResultCards from "@/components/ResultCards";
 import ProbeTimeline from "@/components/ProbeTimeline";
 import ErrorFold from "@/components/ErrorFold";
-import Icon from "@/components/Icon";
-import { loadKey } from "@/lib/keyvault";
 import ReportShare from "@/components/ReportShare";
 import ReportStage from "@/components/ReportStage";
 import { useI18n } from "@/lib/i18n";
@@ -87,21 +85,15 @@ function HistoryDetailInner() {
     [error, setError] = useState(""),
     [entry, setEntry] = useState(id),
     [loading, setLoading] = useState(!!id),
-    [entryError, setEntryError] = useState(""),
-    [canRetry, setCanRetry] = useState(false);
+    [entryError, setEntryError] = useState("");
   const [loadedID, setLoadedID] = useState(id);
   const [reload, setReload] = useState(0);
-  const [retrying, setRetrying] = useState(false);
-  const [retryError, setRetryError] = useState("");
-  // 本地没有保存的 Key 时，允许用户在这个页面临时补填一次（不落盘）。
-  const [retryKey, setRetryKey] = useState("");
   useEffect(() => {
     setLoadedID(id);
     setData(null);
     setError("");
     setEntry(id);
     setEntryError("");
-    setCanRetry(false);
     if (!id) {
       setLoading(false);
       return;
@@ -132,11 +124,6 @@ function HistoryDetailInner() {
         });
         setData(d);
         setLoading(false);
-        setCanRetry(
-          !!getJobControl(d.report_id) &&
-          !["queued", "running"].includes(d.status) &&
-          (d.probes || []).some((p) => p.status === "error" || p.status === "cancelled"),
-        );
       },
       isActive: (d) => ["queued", "running"].includes(d.status),
       onError: (e) => {
@@ -145,34 +132,6 @@ function HistoryDetailInner() {
       },
     });
   }, [id, reload]);
-  // 重跑失败项：地址与模型取自本任务，Key 从本地加固存储读回，无需重填。
-  // 鉴权优先用本地 jobkey；没有（换了浏览器/清了存储）时服务端用访客 ID 认。
-  const retry = async () => {
-    if (!data || retrying) return;
-    setRetryError("");
-    setRetrying(true);
-    try {
-      const saved = retryKey.trim() || (await loadKey());
-      if (!saved) {
-        setRetryError(tr("本地没有保存的 API Key，请回新建检测页填一次。"));
-        setRetrying(false);
-        return;
-      }
-      const control = getJobControl(data.report_id);
-      await retryDetect(
-        data.report_id,
-        { key: saved, model: data.model, protocol: "auto" },
-        control?.token || "",
-      );
-      setRetryKey("");
-      setReload((n) => n + 1);
-      window.dispatchEvent(new Event("history-updated"));
-    } catch (e) {
-      setRetryError((e as Error).message);
-    } finally {
-      setRetrying(false);
-    }
-  };
   if (loadedID !== id) return <ReportBoot />;
   return (
     <div className="page-shell history-page">
@@ -228,21 +187,6 @@ function HistoryDetailInner() {
             id={data.report_id}
             expiresAt={data.expires_at}
           />
-        )}
-        {data && canRetry && (
-          <div className="retry-block">
-            <button
-              type="button"
-              className="btn-retry btn-retry-block"
-              onClick={() => void retry()}
-              disabled={retrying}
-              aria-busy={retrying}
-            >
-              <Icon name={retrying ? "spinner" : "refresh"} className={retrying ? "icon-spin" : ""} />
-              {retrying ? tr("正在重跑失败项…") : tr("重试失败项")}
-            </button>
-            {retryError && <ErrorFold text={retryError} />}
-          </div>
         )}
         {!data && !error && !loading && <ReportIndex />}
         {error && (

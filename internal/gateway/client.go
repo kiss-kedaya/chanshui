@@ -160,7 +160,7 @@ type Metrics struct {
 type Client struct {
 	Mode string
 	// DefaultEffort is used when a request does not set one. Detection runs at
-	// "high"; a rejected effort falls back to sending nothing.
+	// "medium"; a rejected effort falls back to sending nothing.
 	DefaultEffort string
 	NoRetry       bool
 	RetryDelay    time.Duration

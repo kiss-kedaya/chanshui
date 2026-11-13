@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/kiss-kedaya/chanshui/internal/history"
@@ -118,5 +120,61 @@ func TestVisionResultDropsPromptText(t *testing.T) {
 	q, _ := out["question"].(QuestionResult)
 	if q.Prompt != "" {
 		t.Fatalf("vision prompt echoed: %q", q.Prompt)
+	}
+}
+
+// 截断但已有正文时照常判分；整段空白时去掉 thinking/effort 再要一次短答。
+func TestVisionTruncationFallsBackWithoutThinking(t *testing.T) {
+	var calls int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			fmt.Fprint(w, `{"data":[{"id":"claude-opus-5"}]}`)
+			return
+		}
+		raw, _ := io.ReadAll(r.Body)
+		atomic.AddInt32(&calls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(string(raw), `"thinking"`) {
+			fmt.Fprint(w, `{"content":[],"stop_reason":"max_tokens","usage":{"input_tokens":10,"output_tokens":8192}}`)
+			return
+		}
+		fmt.Fprint(w, `{"content":[{"type":"text","text":"最终答案: 66"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":4}}`)
+	}))
+	defer up.Close()
+
+	db, err := history.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s, err := New(db, Options{AllowPrivate: true, HTTP: up.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	w := postPublic(s, `{"base_url":"`+up.URL+`","api_key":"sk-test","model":"claude-opus-5","timeout":10,"sections":["vision"]}`, "203.0.113.91:1234")
+	if w.Code != 202 {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	task := waitTask(t, s, created.ID)
+	vision, ok := task.Verdict.Vision.(map[string]any)
+	if !ok {
+		t.Fatalf("missing vision verdict: %#v", task.Verdict.Vision)
+	}
+	if reason, _ := vision["error"].(string); reason != "" {
+		t.Fatalf("truncation leaked as error: %q", reason)
+	}
+	if recognized, _ := vision["recognized"].(bool); !recognized {
+		t.Fatalf("fallback answer not recognized: %#v", vision)
+	}
+	if n := atomic.LoadInt32(&calls); n < 2 {
+		t.Fatalf("image requests = %d, want a no-thinking retry", n)
 	}
 }

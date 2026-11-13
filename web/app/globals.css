@@ -3675,35 +3675,6 @@ html[data-mode="dark"] .hint-button:focus {
   background: var(--card);
   white-space: nowrap;
 }
-.btn-retry {
-  min-height: 52px;
-  padding: 12px 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border-radius: 10px;
-  border: 1px solid #9d3824;
-  background: #c4472e;
-  color: #fff8f4;
-  font-size: 16px;
-  font-weight: 650;
-  text-decoration: none;
-  box-shadow: 0 8px 18px #c4472e33;
-}
-.btn-retry:hover:not(:disabled) {
-  background: #a93b26;
-}
-.btn-retry:disabled {
-  opacity: 0.55;
-}
-.btn-retry-block {
-  width: 100%;
-  margin: 0 0 14px;
-}
-.retry-block {
-  margin: 0 0 14px;
-}
 /* 清除已保存的密钥：次要操作，别抢主按钮的注意力。 */
 .key-forget {
   margin-top: 6px;
