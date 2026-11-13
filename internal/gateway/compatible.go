@@ -413,13 +413,17 @@ func userWireContent(q CallRequest, protocol string) any {
 	}
 	parts := []any{}
 	if protocol == "responses" {
-		parts = append(parts, map[string]any{"type": "input_text", "text": text})
+		if strings.TrimSpace(text) != "" {
+			parts = append(parts, map[string]any{"type": "input_text", "text": text})
+		}
 		for _, img := range q.Images {
 			parts = append(parts, map[string]any{"type": "input_image", "image_url": dataURL(img)})
 		}
 		return parts
 	}
-	parts = append(parts, map[string]any{"type": "text", "text": text})
+	if strings.TrimSpace(text) != "" {
+		parts = append(parts, map[string]any{"type": "text", "text": text})
+	}
 	for _, img := range q.Images {
 		parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]string{"url": dataURL(img)}})
 	}

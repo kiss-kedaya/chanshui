@@ -447,7 +447,12 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 // askQuestion runs one IQ or vision item. It is shared so the standalone
 // vision section never forks the judging and self-score path.
 func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, item iq.Question) (QuestionResult, error) {
-	m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: item.Prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
+	prompt := item.Prompt
+	if item.ID == "vision" {
+		// 题面已经画在图上，再发一遍文字等于把题泄给看不到图的接口。
+		prompt = ""
+	}
+	m, e := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
 		if m.StopReason == "max_tokens" || m.StopReason == "length" {
 			return fmt.Errorf("max_tokens: response truncated")
 		}

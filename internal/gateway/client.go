@@ -358,7 +358,9 @@ func userContent(prefix []TextBlock, prompt string, promptCache *CacheControl, i
 	for _, block := range prefix {
 		blocks = append(blocks, textPart(block.Text, block.CacheControl))
 	}
-	blocks = append(blocks, textPart(prompt, promptCache))
+	if strings.TrimSpace(prompt) != "" {
+		blocks = append(blocks, textPart(prompt, promptCache))
+	}
 	for _, img := range images {
 		blocks = append(blocks, map[string]any{
 			"type": "image",

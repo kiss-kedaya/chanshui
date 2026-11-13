@@ -134,26 +134,28 @@ func strW(f font.Face, s string) float64 {
 // units, mirroring the reference generator exactly.
 func randomChartBars(seed int64) [][4]int {
 	r := rand.New(rand.NewSource(seed))
-	price := 96 + r.Float64()*40
+	openP := 96 + r.Intn(40)
 	drift := 0.0
 	out := make([][4]int, 0, chartBars)
 	for i := 0; i < chartBars; i++ {
 		if r.Float64() < 0.22 {
 			drift = r.Float64()*3.6 - 1.8
 		}
-		price += drift + r.NormFloat64()*1.9
-		if price < 20 {
-			price = 20
-		}
-		closeP := int(math.Round(price))
-		openP := int(math.Round(price - drift*0.6 + r.NormFloat64()*1.2))
+		// 每根开盘接上一根收盘，图上才不会出现毫无道理的跳空。
+		closeP := openP + int(math.Round(drift+r.NormFloat64()*1.9))
 		if closeP == openP {
-			closeP++
+			closeP += 1 - 2*r.Intn(2)
+		}
+		if closeP < 20 {
+			closeP = 20
+			if closeP == openP {
+				closeP++
+			}
 		}
 		hi := max(openP, closeP) + 1 + r.Intn(2)
 		lo := min(openP, closeP) - 1 - r.Intn(2)
 		out = append(out, [4]int{openP, hi, lo, closeP})
-		price = float64(closeP)
+		openP = closeP
 	}
 	return out
 }

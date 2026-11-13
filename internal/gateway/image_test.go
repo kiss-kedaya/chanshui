@@ -64,3 +64,29 @@ func TestNoImagesKeepsStringContent(t *testing.T) {
 		t.Fatalf("text-only content changed shape: %s", raw)
 	}
 }
+
+// The chart question lives in the image; an empty prompt must not emit an empty text block.
+func TestImageOnlyOmitsEmptyTextBlock(t *testing.T) {
+	img := Image{MIME: "image/png", Data: []byte{1, 2, 3}}
+	for _, model := range []string{"claude-opus-5", "gpt-5.4", "deepseek-v4.1-flash"} {
+		var raw []byte
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			raw, _ = io.ReadAll(r.Body)
+			w.Header().Set("content-type", "application/json")
+			io.WriteString(w, `{"content":[{"type":"text","text":"ok"}],"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}],"choices":[{"message":{"content":"ok"}}],"usage":{"input_tokens":1,"output_tokens":1}}`)
+		}))
+		cl := &Client{BaseURL: srv.URL, Key: "k", NoRetry: true}
+		if _, err := cl.CallMessages(context.Background(), CallRequest{Model: model, Prompt: "", MaxTokens: 16, Images: []Image{img}}); err != nil {
+			srv.Close()
+			t.Fatalf("%s: %v", model, err)
+		}
+		srv.Close()
+		body := string(raw)
+		if strings.Contains(body, `"text":""`) || strings.Contains(body, `"text": ""`) {
+			t.Fatalf("%s sent an empty text block: %s", model, body)
+		}
+		if !strings.Contains(body, "AQID") {
+			t.Fatalf("%s lost the image: %s", model, body)
+		}
+	}
+}

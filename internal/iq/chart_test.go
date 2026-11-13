@@ -73,3 +73,15 @@ func TestChartRebuildsFromSeed(t *testing.T) {
 		t.Fatal("rebuild is not deterministic")
 	}
 }
+
+func TestChartBarsAreContinuous(t *testing.T) {
+	bars := randomChartBars(42)
+	if len(bars) != chartBars {
+		t.Fatalf("bars=%d", len(bars))
+	}
+	for i := 1; i < len(bars); i++ {
+		if bars[i][0] != bars[i-1][3] {
+			t.Fatalf("bar %d opens at %d, previous close %d", i+1, bars[i][0], bars[i-1][3])
+		}
+	}
+}
