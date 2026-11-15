@@ -472,6 +472,11 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 			req.Thinking = nil
 			req.SuppressDefaultEffort = true
 		}
+		// DeepSeek 默认思考会一路吃完 max_tokens；识图题直接关掉思考。
+		if item.ID == "vision" && gateway.IsDeepSeek(q.Model) {
+			req.Effort = "none"
+			req.SuppressDefaultEffort = true
+		}
 		return g.CallMessages(ctx, req)
 	}
 	m, e := ask(false)

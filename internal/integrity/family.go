@@ -59,8 +59,10 @@ func lineName(value string) string {
 
 func unqualifiedModel(model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
-	for _, prefix := range []string{"openai/", "anthropic/", "moonshotai/"} {
-		m = strings.TrimPrefix(m, prefix)
+	// 网关会把供应商前缀一起带回来（deepseek-ai/DeepSeek-...），
+	// 只比模型本体，否则同样的模型会被当成另一个名字。
+	if i := strings.IndexByte(m, '/'); i > 0 {
+		m = m[i+1:]
 	}
 	return m
 }

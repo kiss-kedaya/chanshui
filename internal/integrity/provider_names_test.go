@@ -7,6 +7,7 @@ func TestProviderAliasesDoNotImplyDilution(t *testing.T) {
 		{"anthropic/claude-fable-5", "claude", "claude-fable-5"},
 		{"openai/gpt-6.1-sol", "gpt", "gpt-6.1-sol"},
 		{"moonshotai/kimi-k3", "kimi", "kimi-k3"},
+		{"deepseek-ai/DeepSeek-V4.1-Flash-1017", "deepseek", "DeepSeek-V4.1-Flash-1017"},
 	} {
 		if FingerprintState(tc.requested, tc.family, tc.top) != FingerprintMatch {
 			t.Errorf("matching alias not accepted: %s", tc.requested)

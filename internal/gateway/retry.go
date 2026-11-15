@@ -14,14 +14,21 @@ const RetryCount = 3
 // IsClaude gates Anthropic-only configuration and visible reasoning evidence.
 func modelWithoutProvider(model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
-	for _, prefix := range []string{"openai/", "anthropic/", "moonshotai/"} {
-		m = strings.TrimPrefix(m, prefix)
+	// 供应商前缀（deepseek-ai/、openai/、anthropic/）不参与协议判断。
+	if i := strings.IndexByte(m, '/'); i > 0 {
+		m = m[i+1:]
 	}
 	return m
 }
 
 func IsClaude(model string) bool {
 	return strings.HasPrefix(modelWithoutProvider(model), "claude-")
+}
+
+// IsDeepSeek gates DeepSeek's default-on thinking. reasoning_effort=none is
+// the one value that produced an answer without burning max_tokens.
+func IsDeepSeek(model string) bool {
+	return strings.HasPrefix(modelWithoutProvider(model), "deepseek")
 }
 func Protocol(model string) string {
 	m := modelWithoutProvider(model)
@@ -101,7 +108,9 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 		}
 		// 上游不认识 effort 字段时会回 400/422。丢掉本站默认值再试一次，
 		// 只回退一次，后续仍按普通参数错误处理。
-		if !adapted && autoEffort && q.Effort != "" && (m.Status == 400 || m.Status == 422) {
+		// "none" is only sent to switch thinking off; an upstream that does not
+		// know it should get the same no-effort retry as the host default.
+		if !adapted && (autoEffort || q.Effort == "none") && q.Effort != "" && (m.Status == 400 || m.Status == 422) {
 			q.Effort = ""
 			effortFallback = true
 			adapted = true
