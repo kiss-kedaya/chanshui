@@ -8,6 +8,7 @@ import (
 	"github.com/kiss-kedaya/chanshui/internal/integrity"
 	"github.com/kiss-kedaya/chanshui/internal/iq"
 
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	mathrand "math/rand"
@@ -203,6 +204,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("GET /api/history", s.list)
 	m.HandleFunc("GET /api/history/{id}", s.detail)
 	m.HandleFunc("GET /api/reports/{id}", s.report)
+	m.HandleFunc("GET /api/reports/{id}/vision.png", s.visionImage)
 	m.HandleFunc("POST /api/models", s.models)
 	m.HandleFunc("POST /api/ask", s.ask)
 	m.HandleFunc("POST /api/feedback", s.feedback)
@@ -614,8 +616,86 @@ func reportPayload(id int64, reportID, model, createdAt, status string, expiresA
 		"id": id, "report_id": reportID, "job_id": reportID,
 		"model":      model,
 		"created_at": createdAt, "status": status, "expires_at": expiresAt,
-		"probes": probes, "verdict_json": scrubReferenceSource(verdict),
+		"probes": probes, "verdict_json": trimVisionImage(scrubReferenceSource(verdict), reportID),
 	}
+}
+
+func visionImageURL(reportID string) string { return "/api/reports/" + reportID + "/vision.png" }
+
+// trimVisionImage replaces an inline PNG data URL with the image endpoint so
+// the report JSON stays small; the stored snapshot keeps the original bytes.
+func trimVisionImage(verdict json.RawMessage, reportID string) json.RawMessage {
+	var doc map[string]json.RawMessage
+	if len(verdict) == 0 || json.Unmarshal(verdict, &doc) != nil {
+		return verdict
+	}
+	var vision map[string]json.RawMessage
+	if raw, ok := doc["vision"]; !ok || json.Unmarshal(raw, &vision) != nil {
+		return verdict
+	}
+	var question map[string]json.RawMessage
+	if raw, ok := vision["question"]; !ok || json.Unmarshal(raw, &question) != nil {
+		return verdict
+	}
+	var image string
+	if raw, ok := question["image"]; !ok || json.Unmarshal(raw, &image) != nil || !strings.HasPrefix(image, "data:image/png;base64,") {
+		return verdict
+	}
+	question["image"], _ = json.Marshal(visionImageURL(reportID))
+	vision["question"], _ = json.Marshal(question)
+	doc["vision"], _ = json.Marshal(vision)
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return verdict
+	}
+	return out
+}
+
+func visionPNG(verdict json.RawMessage) []byte {
+	var doc struct {
+		Vision struct {
+			Question struct {
+				Image string `json:"image"`
+			} `json:"question"`
+		} `json:"vision"`
+	}
+	if json.Unmarshal(verdict, &doc) != nil {
+		return nil
+	}
+	const prefix = "data:image/png;base64,"
+	if !strings.HasPrefix(doc.Vision.Question.Image, prefix) {
+		return nil
+	}
+	png, err := base64.StdEncoding.DecodeString(doc.Vision.Question.Image[len(prefix):])
+	if err != nil {
+		return nil
+	}
+	return png
+}
+
+func (s *Server) visionImage(w http.ResponseWriter, r *http.Request) {
+	id := strings.ToLower(r.PathValue("id"))
+	if !history.ValidReportID(id) {
+		reply(w, 400, map[string]string{"error": "检测 ID 无效"})
+		return
+	}
+	var verdict json.RawMessage
+	if t := s.find(id); t != nil && t.Source != "api" {
+		t.mu.Lock()
+		verdict, _ = json.Marshal(t.Verdict)
+		t.mu.Unlock()
+	} else if rec, e := s.store.GetByReportID(id); e == nil {
+		verdict = rec.Verdict
+	}
+	png := visionPNG(verdict)
+	if len(png) == 0 {
+		reply(w, 404, map[string]string{"error": "识图图片不存在"})
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Length", strconv.Itoa(len(png)))
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Write(png)
 }
 
 // 旧快照把采集端点写进了 reference.source，出站前统一摘掉。
