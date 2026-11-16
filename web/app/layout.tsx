@@ -1,5 +1,4 @@
 import "./globals.css";
-import BuildGuard from "@/components/BuildGuard";
 import DocsLink from "@/components/DocsLink";
 import GitHubLink from "@/components/GitHubLink";
 import LanguageMenu, { SkipLink } from "@/components/LanguageMenu";
@@ -63,7 +62,6 @@ export default function RootLayout({
       </head>
       <body>
         <I18nProvider>
-          <BuildGuard />
           <SkipLink />
           <Sidebar />
           <main className="main" id="main-content">
