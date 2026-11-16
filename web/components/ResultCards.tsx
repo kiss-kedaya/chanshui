@@ -296,13 +296,20 @@ export default function ResultCards({
         ) : (
           <>
             <div className="metric-line">
-              <strong>
-                ≈ <AnimatedNumber value={a.inj} />
-              </strong>
-              <span>{tr("token / 请求")}</span>
-              <b className="score-chip">
-                {a.score == null ? tr("待定") : a.score + " / 10"}
-              </b>
+              {a.score != null && a.reliable !== false ? (
+                <>
+                  <strong>
+                    ≈ <AnimatedNumber value={a.inj} />
+                  </strong>
+                  <span>{tr("token / 请求")}</span>
+                  <b className="score-chip">{a.score + " / 10"}</b>
+                </>
+              ) : (
+                <>
+                  <strong>{tr("样本异常")}</strong>
+                  <span>{tr("未计分")}</span>
+                </>
+              )}
             </div>
             <div className="mini-stats">
               <span>

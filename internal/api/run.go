@@ -1058,14 +1058,21 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 	if !visionApply {
 		visionKnown, visionPoints = false, 0
 	}
+	injApply := true
 	injPoints, injKnown := 0, false
 	if m, ok := v.Injection.(map[string]any); ok {
-		injKnown = true
 		errText, _ := m["error"].(string)
 		if errText == "" {
 			if n, ok := asInt(m["score"]); ok {
+				injKnown = true
 				injPoints = n
+			} else {
+				// An unreliable two-sample fit has no score. Do not turn it
+				// into a known 0; leave the section out and reweight.
+				injApply = false
 			}
+		} else {
+			injKnown = true
 		}
 	}
 	toolPoints, toolKnown := boolPart(v.Tools)
@@ -1096,6 +1103,7 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		iqKnown, iqPoints = false, 0
 	}
 	if !want("injection") {
+		injApply = false
 		injKnown, injPoints = false, 0
 	}
 	if !want("tools") {
@@ -1114,7 +1122,7 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		{Key: "fingerprint", Label: "模型指纹归因", Applicable: want("fingerprint"), Known: fpKnown, Points: fpPoints, MaxPoints: 10},
 		{Key: "iq", Label: "推理表现", Applicable: want("iq"), Known: iqKnown, Points: iqPoints, MaxPoints: 100},
 		{Key: "vision", Label: "识图能力", Applicable: visionApply, Known: visionKnown, Points: visionPoints, MaxPoints: 100},
-		{Key: "injection", Label: "注入大小", Applicable: want("injection"), Known: injKnown, Points: injPoints, MaxPoints: 10},
+		{Key: "injection", Label: "注入大小", Applicable: injApply, Known: injKnown, Points: injPoints, MaxPoints: 10},
 		{Key: "tools", Label: "工具调用", Applicable: want("tools"), Known: toolKnown, Points: toolPoints, MaxPoints: 1},
 		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},
 		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: 5},

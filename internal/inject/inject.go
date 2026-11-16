@@ -91,7 +91,7 @@ func Measure(ctx context.Context, gw gateway.Client, model string, timeout ...in
 		points = append(points, Point{N: len(prompt), Input: m.InputTokens, Total: m.InputTokens + m.CacheCreation5m + m.CacheCreation1h + m.CacheRead})
 		gw.PinProtocol(m.Protocol)
 	}
-	r := Result{Points: points, MaxScore: 10, Note: "两次独立小请求估计协议固定开销；不复用缓存验证对话，按上游实际输入总量拟合近似值。"}
+	r := Result{Points: points, MaxScore: 10, Note: "两次独立采样估计固定开销。"}
 	if len(points) != 2 {
 		return r, fmt.Errorf("注入采样不足：%d/2 有效；%v", len(points), lastErr)
 	}
@@ -103,7 +103,7 @@ func Measure(ctx context.Context, gw gateway.Client, model string, timeout ...in
 		score := InjectionScore(r.Inj)
 		r.Score = &score
 	} else {
-		r.Note += " 用量异常，暂不计分。"
+		r.Note += " 样本异常，不计分。"
 	}
 	return r, nil
 }

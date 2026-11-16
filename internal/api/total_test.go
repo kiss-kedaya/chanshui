@@ -184,3 +184,20 @@ func TestBuildTotalPartialIQStillScores(t *testing.T) {
 	}
 	t.Fatal("iq part missing")
 }
+
+// An unreliable injection fit has no score and must not become a known 0.
+// The section is removed and the remaining weights are rescaled.
+func TestUnreliableInjectionIsNotScored(t *testing.T) {
+	v := Verdict{Injection: map[string]any{"reliable": false, "score": nil, "inj": 0}}
+	total := buildTotal(v, "gemini-2.5-pro")
+	for _, part := range total.Parts {
+		if part.Key != "injection" {
+			continue
+		}
+		if part.Applicable || part.Known || part.Coefficient != 0 || part.Contribution != 0 {
+			t.Fatalf("unreliable injection still scored: %+v", part)
+		}
+		return
+	}
+	t.Fatal("injection part missing")
+}
