@@ -67,7 +67,10 @@ export default function DetectPage() {
       if (["auto", "chat", "anthropic", "openai"].includes(p.protocol))
         setProtocol(p.protocol);
       if (typeof p.cache === "boolean") setCacheOn(p.cache);
-      if (typeof p.conversation === "boolean") setConversationOn(p.conversation);
+      if (typeof p.conversation === "boolean") {
+        setConversationOn(p.conversation);
+        if (p.conversation) setCacheOn(false);
+      }
       if (cleanedBaseUrl !== storedBaseUrl) {
         localStorage.setItem(
           "chanshui-settings",
@@ -92,7 +95,7 @@ export default function DetectPage() {
     protocol,
     concurrency,
     timeout,
-    cache: cacheOn,
+    cache: conversationOn ? false : cacheOn,
     conversation: conversationOn,
   });
   // 首页只负责“新建检测”：提交成功后直接跳到报告页，结果、重跑都在 /history 处理。
@@ -103,7 +106,7 @@ export default function DetectPage() {
       try {
         localStorage.setItem(
           "chanshui-settings",
-          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: cacheOn, conversation: conversationOn }),
+          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: conversationOn ? false : cacheOn, conversation: conversationOn }),
         );
       } catch {}
       // Key 单独加固落盘（IndexedDB 里不可提取的 AES 密钥加密），方便回报告页重试。
@@ -340,34 +343,39 @@ export default function DetectPage() {
               <span className="usage-note">{tr("会产生接口用量")}</span>
               <Hint
                 label={tr("检测用量说明")}
-                text={tr("注入大小使用两个独立小请求。缓存读写默认关闭，打开后才跑 6 轮串行对话。每个失败请求独立最多重试 3 次。报告全站可见，有效期 24 小时。")}
+                text={tr("注入大小使用两个独立小请求。勾选多轮对话时直接复用对话缓存，不再跑 6 轮缓存探针。每个失败请求独立最多重试 3 次。报告全站可见，有效期 24 小时。")}
               />
             </p>
             <div className="actions">
-              <label className="cache-opt cache-beside" title={tr("可选。按普通多轮对话测前缀缓存，默认不跑。")}>
-                <input
-                  type="checkbox"
-                  checked={cacheOn}
-                  disabled={busy}
-                  onChange={(e) => setCacheOn(e.target.checked)}
-                />
-                {tr("缓存读写")}
-                <Hint
-                  label={tr("缓存读写说明")}
-                  text={tr("默认关闭。打开后用 6 轮普通对话串行检测：上一条读加写等于下一条读就是 100%。只对勾选的任务计分。")}
-                />
-              </label>
+              {!conversationOn && (
+                <label className="cache-opt cache-beside" title={tr("可选。按普通多轮对话测前缀缓存，默认不跑。")}>
+                  <input
+                    type="checkbox"
+                    checked={cacheOn}
+                    disabled={busy}
+                    onChange={(e) => setCacheOn(e.target.checked)}
+                  />
+                  {tr("缓存读写")}
+                  <Hint
+                    label={tr("缓存读写说明")}
+                    text={tr("默认关闭。打开后用 6 轮普通对话串行检测：上一条读加写等于下一条读就是 100%。只对勾选的任务计分。")}
+                  />
+                </label>
+              )}
               <label className="cache-opt cache-beside" title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>
                 <input
                   type="checkbox"
                   checked={conversationOn}
                   disabled={busy}
-                  onChange={(e) => setConversationOn(e.target.checked)}
+                  onChange={(e) => {
+                    setConversationOn(e.target.checked);
+                    if (e.target.checked) setCacheOn(false);
+                  }}
                 />
                 {tr("多轮对话")}
                 <Hint
                   label={tr("多轮对话说明")}
-                  text={tr("默认关闭。打开后开场先寒暄，再按 Q1 到 Q9 串行追问，中途插入几句闲聊。整段对话看缓存读取有没有中途归零，能抓到按请求分类后换池的中转。串行会明显变慢。")}
+                  text={tr("默认关闭。打开后开场先寒暄，再按 Q1 到 Q9 串行追问，中途插入几句闲聊。逐轮看读取有没有接上前一轮读加写，能抓到按请求分类后换池的中转。串行会明显变慢。")}
                 />
               </label>
               <button

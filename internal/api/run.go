@@ -338,7 +338,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		}
 		return v, nil
 	})
-	if q.Cache || (selected != nil && selected["cache"]) {
+	if (q.Cache || (selected != nil && selected["cache"])) && !q.Conversation {
 		job("cache", func() (any, error) {
 			v, e := cachecheck.Measure(ctx, g, q.Model, q.Timeout)
 			if e != nil {
@@ -464,18 +464,23 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 // straight from the upstream usage block. Dropped marks a turn that had to
 // rewrite the whole prefix, which is what a mid-session re-route looks like.
 type convTurn struct {
-	Index   int      `json:"index"`
-	Kind    string   `json:"kind"`
-	ID      string   `json:"id,omitempty"`
-	Title   string   `json:"title,omitempty"`
-	Read    int      `json:"read"`
-	Write   int      `json:"write"`
-	Input   int      `json:"input"`
-	Output  int      `json:"output"`
-	HitRate *float64 `json:"hit_rate"`
-	Dropped bool     `json:"dropped"`
-	Ms      int64    `json:"ms"`
-	Error   string   `json:"error,omitempty"`
+	Index          int      `json:"index"`
+	Kind           string   `json:"kind"`
+	ID             string   `json:"id,omitempty"`
+	Title          string   `json:"title,omitempty"`
+	Read           int      `json:"read"`
+	Write          int      `json:"write"`
+	Input          int      `json:"input"`
+	Output         int      `json:"output"`
+	HitRate        *float64 `json:"hit_rate"`
+	Expected       int      `json:"expected,omitempty"`
+	ReadReported   bool     `json:"read_reported"`
+	WriteReported  bool     `json:"write_reported"`
+	InputReported  bool     `json:"input_reported"`
+	OutputReported bool     `json:"output_reported"`
+	Dropped        bool     `json:"dropped"`
+	Ms             int64    `json:"ms"`
+	Error          string   `json:"error,omitempty"`
 }
 
 type conversationReport struct {
@@ -527,7 +532,10 @@ func (s *Server) converse(ctx context.Context, t *Task, q Request, g gateway.Cli
 	protocol := g.ProtocolFor(q.Model)
 	var history []gateway.ConversationMessage
 	report := conversationReport{Turns: []convTurn{}}
-	seenRead, cacheFields := false, false
+	prevTotal := 0
+	prevWrote := false
+	wroteBefore := false
+	readFields := false
 
 	setProbe := func(id, status string, ms int64, errText string) {
 		t.mu.Lock()
@@ -544,16 +552,32 @@ func (s *Server) converse(ctx context.Context, t *Task, q Request, g gateway.Cli
 		t.mu.Unlock()
 	}
 	record := func(kind, id, title string, m gateway.Metrics, ms int64, errText string) {
-		turn := convTurn{Index: len(report.Turns) + 1, Kind: kind, ID: id, Title: title, Read: m.CacheRead, Write: m.CacheCreation5m + m.CacheCreation1h, Input: m.InputTokens, Output: m.OutputTokens, Ms: ms, Error: errText}
+		turn := convTurn{Index: len(report.Turns) + 1, Kind: kind, ID: id, Title: title, Read: m.CacheRead, Write: m.CacheCreation5m + m.CacheCreation1h, Input: m.InputTokens, Output: m.OutputTokens, Ms: ms, Error: errText,
+			ReadReported: m.CacheReadReported, WriteReported: m.CacheWriteReported, InputReported: m.UsagePresent || m.InputTokens > 0, OutputReported: m.UsagePresent || m.OutputTokens > 0}
 		turn.HitRate = convHit(turn.Read, turn.Input+turn.Read+turn.Write)
-		// The first cacheable turn legitimately reads 0 and writes the prefix;
-		// only a zero read after the chain has been seen is a real drop.
-		turn.Dropped = seenRead && turn.Read == 0 && turn.Write > 64
-		if turn.Read > 0 {
-			seenRead = true
-		}
-		if m.CacheReadReported || m.CacheWriteReported {
-			cacheFields = true
+		// A cache chain is a prefix, not a boolean: this turn has to read the
+		// prefix the last usable turn wrote. A flat 78-token read means only the
+		// shared system block hit while the conversation was rewritten.
+		usable := errText == "" && (m.CacheReadReported || m.CacheWriteReported || m.InputTokens > 0 || m.OutputTokens > 0)
+		if usable && m.CacheReadReported {
+			turn.Expected = prevTotal
+			if prevTotal > 0 {
+				// Under-read drops the tail; a jump over the previous prefix means
+				// the gateway landed on an account with a different cache.
+				if turn.Read*4 < prevTotal*3 || (prevWrote && turn.Read*4 > prevTotal*5) {
+					turn.Dropped = true
+				}
+			} else if wroteBefore && turn.Read == 0 && turn.Write > 64 {
+				turn.Dropped = true
+			}
+			prevTotal = turn.Read + turn.Write
+			prevWrote = turn.Write > 64
+			if turn.Write > 64 {
+				wroteBefore = true
+			}
+			readFields = true
+		} else if usable && m.CacheWriteReported && turn.Write > 64 {
+			wroteBefore = true
 		}
 		report.Turns = append(report.Turns, turn)
 	}
@@ -645,7 +669,7 @@ func (s *Server) converse(ctx context.Context, t *Task, q Request, g gateway.Cli
 
 	report.Rounds = len(report.Turns)
 	for _, item := range report.Turns {
-		if item.Read > 0 {
+		if item.Expected > 0 && !item.Dropped {
 			report.Hits++
 		}
 		if item.Dropped {
@@ -653,27 +677,74 @@ func (s *Server) converse(ctx context.Context, t *Task, q Request, g gateway.Cli
 		}
 	}
 	switch {
-	case !cacheFields:
+	case !readFields:
 		report.Status = "unknown"
-		report.Reason = "上游没有回传缓存用量：这段对话不能判断是否掉缓存。"
+		report.Reason = "上游没有缓存读取，无法判断。"
 	case report.Drops > 0:
 		fail := false
 		report.Pass = &fail
 		report.Status = "mismatch"
-		report.Reason = fmt.Sprintf("对话共 %d 轮，其中 %d 轮读取归零后整段重写：中途换池或换号会把缓存打断。", report.Rounds, report.Drops)
+		report.Reason = fmt.Sprintf("%d 轮未接上前缀，疑似中途换号。", report.Drops)
 	case report.Hits >= 2:
 		pass := true
 		report.Pass = &pass
 		report.Status = "pass"
-		report.Reason = fmt.Sprintf("对话共 %d 轮，%d 轮读到缓存，未出现中途重写。", report.Rounds, report.Hits)
+		report.Reason = fmt.Sprintf("%d 轮接上前缀。", report.Hits)
 	default:
 		report.Status = "unknown"
-		report.Reason = "对话还没有建立可复用缓存：前缀可能低于缓存门槛，不能据此判负。"
+		report.Reason = "前缀还没进入缓存。"
 	}
 	t.mu.Lock()
 	t.Verdict.Conversation = sanitize(report, q.Key)
+	// Unknown cache evidence must not make the cache section applicable and
+	// score 0; leave it out so the total reweights like an unchecked probe.
+	if report.Pass != nil {
+		t.Verdict.Cache = sanitize(conversationCache(report, protocol), q.Key)
+	}
 	t.mu.Unlock()
 	s.persist(t)
+}
+
+// conversationCache shapes the serial thread like the old six-turn cache probe
+// so the cache card can reuse it without a second network run.
+func conversationCache(report conversationReport, protocol string) cachecheck.Result {
+	res := cachecheck.Result{Status: report.Status, Pass: report.Pass, Reason: report.Reason, Protocol: protocol, Samples: []cachecheck.Sample{}, Transitions: []cachecheck.Transition{}}
+	for _, turn := range report.Turns {
+		s := cachecheck.Sample{Index: turn.Index, Read: turn.Read, Write: turn.Write, Input: turn.Input, Output: turn.Output,
+			Total: turn.Input + turn.Read + turn.Write, ReadReported: turn.ReadReported, WriteReported: turn.WriteReported,
+			InputReported: turn.InputReported, OutputReported: turn.OutputReported, Attempts: 1, HitRate: turn.HitRate, Error: turn.Error}
+		res.Samples = append(res.Samples, s)
+		res.TotalRead += s.Read
+		res.TotalOutput += s.Output
+	}
+	for i := 1; i < len(res.Samples); i++ {
+		prev, cur := res.Samples[i-1], res.Samples[i]
+		if !prev.ReadReported {
+			continue
+		}
+		expected := prev.Read + prev.Write
+		tr := cachecheck.Transition{From: prev.Index, To: cur.Index, Expected: expected, Actual: cur.Read, Delta: cur.Read - expected}
+		if expected > 0 && cur.ReadReported {
+			pass := !report.Turns[i].Dropped
+			tr.Pass = &pass
+		}
+		res.Transitions = append(res.Transitions, tr)
+	}
+	if n := len(res.Samples); n >= 2 {
+		prev, last := res.Samples[n-2], res.Samples[n-1]
+		if prev.ReadReported {
+			expected := prev.Read + prev.Write
+			res.Expected, res.Actual, res.Delta = expected, last.Read, last.Read-expected
+			res.ThirdReadBaseline = expected
+			if expected > 0 {
+				ratio := float64(last.Read) / float64(expected) * 100
+				res.ThirdReadRatio = &ratio
+			}
+		}
+		res.First, res.Second = &prev, &last
+		res.Third = &last
+	}
+	return res
 }
 
 // askQuestion runs one IQ or vision item. It is shared so the standalone

@@ -3637,6 +3637,70 @@ html[data-mode="dark"] .hint-button:focus {
 .conv-turns {
   margin-top: 9px;
 }
+.conv-chain {
+  display: flex;
+  gap: 3px;
+  height: 9px;
+  margin: 12px 0 6px;
+}
+.conv-chain-seg {
+  flex: 1;
+  min-width: 4px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.conv-chain-seg.is-ok { background: var(--ok); opacity: .8; }
+.conv-chain-seg.is-break { background: var(--bad); }
+.conv-chain-seg.is-base { background: var(--line); }
+.conv-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 9px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.conv-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.conv-legend i { width: 8px; height: 8px; border-radius: 2px; }
+.conv-legend .is-ok { background: var(--ok); }
+.conv-legend .is-break { background: var(--bad); }
+.conv-legend .is-base { background: var(--line); }
+.conv-turns .cache-table th:nth-child(n+3),
+.conv-turns .cache-table td:nth-child(n+3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.conv-turns .cache-table th:nth-child(2),
+.conv-turns .cache-table td:nth-child(2) { text-align: left; }
+.conv-turns .cache-table { min-width: 660px; }
+.conv-turns .cache-table th { white-space: nowrap; }
+.conv-turns .cache-table td { white-space: nowrap; }
+.conv-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.conv-state.is-ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.conv-state.is-break { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.conv-state.is-hard { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, transparent); }
+.conv-state.is-base { color: var(--muted); background: color-mix(in srgb, var(--muted) 10%, transparent); }
+.conv-strip b.good,
+.conv-strip b.bad,
+.conv-strip b.warn { padding: 2px 7px; border-radius: 999px; }
+.conv-strip b.good { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.conv-strip b.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.conv-strip b.warn { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.results > .result-card.conversation-wide {
+  column-span: all;
+  display: block;
+  width: 100%;
+}
+.cache-table-hidden { display: none; }
+.cache-conv-link { margin-top: 10px; }
 .cache-rates {
   display: grid;
   grid-template-columns: 1fr 1fr;

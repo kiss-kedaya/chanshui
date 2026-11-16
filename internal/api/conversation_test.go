@@ -137,6 +137,7 @@ func TestConversationFlagsMidThreadCacheDrop(t *testing.T) {
 			case 1, 2, 4:
 				usage["cache_read_input_tokens"] = 1500
 			case 3:
+				usage["cache_read_input_tokens"] = 0
 				usage["cache_creation_input_tokens"] = 1500
 			}
 		}
@@ -172,5 +173,80 @@ func TestConversationFlagsMidThreadCacheDrop(t *testing.T) {
 	}
 	if report["status"] != "mismatch" || report["drops"].(float64) != 1 {
 		t.Fatalf("status = %v, drops = %v", report["status"], report["drops"])
+	}
+}
+
+// A flat read while every turn writes the growing conversation is a broken
+// chain: only the shared system prefix hits, so the cache card and the
+// conversation strip must both say it did not connect.
+func TestConversationFlagsStalledReadGrowth(t *testing.T) {
+	var mu sync.Mutex
+	convCalls := 0
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			System []struct {
+				Text string `json:"text"`
+			} `json:"system"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		usage := map[string]int{"input_tokens": 2, "output_tokens": 4}
+		if len(body.System) > 0 && body.System[0].Text == convSystem {
+			mu.Lock()
+			convCalls++
+			n := convCalls
+			mu.Unlock()
+			usage["cache_read_input_tokens"] = 78
+			if n == 1 {
+				usage["cache_read_input_tokens"] = 0
+			}
+			if n >= 2 {
+				usage["cache_creation_input_tokens"] = 700 + n*100
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"content":     []any{map[string]string{"type": "text", "text": "最终答案: 开车去"}},
+			"usage":       usage,
+			"stop_reason": "end_turn",
+		})
+	}))
+	defer up.Close()
+
+	db, e := history.Open(":memory:")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s, e := New(db, Options{AllowPrivate: true, HTTP: up.Client()})
+	if e != nil {
+		t.Fatal(e)
+	}
+	g, _ := s.client(Request{Model: "claude-opus-5", BaseURL: up.URL, Timeout: 10})
+
+	task := &Task{ID: "stall", ReportID: "stall", Status: "running", Model: "claude-opus-5", CreatedAt: time.Now().UTC().Format(time.RFC3339), answers: map[string]QuestionResult{}}
+	for i := 1; i <= 6; i++ {
+		id := "Q" + string(rune('0'+i))
+		task.questions = append(task.questions, iq.Question{ID: id, Title: id, Prompt: "题目 " + id, MaxScore: 5, Answer: "开车去"})
+	}
+	s.converse(context.Background(), task, Request{Model: "claude-opus-5", BaseURL: up.URL, Timeout: 10}, g)
+
+	report, ok := task.Verdict.Conversation.(map[string]any)
+	if !ok {
+		t.Fatalf("conversation report missing: %#v", task.Verdict.Conversation)
+	}
+	if report["status"] != "mismatch" || report["drops"].(float64) < 8 || report["hits"].(float64) != 0 {
+		t.Fatalf("status = %v, drops = %v, hits = %v", report["status"], report["drops"], report["hits"])
+	}
+	cache, ok := task.Verdict.Cache.(map[string]any)
+	if !ok || cache["pass"] != false {
+		t.Fatalf("cache verdict not reused: %#v", task.Verdict.Cache)
+	}
+	if samples, _ := cache["samples"].([]any); len(samples) != 11 {
+		t.Fatalf("cache samples = %d, want 11", len(samples))
+	}
+	if ratio, _ := cache["third_read_ratio"].(float64); ratio <= 0 || ratio >= 10 {
+		t.Fatalf("last read ratio = %v, want a stalled chain under 10%%", cache["third_read_ratio"])
+	}
+	if transitions, _ := cache["transitions"].([]any); len(transitions) != 10 {
+		t.Fatalf("transitions = %d, want 10", len(transitions))
 	}
 }

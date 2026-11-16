@@ -156,6 +156,7 @@ export interface ConversationTurn {
   input: number;
   output: number;
   hit_rate: number | null;
+  expected?: number;
   dropped: boolean;
   ms: number;
   error?: string;

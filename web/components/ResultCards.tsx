@@ -83,7 +83,9 @@ export default function ResultCards({
   const integrity = v.integrity;
   const claude = (model || "").toLowerCase().startsWith("claude-");
   const cache = v.cache;
+  const conversationCache = Boolean(v.conversation && cache?.samples?.length);
   const cacheSamples = cache?.samples ?? [];
+  const cacheTransitions = cache?.transitions ?? [];
   const thirdCache = cacheSamples.length ? cacheSamples[cacheSamples.length - 1] : undefined;
   const previousCache = cacheSamples.length > 1 ? cacheSamples[cacheSamples.length - 2] : undefined;
   const thirdTotal = thirdCache && thirdCache.read_reported !== false ? thirdCache.total : null;
@@ -446,7 +448,7 @@ export default function ResultCards({
           </>
         )}
       </section>
-      <section className="result-card">
+      <section className={"result-card" + (v.conversation ? " conversation-wide" : "")}>
         <div className="rc-head">
           <CardTitle title={tr("推理表现")} label={tr("评分说明")} text={q?.note} />
           <span className="rc-score">
@@ -666,7 +668,7 @@ export default function ResultCards({
                 {v.cache.third_read_ratio != null && v.cache.third_read_ratio > 100 && (
                   <p className="muted">{tr("末轮读取超过上一轮读加写，保留原始比例。")}</p>
                 )}
-                <div className="table-wrap">
+                <div className={"table-wrap" + (conversationCache ? " cache-table-hidden" : "")}>
                   <table className="cache-table">
                     <thead>
                       <tr>
@@ -688,7 +690,15 @@ export default function ResultCards({
                           <td>{cacheToken(row.input, row.input_reported)}</td>
                           <td>{cacheToken(row.output, row.output_reported)}</td>
                           <td>{cacheRate(row.hit_rate)}</td>
-                          <td>{row.index > 1 && !row.error && row.read === 0 && row.write > 64 ? tr("整段重写") : ""}</td>
+                          <td className={cacheTransitions.find((x) => x.to === row.index)?.pass === false ? "bad" : ""}>
+                            {cacheTransitions.find((x) => x.to === row.index)?.pass === false
+                              ? row.read === 0
+                                ? tr("整段重写")
+                                : tr("未接续")
+                              : row.index > 1 && !row.error && row.read === 0 && row.write > 64
+                                ? tr("整段重写")
+                                : ""}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -708,10 +718,15 @@ export default function ResultCards({
                 </span>
               </div>
             )}
-            <Details
-              label={v.cache.samples ? tr("多轮缓存明细与衔接") : tr("旧报告缓存明细")}
-              value={v.cache}
-            />
+            {!conversationCache && (
+              <Details
+                label={v.cache.samples ? tr("多轮缓存明细与衔接") : tr("旧报告缓存明细")}
+                value={v.cache}
+              />
+            )}
+            {conversationCache && (
+              <p className="muted cache-conv-link">{tr("明细见「推理表现」。")}</p>
+            )}
           </>
         )}
       </section>}
