@@ -20,6 +20,7 @@
 升级顺序：
 
 1. 新包解到新的版本目录，校验 `checksums.txt`，不覆盖当前目录。
+   切流前脚本会把旧版本目录里的 web/_next/static 合并进新目录；哈希文件名互不覆盖，保留它们是为了让发版前打开的页面还能加载旧 chunk。
 2. 在空闲端口启动新版本；模板 wrapper 会在另一端口健康时自动加 `-skip-recover`。否则新实例启动时会把旧实例正在跑的 Job 标成 `interrupted`。两个实例共用 `/opt/chanshui-data/jobs.db`，SQLite 继续使用 WAL 和 `busy_timeout`。
 3. 检查新端口的 `/api/health`、`/api/ready` 和首页；确认 `draining=false`、`queued_jobs=0`，并能提交一条新检测。
 4. 修改 nginx 的 upstream/`proxy_pass` 指向新端口，`nginx -t` 后 `systemctl reload nginx`。reload 只影响新连接，旧连接继续走旧实例。

@@ -1,4 +1,5 @@
 import "./globals.css";
+import BuildGuard from "@/components/BuildGuard";
 import DocsLink from "@/components/DocsLink";
 import GitHubLink from "@/components/GitHubLink";
 import LanguageMenu, { SkipLink } from "@/components/LanguageMenu";
@@ -53,9 +54,16 @@ export default function RootLayout({
               "try{const t=JSON.parse(localStorage.getItem('chanshui-theme')||'{}');document.documentElement.dataset.accent=t.accent==='mint'?'mint':'orange';document.documentElement.dataset.mode=t.mode==='dark'?'dark':'light'}catch{}",
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "window.addEventListener('error',function(e){var t=e.target;if(!t||t.tagName!=='SCRIPT'||!t.src||t.src.indexOf('/_next/static/chunks/')<0)return;var k='chanshui-chunk-reload-at';var last=Number(sessionStorage.getItem(k))||0;if(Date.now()-last<60000)return;sessionStorage.setItem(k,String(Date.now()));location.reload()},true)",
+          }}
+        />
       </head>
       <body>
         <I18nProvider>
+          <BuildGuard />
           <SkipLink />
           <Sidebar />
           <main className="main" id="main-content">

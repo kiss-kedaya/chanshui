@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -53,13 +54,16 @@ func main() {
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		// Hashed build assets never change; HTML must revalidate so a release
-		// that ships new chunks is not hidden behind a cached page.
+		// Hashed assets never change, but a miss must not be cached: the
+		// browser or an edge would keep a transient 404 after the file lands.
+		cache := "no-store"
 		if strings.HasPrefix(r.URL.Path, "/_next/static/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			w.Header().Set("Cache-Control", "no-cache")
+			cleaned := path.Clean(r.URL.Path)
+			if info, err := os.Stat(filepath.Join(*web, filepath.FromSlash(cleaned))); err == nil && info.Mode().IsRegular() {
+				cache = "public, max-age=31536000, immutable"
+			}
 		}
+		w.Header().Set("Cache-Control", cache)
 		if r.URL.Path == "/history" || r.URL.Path == "/admin" || r.URL.Path == "/docs" {
 			copy := r.Clone(r.Context())
 			copy.URL.Path = r.URL.Path + ".html"

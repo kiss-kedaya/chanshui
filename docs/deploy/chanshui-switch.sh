@@ -6,8 +6,26 @@ set -euo pipefail
 new_port=${1:?new port}
 new_unit=${2:?new unit}
 old_unit=${3:?old unit}
+case "$new_unit" in *@*) ;; *) new_unit="chanshui-bluegreen@$new_unit" ;; esac
+case "$old_unit" in *@*) ;; *) old_unit="chanshui-bluegreen@$old_unit" ;; esac
 upstream=/etc/nginx/conf.d/chanshui-upstream.conf
 backup="/etc/nginx/conf.d/chanshui-upstream.conf.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+
+# Keep every hashed asset ever shipped. A tab opened before this deploy still
+# asks for its old chunk names; deleting them turns the page into 404s.
+unit=${new_unit#chanshui-bluegreen@}
+env_file="/etc/chanshui/bluegreen-${unit}.env"
+if [ -f "$env_file" ]; then
+  new_root=$(sed -n 's/^CHANSHUI_ROOT=//p' "$env_file" | tail -n1)
+  if [ -n "$new_root" ] && [ -d "$new_root/web/_next/static" ]; then
+    for old in /opt/chanshui-*/web/_next/static; do
+      [ "$old" = "$new_root/web/_next/static" ] && continue
+      [ -d "$old" ] || continue
+      cp -an "$old/." "$new_root/web/_next/static/" 2>/dev/null || true
+    done
+    chown -R chanshui:chanshui "$new_root/web/_next/static"
+  fi
+fi
 
 curl -fsS "http://127.0.0.1:${new_port}/api/ready" >/dev/null
 old_port=$(awk '/server 127.0.0.1:/ {gsub(/;/, "", $2); split($2, a, ":"); print a[2]}' "$upstream" | head -n1)
