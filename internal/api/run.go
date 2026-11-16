@@ -788,6 +788,9 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 			req.Thinking = nil
 			req.Effort = ""
 			req.SuppressDefaultEffort = true
+			if gateway.IsDeepSeek(q.Model) {
+				req.Effort = "none"
+			}
 		} else if item.ID == "vision" {
 			// 识图题显式 high；上游不认 effort 时由 CallMessages 回退到不指定。
 			req.Effort = "high"
