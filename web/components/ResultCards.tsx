@@ -86,6 +86,10 @@ export default function ResultCards({
   const conversationCache = Boolean(v.conversation && cache?.samples?.length);
   const cacheSamples = cache?.samples ?? [];
   const cacheTransitions = cache?.transitions ?? [];
+  const injectionFirstWrite =
+    a?.mode === "cache_threshold" && a.points?.length
+      ? Math.min(...a.points.filter((point) => (point.write ?? 0) > 0).map((point) => point.n))
+      : null;
   const thirdCache = cacheSamples.length ? cacheSamples[cacheSamples.length - 1] : undefined;
   const previousCache = cacheSamples.length > 1 ? cacheSamples[cacheSamples.length - 2] : undefined;
   const thirdTotal = thirdCache && thirdCache.read_reported !== false ? thirdCache.total : null;
@@ -320,16 +324,7 @@ export default function ResultCards({
               )}
             </div>
             <div className="mini-stats">
-              {a.mode === "cache_threshold" ? (
-                <>
-                  <span>
-                    {tr("首写阈值")} <b>{a.threshold ?? "—"}</b>
-                  </span>
-                  <span>
-                    {tr("名义门槛")} <b>{a.nominal ?? "—"}</b>
-                  </span>
-                </>
-              ) : (
+              {a.mode !== "cache_threshold" && (
                 <span>
                   {tr("斜率")} <b>{a.slope.toFixed(3)}</b>
                 </span>
@@ -343,28 +338,48 @@ export default function ResultCards({
                 </span>
               )}
             </div>
+            {a.mode === "cache_threshold" && a.nominal ? (
+              <div className="inject-threshold">
+                <div className="inject-bar" title={tr("绿色是能写入的计费前缀，红色是网关额外加、但未计费的隐藏前缀")}>
+                  <span
+                    className="inject-bar-fill"
+                    style={{ width: `${Math.min(100, ((a.threshold ?? 0) / a.nominal) * 100)}%` }}
+                  />
+                  <span
+                    className="inject-bar-gap"
+                    style={{ width: `${Math.max(0, 100 - ((a.threshold ?? 0) / a.nominal) * 100)}%` }}
+                  />
+                </div>
+                <div className="inject-bar-labels">
+                  <span title={tr("第一次出现缓存写入的计费 token 数")}>{tr("首写")} <b>{a.threshold ?? "—"}</b></span>
+                  <span title={tr("该模型/缓存类型的理论最低缓存长度")}>{tr("名义门槛")} <b>{a.nominal}</b></span>
+                  <span className={a.inj ? "bad" : "good"} title={tr("名义门槛 - 首写阈值；网关额外加的系统前缀")}>{tr("隐藏")} <b>{a.inj}</b></span>
+                </div>
+              </div>
+            ) : null}
             <details className="fold">
-              <summary>{tr("采样明细与评分标准")}</summary>
+              <summary>{a.mode === "cache_threshold" ? tr("扫描明细（调试）") : tr("采样明细与评分标准")}</summary>
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>{a.mode === "cache_threshold" ? tr("扫描") : tr("轮次")}</th>
-                      <th>{tr("样本字符")}</th>
-                      <th>{tr("输入")}</th>
-                      <th>{tr("合计")}</th>
+                      <th title={tr("二分探测顺序，按文本长度排序")}>{a.mode === "cache_threshold" ? tr("扫描") : tr("轮次")}</th>
+                      <th title={tr("这次探测的 system 文本字符数")}>{tr("文本长度")}</th>
+                      <th title={tr("上游回传的未缓存输入 token")}>{tr("输入")}</th>
+                      <th title={tr("这次探测写入缓存的 token；第一次大于 0 就是首写阈值")}>{tr("写入")}</th>
+                      <th title={tr("输入 + 缓存读取 + 缓存写入")}>{tr("合计")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {a.points.map((p, index) => (
                       <tr key={p.round || p.n}>
-                        {[
-                          p.round || index + 1, p.n, p.input, p.total,
-                        ].map((n, i) => (
-                          <td key={i} title={JSON.stringify(p)}>
-                            {n}
-                          </td>
-                        ))}
+                        <td title={JSON.stringify(p)}>{p.round || index + 1}</td>
+                        <td title={JSON.stringify(p)}>{p.n}</td>
+                        <td title={JSON.stringify(p)}>{p.input}</td>
+                        <td title={JSON.stringify(p)}>
+                          {p.write ? <b className={p.n === injectionFirstWrite ? "good" : ""}>{p.write}</b> : "—"}
+                        </td>
+                        <td title={JSON.stringify(p)}>{p.total}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -698,13 +713,13 @@ export default function ResultCards({
                   <table className="cache-table">
                     <thead>
                       <tr>
-                        <th>{tr("请求")}</th>
-                        <th>{tr("读")}</th>
-                        <th>{tr("写")}</th>
-                        <th>{tr("输入")}</th>
-                        <th>{tr("输出")}</th>
-                        <th>{tr("命中率")}</th>
-                        <th>{tr("状态")}</th>
+                        <th title={tr("请求序号")}>{tr("请求")}</th>
+                        <th title={tr("缓存读取 token")}>{tr("读")}</th>
+                        <th title={tr("缓存写入 token")}>{tr("写")}</th>
+                        <th title={tr("未命中缓存的输入 token")}>{tr("输入")}</th>
+                        <th title={tr("输出 token")}>{tr("输出")}</th>
+                        <th title={tr("读 ÷ 总输入")}>{tr("命中率")}</th>
+                        <th title={tr("接上 / 未接续 / 整段重写")}>{tr("状态")}</th>
                       </tr>
                     </thead>
                     <tbody>

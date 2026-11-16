@@ -49,7 +49,7 @@ test("cache card shows per-request rates, missing writes, and unbounded third-ro
   const html = renderCache({});
   assert.match(html, /末轮缓存率<\/span><strong>120\.00%<\/strong>/);
   assert.match(html, /上一轮读 ＋ 写<\/span><strong>1500<\/strong>/);
-  assert.match(html, /<th>命中率<\/th>/);
+  assert.match(html, /<th[^>]*>命中率<\/th>/);
   assert.match(html, /<td>#1<\/td><td>0<\/td><td>1000<\/td><td>4<\/td><td>2<\/td><td>0\.00%<\/td>/);
   assert.match(html, /<td>#3<\/td><td>1800<\/td><td>—<\/td><td>4<\/td><td>2<\/td><td>—<\/td>/);
   assert.match(html, /保留原始比例/);

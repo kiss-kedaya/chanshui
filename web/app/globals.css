@@ -3701,6 +3701,26 @@ html[data-mode="dark"] .hint-button:focus {
 }
 .cache-table-hidden { display: none; }
 .cache-conv-link { margin-top: 10px; }
+.inject-threshold { margin: 14px 0 4px; }
+.inject-bar {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+.inject-bar-fill { background: var(--ok); opacity: .8; }
+.inject-bar-gap { background: var(--bad); }
+.inject-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.inject-bar-labels b { font-variant-numeric: tabular-nums; }
+.cache-table th[title] { cursor: help; }
 .cache-rates {
   display: grid;
   grid-template-columns: 1fr 1fr;

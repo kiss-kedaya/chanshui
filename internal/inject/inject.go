@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/kiss-kedaya/chanshui/internal/gateway"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -13,6 +14,7 @@ type Point struct {
 	N     int `json:"n"`
 	Input int `json:"input"`
 	Total int `json:"total"`
+	Write int `json:"write,omitempty"`
 }
 
 type ProbeDiag struct {
@@ -94,7 +96,7 @@ func Measure(ctx context.Context, gw gateway.Client, model string, timeout ...in
 			lastErr = fmt.Errorf("units=%d: %s", units, m.Err)
 			break
 		}
-		points = append(points, Point{N: len(prompt), Input: m.InputTokens, Total: m.InputTokens + m.CacheCreation5m + m.CacheCreation1h + m.CacheRead})
+		points = append(points, Point{N: len(prompt), Input: m.InputTokens, Total: m.InputTokens + m.CacheCreation5m + m.CacheCreation1h + m.CacheRead, Write: m.CacheCreation5m + m.CacheCreation1h})
 		gw.PinProtocol(m.Protocol)
 	}
 	r := Result{Points: points, MaxScore: 10, Note: "两次独立采样估计固定开销。"}
@@ -142,7 +144,7 @@ func measureClaudeThreshold(ctx context.Context, gw gateway.Client, model string
 			return 0, fmt.Errorf("%s", m.Err)
 		}
 		write := m.CacheCreation5m + m.CacheCreation1h
-		points = append(points, Point{N: len(text), Input: m.InputTokens, Total: m.InputTokens + write + m.CacheRead})
+		points = append(points, Point{N: len(text), Input: m.InputTokens, Total: m.InputTokens + write + m.CacheRead, Write: write})
 		return write, nil
 	}
 	lo, hi := 0, 200
@@ -176,6 +178,7 @@ func measureClaudeThreshold(ctx context.Context, gw gateway.Client, model string
 			lo = mid
 		}
 	}
+	sort.Slice(points, func(i, j int) bool { return points[i].N < points[j].N })
 	r.Points = points
 	r.Threshold = threshold
 	hidden := nominal - threshold

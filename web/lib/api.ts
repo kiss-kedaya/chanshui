@@ -229,6 +229,7 @@ export interface DetectVerdict {
       cc?: number;
       cr?: number;
       total: number;
+      write?: number;
     }[];
     cache_header: string;
     probe?: {

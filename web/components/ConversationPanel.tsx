@@ -61,15 +61,15 @@ export default function ConversationPanel({
               <table className="cache-table">
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>{tr("轮次")}</th>
-                    <th>{tr("读")}</th>
-                    <th>{tr("写")}</th>
-                    <th>{tr("应读")}</th>
-                    <th>{tr("差值")}</th>
-                    <th>{tr("输入")}</th>
-                    <th>{tr("缓存率")}</th>
-                    <th>{tr("状态")}</th>
+                    <th title={tr("请求序号")}>#</th>
+                    <th title={tr("开场白 / 题号 / 闲聊")}>{tr("轮次")}</th>
+                    <th title={tr("上游回传的缓存读取 token")}>{tr("读")}</th>
+                    <th title={tr("本轮写入缓存的新 token")}>{tr("写")}</th>
+                    <th title={tr("上一轮读 + 写")}>{tr("应读")}</th>
+                    <th title={tr("本轮读 - 应读；负数为没接上")}>{tr("差值")}</th>
+                    <th title={tr("未命中缓存的输入 token")}>{tr("输入")}</th>
+                    <th title={tr("读 ÷ (输入 + 读 + 写)")}>{tr("缓存率")}</th>
+                    <th title={tr("接上 / 未接续 / 整段重写 / 基线")}>{tr("状态")}</th>
                   </tr>
                 </thead>
                 <tbody>
