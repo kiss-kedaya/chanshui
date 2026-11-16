@@ -8,6 +8,7 @@ import { getJobControl, reconcileJobControl } from "@/lib/job-controls";
 import { watchResource } from "@/lib/polling";
 import ResultCards from "@/components/ResultCards";
 import ProbeTimeline from "@/components/ProbeTimeline";
+import ConversationPanel from "@/components/ConversationPanel";
 import ErrorFold from "@/components/ErrorFold";
 import ReportShare from "@/components/ReportShare";
 import ReportStage from "@/components/ReportStage";
@@ -212,7 +213,9 @@ function HistoryDetailInner() {
           probes={data.probes || []}
           status={data.status}
           timing={data.verdict_json?.timing}
-        />
+        >
+          <ConversationPanel data={data.verdict_json?.conversation} />
+        </ProbeTimeline>
       )}
     </div>
   );

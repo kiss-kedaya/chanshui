@@ -32,6 +32,7 @@ export default function DetectPage() {
   const [concurrency, setConcurrency] = useState(0);
   const [timeout, setTimeoutValue] = useState(360);
   const [cacheOn, setCacheOn] = useState(false);
+  const [conversationOn, setConversationOn] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("summary");
   const [budget, setBudget] = useState(2048);
@@ -66,6 +67,7 @@ export default function DetectPage() {
       if (["auto", "chat", "anthropic", "openai"].includes(p.protocol))
         setProtocol(p.protocol);
       if (typeof p.cache === "boolean") setCacheOn(p.cache);
+      if (typeof p.conversation === "boolean") setConversationOn(p.conversation);
       if (cleanedBaseUrl !== storedBaseUrl) {
         localStorage.setItem(
           "chanshui-settings",
@@ -91,6 +93,7 @@ export default function DetectPage() {
     concurrency,
     timeout,
     cache: cacheOn,
+    conversation: conversationOn,
   });
   // 首页只负责“新建检测”：提交成功后直接跳到报告页，结果、重跑都在 /history 处理。
   const run = async () => {
@@ -100,7 +103,7 @@ export default function DetectPage() {
       try {
         localStorage.setItem(
           "chanshui-settings",
-          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: cacheOn }),
+          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: cacheOn, conversation: conversationOn }),
         );
       } catch {}
       // Key 单独加固落盘（IndexedDB 里不可提取的 AES 密钥加密），方便回报告页重试。
@@ -352,6 +355,19 @@ export default function DetectPage() {
                 <Hint
                   label={tr("缓存读写说明")}
                   text={tr("默认关闭。打开后用 6 轮普通对话串行检测：上一条读加写等于下一条读就是 100%。只对勾选的任务计分。")}
+                />
+              </label>
+              <label className="cache-opt cache-beside" title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>
+                <input
+                  type="checkbox"
+                  checked={conversationOn}
+                  disabled={busy}
+                  onChange={(e) => setConversationOn(e.target.checked)}
+                />
+                {tr("多轮对话")}
+                <Hint
+                  label={tr("多轮对话说明")}
+                  text={tr("默认关闭。打开后开场先寒暄，再按 Q1 到 Q9 串行追问，中途插入几句闲聊。整段对话看缓存读取有没有中途归零，能抓到按请求分类后换池的中转。串行会明显变慢。")}
                 />
               </label>
               <button

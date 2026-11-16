@@ -15,10 +15,12 @@ import (
 	"github.com/kiss-kedaya/chanshui/internal/iq"
 	"github.com/kiss-kedaya/chanshui/internal/knowledge"
 	"github.com/kiss-kedaya/chanshui/internal/thinking"
+	"math"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 func redact(text, key string) string {
@@ -369,18 +371,28 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			return v, nil
 		})
 	}
-	for _, question := range t.questions {
-		if question.ID == "vision" {
-			continue
+	if q.Conversation && t.Source != "api" && clientErr == nil {
+		// One thread, one upstream account: every turn waits for the previous
+		// answer, which is why this mode is opt-in.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.converse(ctx, t, q, g)
+		}()
+	} else {
+		for _, question := range t.questions {
+			if question.ID == "vision" {
+				continue
+			}
+			item := iq.WithChartImage(question)
+			job(item.ID, func() (any, error) {
+				v, e := s.askQuestion(ctx, g, q, item)
+				t.mu.Lock()
+				t.answers[item.ID] = v
+				t.mu.Unlock()
+				return v, e
+			})
 		}
-		item := iq.WithChartImage(question)
-		job(item.ID, func() (any, error) {
-			v, e := s.askQuestion(ctx, g, q, item)
-			t.mu.Lock()
-			t.answers[item.ID] = v
-			t.mu.Unlock()
-			return v, e
-		})
 	}
 	if item, ok := visionQuestion(t.questions); ok {
 		job("vision", func() (any, error) {
@@ -448,6 +460,222 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	s.persist(t)
 }
 
+// convTurn is one request inside the serial conversation. Read and Write come
+// straight from the upstream usage block. Dropped marks a turn that had to
+// rewrite the whole prefix, which is what a mid-session re-route looks like.
+type convTurn struct {
+	Index   int      `json:"index"`
+	Kind    string   `json:"kind"`
+	ID      string   `json:"id,omitempty"`
+	Title   string   `json:"title,omitempty"`
+	Read    int      `json:"read"`
+	Write   int      `json:"write"`
+	Input   int      `json:"input"`
+	Output  int      `json:"output"`
+	HitRate *float64 `json:"hit_rate"`
+	Dropped bool     `json:"dropped"`
+	Ms      int64    `json:"ms"`
+	Error   string   `json:"error,omitempty"`
+}
+
+type conversationReport struct {
+	Rounds int        `json:"rounds"`
+	Hits   int        `json:"hits"`
+	Drops  int        `json:"drops"`
+	Status string     `json:"status"`
+	Pass   *bool      `json:"pass"`
+	Reason string     `json:"reason"`
+	Turns  []convTurn `json:"turns"`
+}
+
+// convSystem stays byte-identical for every turn; together with the first user
+// line it is the cache prefix the whole thread reuses.
+const convSystem = "禁止使用任何工具。回答问题直接给结论，不要展开推导过程；做推理题时在最后单独一行以「最终答案: 」开头给出短结论。"
+
+// convSmallTalk is the unrelated chat dropped in after Q3 and after Q6. A
+// gateway that classifies each request instead of continuing the session
+// breaks the cached prefix exactly here.
+var convSmallTalk = map[int][]string{
+	2: {"先不聊题了，随便问问：你平时怎么安排一天的工作？", "换个话题，下午这个点你会建议喝点什么？"},
+	5: {"先停一下，你更喜欢早上还是晚上做事？", "再插一句题外话，长时间工作怎么休息比较有效？"},
+}
+
+func convHit(read, total int) *float64 {
+	if total <= 0 {
+		return nil
+	}
+	v := math.Round(float64(read)/float64(total)*10000) / 100
+	return &v
+}
+
+func convEcho(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "（本轮未返回内容）"
+	}
+	if utf8.RuneCountInString(text) <= 1500 {
+		return text
+	}
+	return string([]rune(text)[:1500])
+}
+
+// converse runs the reasoning paper as one serial chat thread: opener, nine
+// questions, small talk in between. Serial on purpose: it is the only way to
+// see whether the gateway keeps the same upstream account for the session.
+func (s *Server) converse(ctx context.Context, t *Task, q Request, g gateway.Client) {
+	system := []gateway.SystemBlock{{Text: convSystem}}
+	protocol := g.ProtocolFor(q.Model)
+	var history []gateway.ConversationMessage
+	report := conversationReport{Turns: []convTurn{}}
+	seenRead, cacheFields := false, false
+
+	setProbe := func(id, status string, ms int64, errText string) {
+		t.mu.Lock()
+		for i := range t.Probes {
+			if t.Probes[i].ID != id {
+				continue
+			}
+			t.Probes[i].Status = status
+			t.Probes[i].Error = errText
+			if status != "running" {
+				t.Probes[i].Ms = ms
+			}
+		}
+		t.mu.Unlock()
+	}
+	record := func(kind, id, title string, m gateway.Metrics, ms int64, errText string) {
+		turn := convTurn{Index: len(report.Turns) + 1, Kind: kind, ID: id, Title: title, Read: m.CacheRead, Write: m.CacheCreation5m + m.CacheCreation1h, Input: m.InputTokens, Output: m.OutputTokens, Ms: ms, Error: errText}
+		turn.HitRate = convHit(turn.Read, turn.Input+turn.Read+turn.Write)
+		// The first cacheable turn legitimately reads 0 and writes the prefix;
+		// only a zero read after the chain has been seen is a real drop.
+		turn.Dropped = seenRead && turn.Read == 0 && turn.Write > 64
+		if turn.Read > 0 {
+			seenRead = true
+		}
+		if m.CacheReadReported || m.CacheWriteReported {
+			cacheFields = true
+		}
+		report.Turns = append(report.Turns, turn)
+	}
+	call := func(prompt string, max int, thinking *gateway.ThinkingConfig) (gateway.Metrics, string, int64) {
+		req := gateway.CallRequest{Model: q.Model, Prompt: prompt, MaxTokens: max, Stream: true, TimeoutSeconds: q.Timeout, Thinking: thinking,
+			History: append([]gateway.ConversationMessage(nil), history...), System: system}
+		if protocol == "messages" {
+			cachecheck.MarkConversation(&req)
+		}
+		start := time.Now()
+		m, e := g.CallMessages(ctx, req)
+		if e != nil {
+			m.Err = e.Error()
+		}
+		text := strings.TrimSpace(m.Answer)
+		if text == "" && gateway.IsClaude(q.Model) && m.StopReason != "max_tokens" && m.StopReason != "length" {
+			text = strings.TrimSpace(m.ThinkingText)
+		}
+		// Same turn retried without thinking keeps the thread intact; a fresh
+		// request would drop the prefix this mode is measuring.
+		if text == "" && m.Err == "" && m.Status == 200 {
+			plain := req
+			plain.Thinking = nil
+			plain.SuppressDefaultEffort = true
+			if m2, e2 := g.CallMessages(ctx, plain); e2 == nil && m2.Err == "" {
+				m = m2
+				text = strings.TrimSpace(m2.Answer)
+				if text == "" && gateway.IsClaude(q.Model) {
+					text = strings.TrimSpace(m2.ThinkingText)
+				}
+			}
+		}
+		return m, text, time.Since(start).Milliseconds()
+	}
+	turn := func(kind, id, title, prompt string, max int, thinking *gateway.ThinkingConfig) (gateway.Metrics, string) {
+		m, text, ms := call(prompt, max, thinking)
+		record(kind, id, title, m, ms, redact(m.Err, q.Key))
+		history = append(history,
+			gateway.ConversationMessage{Role: "user", Content: prompt},
+			gateway.ConversationMessage{Role: "assistant", Content: convEcho(text)})
+		if m.Protocol != "" {
+			protocol = m.Protocol
+			g.PinProtocol(m.Protocol)
+		}
+		return m, text
+	}
+
+	turn("opener", "", "开场白", "你好，你能帮我做什么？", 256, nil)
+	for i, item := range t.questions {
+		if item.ID == "vision" {
+			continue
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		setProbe(item.ID, "running", 0, "")
+		start := time.Now()
+		m, text := turn("question", item.ID, item.Title, item.Prompt, 8192, iqThinking(q.Model))
+		var e error
+		if m.Err != "" {
+			e = fmt.Errorf("%s", m.Err)
+		}
+		v, _ := s.finishQuestion(ctx, g, q, item, m, e, text)
+		t.mu.Lock()
+		t.answers[item.ID] = v
+		t.mu.Unlock()
+		status := "done"
+		if v.Error != "" && !v.Skipped {
+			status = "error"
+		}
+		setProbe(item.ID, status, time.Since(start).Milliseconds(), redact(v.Error, q.Key))
+		s.persist(t)
+		for _, extra := range convSmallTalk[i] {
+			if ctx.Err() != nil {
+				break
+			}
+			turn("smalltalk", "", "", extra, 256, nil)
+			s.persist(t)
+		}
+	}
+	t.mu.Lock()
+	for i := range t.Probes {
+		if t.Probes[i].Status == "queued" && (strings.HasPrefix(t.Probes[i].ID, "Q") || t.Probes[i].ID == "vision") {
+			t.Probes[i].Status = "cancelled"
+			t.Probes[i].Error = "检测已停止"
+		}
+	}
+	t.mu.Unlock()
+
+	report.Rounds = len(report.Turns)
+	for _, item := range report.Turns {
+		if item.Read > 0 {
+			report.Hits++
+		}
+		if item.Dropped {
+			report.Drops++
+		}
+	}
+	switch {
+	case !cacheFields:
+		report.Status = "unknown"
+		report.Reason = "上游没有回传缓存用量：这段对话不能判断是否掉缓存。"
+	case report.Drops > 0:
+		fail := false
+		report.Pass = &fail
+		report.Status = "mismatch"
+		report.Reason = fmt.Sprintf("对话共 %d 轮，其中 %d 轮读取归零后整段重写：中途换池或换号会把缓存打断。", report.Rounds, report.Drops)
+	case report.Hits >= 2:
+		pass := true
+		report.Pass = &pass
+		report.Status = "pass"
+		report.Reason = fmt.Sprintf("对话共 %d 轮，%d 轮读到缓存，未出现中途重写。", report.Rounds, report.Hits)
+	default:
+		report.Status = "unknown"
+		report.Reason = "对话还没有建立可复用缓存：前缀可能低于缓存门槛，不能据此判负。"
+	}
+	t.mu.Lock()
+	t.Verdict.Conversation = sanitize(report, q.Key)
+	t.mu.Unlock()
+	s.persist(t)
+}
+
 // askQuestion runs one IQ or vision item. It is shared so the standalone
 // vision section never forks the judging and self-score path.
 func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, item iq.Question) (QuestionResult, error) {
@@ -507,6 +735,12 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 			e = fmt.Errorf("正文与思考均为空")
 		}
 	}
+	return s.finishQuestion(ctx, g, q, item, m, e, text)
+}
+
+// finishQuestion grades one answer and shapes the report row. Shared so the
+// conversation mode scores with the same rules as the parallel paper.
+func (s *Server) finishQuestion(ctx context.Context, g gateway.Client, q Request, item iq.Question, m gateway.Metrics, e error, text string) (QuestionResult, error) {
 	if !gateway.IsClaude(q.Model) {
 		m.ThinkingText = ""
 		m.Signature = ""

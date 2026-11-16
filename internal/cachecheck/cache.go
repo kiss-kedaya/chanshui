@@ -341,6 +341,30 @@ func replayAnswer(answer string) string {
 	return string(runes[:80])
 }
 
+// MarkConversation pins the gateway's sticky-session hash to the first user
+// turn while letting the cached prefix grow: the permanent anchor must stay on
+// the same text every turn, otherwise the routing key follows the sliding
+// breakpoint and the gateway re-selects an account mid-chain.
+func MarkConversation(q *gateway.CallRequest) {
+	mark := &gateway.CacheControl{}
+	if len(q.System) > 0 {
+		q.System[0].CacheControl = mark
+	}
+	q.PromptCacheControl = mark
+	for i := range q.History {
+		if q.History[i].Role == "user" {
+			q.History[i].CacheControl = mark
+			break
+		}
+	}
+	for i := len(q.History) - 1; i >= 0; i-- {
+		if q.History[i].Role == "user" {
+			q.History[i].CacheControl = mark
+			break
+		}
+	}
+}
+
 // Collect runs six serial chat turns. The system document stays byte-identical.
 // Each later turn replays the earlier user and assistant lines, the same way an
 // agent continues a thread. Anthropic breakpoints sit on the system block, the
@@ -374,7 +398,6 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			col.Result.Third = &col.Result.Samples[2]
 		}
 	}
-	mark := &gateway.CacheControl{}
 	for i := 0; i < cacheTurns; i++ {
 		prompt := cacheTurnPrompt(i)
 		hist := append([]gateway.ConversationMessage(nil), history...)
@@ -388,27 +411,7 @@ func Collect(ctx context.Context, c gateway.Client, model string, timeout int) (
 			History:        hist,
 		}
 		if protocol == "messages" {
-			q.System[0].CacheControl = mark
-			q.PromptCacheControl = mark
-			// Gateway sticky routing hashes the first message block carrying
-			// cache_control. If only the sliding tail breakpoint is marked, the
-			// hash moves from the first user line to the second on turn three
-			// and the gateway re-selects an account (cold cache, full rewrite).
-			// Mark the first user line permanently so the routing key stays
-			// fixed; the sliding tail breakpoint below still lets the cached
-			// prefix grow with each turn.
-			for j := 0; j < len(q.History); j++ {
-				if q.History[j].Role == "user" {
-					q.History[j].CacheControl = mark
-					break
-				}
-			}
-			for j := len(q.History) - 1; j >= 0; j-- {
-				if q.History[j].Role == "user" {
-					q.History[j].CacheControl = mark
-					break
-				}
-			}
+			MarkConversation(&q)
 		}
 		m, e := c.CallMessages(ctx, q)
 		if e != nil {

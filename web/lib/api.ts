@@ -10,6 +10,7 @@ export interface DetectRequest {
   concurrency?: number;
   timeout?: number;
   cache?: boolean;
+  conversation?: boolean;
 }
 export interface Metrics {
   Status: number;
@@ -145,6 +146,29 @@ export interface VisionVerdict {
   note?: string;
   error?: string;
 }
+export interface ConversationTurn {
+  index: number;
+  kind: "opener" | "question" | "smalltalk";
+  id?: string;
+  title?: string;
+  read: number;
+  write: number;
+  input: number;
+  output: number;
+  hit_rate: number | null;
+  dropped: boolean;
+  ms: number;
+  error?: string;
+}
+export interface ConversationVerdict {
+  rounds: number;
+  hits: number;
+  drops: number;
+  status: "pass" | "mismatch" | "unknown";
+  pass: boolean | null;
+  reason: string;
+  turns: ConversationTurn[];
+}
 export interface DetectVerdict {
   timing?: { started_at: string; finished_at?: string; total_ms: number; last_run_ms: number; runs: number };
   protocol?: string;
@@ -152,6 +176,7 @@ export interface DetectVerdict {
   web?: CapabilityResult | null;
   knowledge?: KnowledgeVerdict | null;
   vision?: VisionVerdict | null;
+  conversation?: ConversationVerdict | null;
   integrity?: IntegrityVerdict | null;
   total?: TotalVerdict | null;
   cache?: {

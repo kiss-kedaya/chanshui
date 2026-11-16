@@ -68,6 +68,9 @@ type Request struct {
 	Concurrency int    `json:"concurrency"`
 	Timeout     int    `json:"timeout"`
 	Cache       bool   `json:"cache"`
+	// Conversation runs the reasoning paper as one serial chat thread so a
+	// gateway that classifies or re-routes mid-session shows up as a cache drop.
+	Conversation bool `json:"conversation,omitempty"`
 }
 type Probe struct {
 	ID     string `json:"id"`
@@ -87,6 +90,7 @@ type Verdict struct {
 	Fingerprint    any     `json:"fingerprint"`
 	Thinking       any     `json:"thinking"`
 	Vision         any     `json:"vision"`
+	Conversation   any     `json:"conversation,omitempty"`
 	Cache          any     `json:"cache"`
 	Knowledge      any     `json:"knowledge"`
 	Integrity      any     `json:"integrity"`

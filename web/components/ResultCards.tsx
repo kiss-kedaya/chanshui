@@ -1,6 +1,7 @@
 "use client";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import ResultSkeleton from "@/components/ResultSkeleton";
+import ConversationPanel from "@/components/ConversationPanel";
 import ErrorFold from "@/components/ErrorFold";
 import Hint from "@/components/Hint";
 import { fingerprintState, presentedTotal, probabilityVisible } from "@/lib/report-view";
@@ -466,6 +467,7 @@ export default function ResultCards({
                 {q.complete ? tr("本次测评") : tr("尚未完成")}
               </b>
             </div>
+            {v.conversation && <ConversationPanel data={v.conversation} />}
             <div className="question-list">
               {q.per_question.map((x, index) => (
                 <details key={x.id} className="question">

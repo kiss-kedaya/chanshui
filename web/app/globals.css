@@ -3612,6 +3612,31 @@ html[data-mode="dark"] .hint-button:focus {
   align-items: center;
   gap: 8px;
 }
+.conv-block {
+  margin: 14px 0 4px;
+}
+.conv-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.conv-tag {
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 500;
+}
+.conv-strip b {
+  font-weight: 500;
+}
+.conv-turns {
+  margin-top: 9px;
+}
 .cache-rates {
   display: grid;
   grid-template-columns: 1fr 1fr;
