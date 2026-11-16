@@ -497,6 +497,23 @@ type conversationReport struct {
 // line it is the cache prefix the whole thread reuses.
 const convSystem = "禁止使用任何工具。回答问题直接给结论，不要展开推导过程；做推理题时在最后单独一行以「最终答案: 」开头给出短结论。"
 
+// The 0.8/5m route first writes cache at 512 tokens; the 1.2/1h route shows
+// the first write near 368 because about 144 hidden system tokens are deducted
+// from usage. Pad the conversation above 512 so the first turn already writes
+// instead of leaving the first two rows at zero. Haiku needs a larger block.
+func convWarmup(model string) string {
+	n := 40
+	if strings.Contains(strings.ToLower(model), "haiku") {
+		n = 160
+	}
+	var b strings.Builder
+	b.WriteString("Fixed cache warm-up block; ignore it when answering.\n")
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "Cache warm-up sentence %03d stays byte-for-byte identical.\n", i)
+	}
+	return b.String()
+}
+
 // convSmallTalk is the unrelated chat dropped in after Q3 and after Q6. A
 // gateway that classifies each request instead of continuing the session
 // breaks the cached prefix exactly here.
@@ -528,7 +545,7 @@ func convEcho(text string) string {
 // questions, small talk in between. Serial on purpose: it is the only way to
 // see whether the gateway keeps the same upstream account for the session.
 func (s *Server) converse(ctx context.Context, t *Task, q Request, g gateway.Client) {
-	system := []gateway.SystemBlock{{Text: convSystem}}
+	system := []gateway.SystemBlock{{Text: convSystem + "\n\n" + convWarmup(q.Model)}}
 	protocol := g.ProtocolFor(q.Model)
 	var history []gateway.ConversationMessage
 	report := conversationReport{Turns: []convTurn{}}
@@ -769,12 +786,12 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 		}}
 		if plain {
 			req.Thinking = nil
+			req.Effort = ""
 			req.SuppressDefaultEffort = true
-		}
-		// DeepSeek 默认思考会一路吃完 max_tokens；识图题直接关掉思考。
-		if item.ID == "vision" && gateway.IsDeepSeek(q.Model) {
-			req.Effort = "none"
-			req.SuppressDefaultEffort = true
+		} else if item.ID == "vision" {
+			// 识图题显式 high；上游不认 effort 时由 CallMessages 回退到不指定。
+			req.Effort = "high"
+			req.SuppressDefaultEffort = false
 		}
 		return g.CallMessages(ctx, req)
 	}

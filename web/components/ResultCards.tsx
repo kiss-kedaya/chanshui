@@ -296,7 +296,15 @@ export default function ResultCards({
         ) : (
           <>
             <div className="metric-line">
-              {a.score != null && a.reliable !== false ? (
+              {a.mode === "cache_threshold" && a.score != null ? (
+                <>
+                  <strong>
+                    ≈ <AnimatedNumber value={a.inj} />
+                  </strong>
+                  <span>{tr("隐藏 token")}</span>
+                  <b className="score-chip">{a.score + " / 10"}</b>
+                </>
+              ) : a.score != null && a.reliable !== false ? (
                 <>
                   <strong>
                     ≈ <AnimatedNumber value={a.inj} />
@@ -312,11 +320,22 @@ export default function ResultCards({
               )}
             </div>
             <div className="mini-stats">
+              {a.mode === "cache_threshold" ? (
+                <>
+                  <span>
+                    {tr("首写阈值")} <b>{a.threshold ?? "—"}</b>
+                  </span>
+                  <span>
+                    {tr("名义门槛")} <b>{a.nominal ?? "—"}</b>
+                  </span>
+                </>
+              ) : (
+                <span>
+                  {tr("斜率")} <b>{a.slope.toFixed(3)}</b>
+                </span>
+              )}
               <span>
-                {tr("斜率")} <b>{a.slope.toFixed(3)}</b>
-              </span>
-              <span>
-                {tr("复用采样")} <b>{tr("{n} 次", { n: a.points.length })}</b>
+                {a.mode === "cache_threshold" ? tr("扫描样本") : tr("复用采样")} <b>{tr("{n} 次", { n: a.points.length })}</b>
               </span>
               {a.points.length > 2 && a.max_residual != null && (
                 <span>
@@ -330,7 +349,7 @@ export default function ResultCards({
                 <table>
                   <thead>
                     <tr>
-                      <th>{tr("轮次")}</th>
+                      <th>{a.mode === "cache_threshold" ? tr("扫描") : tr("轮次")}</th>
                       <th>{tr("样本字符")}</th>
                       <th>{tr("输入")}</th>
                       <th>{tr("合计")}</th>

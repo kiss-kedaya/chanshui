@@ -42,7 +42,7 @@ func TestConversationKeepsAnchorAndCountsTurns(t *testing.T) {
 		// under test carries the conversation system block.
 		conv := false
 		for _, block := range body.System {
-			if block.Text == convSystem {
+			if strings.HasPrefix(block.Text, convSystem) {
 				conv = true
 			}
 		}
@@ -128,7 +128,7 @@ func TestConversationFlagsMidThreadCacheDrop(t *testing.T) {
 		}
 		json.NewDecoder(r.Body).Decode(&body)
 		usage := map[string]int{"input_tokens": 200, "output_tokens": 5}
-		if len(body.System) > 0 && body.System[0].Text == convSystem {
+		if len(body.System) > 0 && strings.HasPrefix(body.System[0].Text, convSystem) {
 			mu.Lock()
 			convCalls++
 			n := convCalls
@@ -190,7 +190,7 @@ func TestConversationFlagsStalledReadGrowth(t *testing.T) {
 		}
 		json.NewDecoder(r.Body).Decode(&body)
 		usage := map[string]int{"input_tokens": 2, "output_tokens": 4}
-		if len(body.System) > 0 && body.System[0].Text == convSystem {
+		if len(body.System) > 0 && strings.HasPrefix(body.System[0].Text, convSystem) {
 			mu.Lock()
 			convCalls++
 			n := convCalls

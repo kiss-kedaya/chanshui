@@ -110,7 +110,7 @@ func (c *Client) CallMessages(ctx context.Context, q CallRequest) (Metrics, erro
 		// 只回退一次，后续仍按普通参数错误处理。
 		// "none" is only sent to switch thinking off; an upstream that does not
 		// know it should get the same no-effort retry as the host default.
-		if !adapted && (autoEffort || q.Effort == "none") && q.Effort != "" && (m.Status == 400 || m.Status == 422) {
+		if !adapted && (autoEffort || q.Effort == "none" || q.Effort == "high") && q.Effort != "" && (m.Status == 400 || m.Status == 422) {
 			q.Effort = ""
 			effortFallback = true
 			adapted = true

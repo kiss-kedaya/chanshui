@@ -28,6 +28,7 @@ func testSetup(t *testing.T) (*Server, *httptest.Server, *atomic.Bool, *atomic.I
 			return
 		}
 		var q struct {
+			System   []struct{ Text string }
 			Messages []struct{ Content string }
 			Thinking any
 			Stream   bool
@@ -71,7 +72,15 @@ func testSetup(t *testing.T) (*Server, *httptest.Server, *atomic.Bool, *atomic.I
 		if q.Thinking != nil {
 			content = append([]any{map[string]string{"type": "thinking", "thinking": "逐项推导并核验", "signature": "fixture-signature"}}, content...)
 		}
-		resp := map[string]any{"content": content, "usage": map[string]int{"input_tokens": input, "output_tokens": 50}, "stop_reason": "end_turn"}
+		usage := map[string]int{"input_tokens": input, "output_tokens": 50}
+		if len(q.System) > 0 && strings.Contains(q.System[0].Text, "cache threshold probe") {
+			if n := len(q.System[0].Text); n >= 1600 {
+				usage = map[string]int{"input_tokens": 11, "output_tokens": 50, "cache_creation_input_tokens": n / 4}
+			} else {
+				usage = map[string]int{"input_tokens": n/4 + 11, "output_tokens": 50}
+			}
+		}
+		resp := map[string]any{"content": content, "usage": usage, "stop_reason": "end_turn"}
 		if q.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			start := map[string]any{"type": "message_start", "message": resp}

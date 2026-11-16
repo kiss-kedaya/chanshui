@@ -216,6 +216,9 @@ export interface DetectVerdict {
     reliable: boolean;
     score: number | null;
     max_score: number;
+    mode?: string;
+    threshold?: number;
+    nominal?: number;
     note: string;
     points: {
       round?: number;

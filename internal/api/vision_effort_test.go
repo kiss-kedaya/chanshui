@@ -12,8 +12,8 @@ import (
 	"github.com/kiss-kedaya/chanshui/internal/iq"
 )
 
-// 识图题在 DeepSeek 上必须关掉默认思考，否则 8192 全被 reasoning 吃光。
-func TestVisionDisablesDeepSeekThinking(t *testing.T) {
+// 识图题也走默认 high；上游不认 effort 时由网关回退到不指定。
+func TestVisionUsesHighEffort(t *testing.T) {
 	var body string
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -31,8 +31,8 @@ func TestVisionDisablesDeepSeekThinking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(body, `"reasoning_effort":"none"`) {
-		t.Fatalf("thinking not disabled: %s", body)
+	if !strings.Contains(body, `"reasoning_effort":"high"`) {
+		t.Fatalf("vision high effort not applied: %s", body)
 	}
 	if v.Earned != 20 || v.Error != "" {
 		t.Fatalf("answer lost: %+v", v)
