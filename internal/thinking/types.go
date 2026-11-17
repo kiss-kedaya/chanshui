@@ -20,11 +20,12 @@ type Message struct {
 
 // CallRequest mirrors gateway.CallRequest.
 type CallRequest struct {
-	Model     string          `json:"model"`
-	MaxTokens int             `json:"max_tokens"`
-	System    string          `json:"system,omitempty"`
-	Messages  []Message       `json:"messages"`
-	Thinking  *ThinkingConfig `json:"thinking,omitempty"`
+	Model       string          `json:"model"`
+	MaxTokens   int             `json:"max_tokens"`
+	Temperature *float64        `json:"temperature,omitempty"`
+	System      string          `json:"system,omitempty"`
+	Messages    []Message       `json:"messages"`
+	Thinking    *ThinkingConfig `json:"thinking,omitempty"`
 	// Replay is set only by signature audit. Thinking stays nil.
 	Replay *Replay `json:"replay,omitempty"`
 	// StopOnInvalidSignature stops the transport on the expected forged-signature 400.

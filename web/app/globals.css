@@ -3721,6 +3721,13 @@ html[data-mode="dark"] .hint-button:focus {
 }
 .inject-bar-labels b { font-variant-numeric: tabular-nums; }
 .cache-table th[title] { cursor: help; }
+.thinking-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 6px;
+  font-size: 10px;
+}
 .cache-rates {
   display: grid;
   grid-template-columns: 1fr 1fr;

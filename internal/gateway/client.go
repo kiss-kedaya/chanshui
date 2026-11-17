@@ -62,6 +62,7 @@ type CallRequest struct {
 	History                []ConversationMessage
 	System                 []SystemBlock
 	Thinking               *ThinkingConfig
+	Temperature            *float64
 	PriorUser              string
 	PriorSignature         string
 	StopOnInvalidSignature bool
@@ -197,6 +198,7 @@ type wireThinking struct {
 }
 
 type wireRequest struct {
+	Temperature  *float64          `json:"temperature,omitempty"`
 	Tools        []any             `json:"tools,omitempty"`
 	ToolChoice   any               `json:"tool_choice,omitempty"`
 	OutputConfig map[string]string `json:"output_config,omitempty"`
@@ -277,6 +279,7 @@ func (c *Client) callMessagesOnce(ctx context.Context, req CallRequest) (Metrics
 			BudgetTokens: req.Thinking.BudgetTokens,
 		}
 	}
+	wire.Temperature = req.Temperature
 	wire.Tools, wire.ToolChoice = toolWire(req, "messages")
 	body, err := json.Marshal(wire)
 	if err != nil {

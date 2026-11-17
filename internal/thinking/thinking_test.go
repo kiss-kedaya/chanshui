@@ -6,163 +6,155 @@ import (
 	"testing"
 )
 
-// fakeCaller implements Caller with canned Metrics per scenario.
+// fakeCaller returns one first-turn metric and lets the test decide how replay
+// and temperature requests behave.
 type fakeCaller struct {
-	metrics Metrics
-	err     error
-
-	// captured request for assertions
-	gotReq    CallRequest
-	gotCalled bool
+	first    Metrics
+	firstErr error
+	replay   func(CallRequest) (Metrics, error)
+	calls    []CallRequest
 }
 
 func (f *fakeCaller) CallMessages(ctx context.Context, req CallRequest) (Metrics, error) {
-	f.gotCalled = true
-	f.gotReq = req
-	if f.err != nil {
-		return Metrics{}, f.err
+	f.calls = append(f.calls, req)
+	if (req.Replay != nil || req.Temperature != nil) && f.replay != nil {
+		return f.replay(req)
 	}
-	return f.metrics, nil
+	if f.firstErr != nil {
+		return Metrics{}, f.firstErr
+	}
+	return f.first, nil
 }
 
-func TestCheckThreeShapes(t *testing.T) {
+func validReplay(req CallRequest) (Metrics, error) {
+	if req.Temperature != nil {
+		return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
+	}
+	if req.Replay != nil {
+		if req.Replay.Signature == "VALID" {
+			return Metrics{Status: 200, Answer: "I'm Claude, an AI assistant made by Anthropic."}, nil
+		}
+		return Metrics{Status: 400, Err: "messages.1.content.0: Invalid `signature` in `thinking` block"}, nil
+	}
+	return Metrics{}, nil
+}
+
+func TestCheckScoresSignatureAndTamper(t *testing.T) {
+	base := Metrics{Status: 200, ThinkLen: 812, SigLen: 5, ThinkingText: "最小正整数 is 221.", Signature: "VALID"}
 	cases := []struct {
 		name       string
-		metrics    Metrics
+		model      string
+		first      Metrics
+		replay     func(CallRequest) (Metrics, error)
 		wantPass   bool
+		wantScore  int
+		wantMax    int
 		wantReason string
-		wantThink  int
-		wantSig    int
-		wantTokens int
+		wantCalls  int
 	}{
 		{
-			name: "text plus signature passes",
-			metrics: Metrics{
-				Status:         200,
-				ThinkLen:       812,
-				SigLen:         208,
-				ThinkingText:   "最小正整数 is 221.",
-				Signature:      strings.Repeat("s", 208),
-				ThinkingTokens: 130,
-				InputTokens:    88,
-				OutputTokens:   260,
-			},
-			wantPass:   true,
-			wantReason: "思维摘要已回传",
-			wantThink:  812,
-			wantSig:    208,
-			wantTokens: 130,
+			name: "full sonnet", model: "claude-sonnet-4-5", first: base, replay: validReplay,
+			wantPass: true, wantScore: 10, wantMax: 10, wantReason: "篡改拒绝", wantCalls: 3,
 		},
 		{
-			name: "signature only fails",
-			metrics: Metrics{
-				Status:         200,
-				ThinkLen:       0,
-				SigLen:         256,
-				Signature:      strings.Repeat("s", 256),
-				ThinkingTokens: 128,
-			},
-			wantPass:   false,
-			wantReason: "没有思维摘要",
-			wantThink:  0,
-			wantSig:    256,
-			wantTokens: 128,
+			name: "signature only", model: "claude-sonnet-4-5",
+			first:  Metrics{Status: 200, SigLen: 5, Signature: "VALID"},
+			replay: validReplay, wantPass: false, wantScore: 5, wantMax: 10, wantReason: "摘要 0/5", wantCalls: 3,
 		},
 		{
-			name: "thinking tokens but no block same as signature only",
-			metrics: Metrics{
-				Status:         200,
-				ThinkLen:       0,
-				SigLen:         244,
-				Signature:      strings.Repeat("s", 244),
-				ThinkingTokens: 110,
-			},
-			wantPass:   false,
-			wantReason: "没有思维摘要",
-			wantThink:  0,
-			wantSig:    244,
-			wantTokens: 110,
+			name: "no signature", model: "claude-sonnet-4-5", first: Metrics{Status: 200},
+			wantPass: false, wantScore: 0, wantMax: 10, wantReason: "没有思维摘要，也没有签名", wantCalls: 1,
 		},
 		{
-			name: "no thinking block at all",
-			metrics: Metrics{
-				Status: 200,
+			name: "tamper accepted", model: "claude-sonnet-4-5", first: base,
+			replay: func(req CallRequest) (Metrics, error) {
+				if req.Temperature != nil {
+					return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
+				}
+				return Metrics{Status: 200, Answer: "I'm Claude."}, nil
 			},
-			wantPass:   false,
-			wantReason: "没有思维摘要",
+			wantPass: false, wantScore: 8, wantMax: 10, wantReason: "篡改签名仍被接受", wantCalls: 3,
+		},
+		{
+			name: "original replay fails", model: "claude-sonnet-4-5", first: base,
+			replay: func(req CallRequest) (Metrics, error) {
+				return Metrics{Status: 400, Err: "messages.1.content.0: Invalid `signature` in `thinking` block"}, nil
+			},
+			wantPass: false, wantScore: 7, wantMax: 10, wantReason: "原始签名续轮失败", wantCalls: 3,
+		},
+		{
+			name: "opus full with temperature", model: "claude-opus-5-5", first: base, replay: validReplay,
+			wantPass: true, wantScore: 12, wantMax: 12, wantReason: "temperature 2/2", wantCalls: 4,
 		},
 	}
-
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			fc := &fakeCaller{metrics: tc.metrics}
-			v, err := Check(context.Background(), fc, "claude-sonnet-4-5")
+			fc := &fakeCaller{first: tc.first, replay: tc.replay}
+			v, err := Check(context.Background(), fc, tc.model)
 			if err != nil {
 				t.Fatalf("Check error: %v", err)
 			}
-			if v.Pass != tc.wantPass {
-				t.Errorf("Pass = %v, want %v", v.Pass, tc.wantPass)
+			if v.Pass != tc.wantPass || v.Score != tc.wantScore || v.MaxScore != tc.wantMax {
+				t.Fatalf("pass=%v score=%d max=%d want pass=%v score=%d max=%d (%+v)", v.Pass, v.Score, v.MaxScore, tc.wantPass, tc.wantScore, tc.wantMax, v)
 			}
-			if v.Reason != tc.wantReason {
-				t.Errorf("Reason = %q, want %q", v.Reason, tc.wantReason)
+			if !strings.Contains(v.Reason, tc.wantReason) {
+				t.Fatalf("Reason = %q, want contains %q", v.Reason, tc.wantReason)
 			}
-			wantScore := 0
-			if tc.wantPass {
-				wantScore = 5
-			}
-			if v.Score != wantScore || v.SummaryScore != v.Score || v.SignatureScore != 0 {
-				t.Errorf("Score = %d summary %d signature %d, want %d", v.Score, v.SummaryScore, v.SignatureScore, wantScore)
-			}
-			if v.ThinkLen != tc.wantThink {
-				t.Errorf("ThinkLen = %d, want %d", v.ThinkLen, tc.wantThink)
-			}
-			if v.SigLen != tc.wantSig {
-				t.Errorf("SigLen = %d, want %d", v.SigLen, tc.wantSig)
-			}
-			if v.ThinkingTokens != tc.wantTokens {
-				t.Errorf("ThinkingTokens = %d, want %d", v.ThinkingTokens, tc.wantTokens)
+			if len(fc.calls) != tc.wantCalls {
+				t.Fatalf("calls = %d, want %d", len(fc.calls), tc.wantCalls)
 			}
 		})
 	}
 }
 
+func TestCheckReplayKeepsAdaptiveThinkingAndTamperFlag(t *testing.T) {
+	fc := &fakeCaller{
+		first:  Metrics{Status: 200, ThinkLen: 10, SigLen: 5, ThinkingText: "reasoning", Signature: "VALID"},
+		replay: validReplay,
+	}
+	if _, err := Check(context.Background(), fc, "claude-sonnet-4-5"); err != nil {
+		t.Fatal(err)
+	}
+	var replays []CallRequest
+	for _, req := range fc.calls {
+		if req.Replay != nil {
+			replays = append(replays, req)
+		}
+	}
+	if len(replays) != 2 {
+		t.Fatalf("replays = %d, want 2", len(replays))
+	}
+	for _, req := range replays {
+		if !req.StopOnInvalidSignature || req.MaxTokens != 2048 {
+			t.Fatalf("replay shape missing: %+v", req)
+		}
+	}
+}
+
 func TestCheckCallShape(t *testing.T) {
-	fc := &fakeCaller{metrics: Metrics{Status: 200, ThinkLen: 10, SigLen: 10}}
+	fc := &fakeCaller{first: Metrics{Status: 200, ThinkLen: 10, SigLen: 0}}
 	_, err := Check(context.Background(), fc, "claude-sonnet-4-5")
 	if err != nil {
 		t.Fatalf("Check error: %v", err)
 	}
-	if !fc.gotCalled {
-		t.Fatal("Check did not call the gateway")
+	if len(fc.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(fc.calls))
 	}
-	req := fc.gotReq
-	if req.Model != "claude-sonnet-4-5" {
-		t.Errorf("Model = %q", req.Model)
+	req := fc.calls[0]
+	if req.Model != "claude-sonnet-4-5" || req.MaxTokens != 4096 {
+		t.Errorf("Model/MaxTokens = %q/%d", req.Model, req.MaxTokens)
 	}
-	if req.MaxTokens != 4096 {
-		t.Errorf("MaxTokens = %d, want 4096", req.MaxTokens)
+	if req.Thinking == nil || req.Thinking.Type != "adaptive" || req.Thinking.Display != "summarized" {
+		t.Errorf("Thinking = %+v", req.Thinking)
 	}
-	if req.Thinking == nil {
-		t.Fatal("Thinking config missing")
-	}
-	if req.Thinking.Type != "adaptive" {
-		t.Errorf("Thinking.Type = %q, want adaptive", req.Thinking.Type)
-	}
-	if req.Thinking.Display != "summarized" {
-		t.Errorf("Thinking.Display = %q, want summarized", req.Thinking.Display)
-	}
-	if len(req.Messages) != 1 {
-		t.Fatalf("len(Messages) = %d, want 1", len(req.Messages))
-	}
-	if !strings.Contains(req.Messages[0].Content, "最小正整数") {
-		t.Errorf("prompt missing 最小正整数: %q", req.Messages[0].Content)
+	if len(req.Messages) != 1 || !strings.Contains(req.Messages[0].Content, "最小正整数") {
+		t.Errorf("Messages = %+v", req.Messages)
 	}
 }
 
 func TestCheckCallerError(t *testing.T) {
-	fc := &fakeCaller{err: context.DeadlineExceeded}
-	_, err := Check(context.Background(), fc, "claude-sonnet-4-5")
-	if err == nil {
+	fc := &fakeCaller{firstErr: context.DeadlineExceeded}
+	if _, err := Check(context.Background(), fc, "claude-sonnet-4-5"); err == nil {
 		t.Fatal("expected error to propagate from caller")
 	}
 }

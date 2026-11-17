@@ -33,6 +33,9 @@ func (c *Client) callCompatibleOnce(ctx context.Context, q CallRequest) (Metrics
 	}
 	messages = append(messages, map[string]any{"role": "user", "content": userWireContent(q, protocol)})
 	body := map[string]any{"model": q.Model, "stream": q.Stream}
+	if q.Temperature != nil {
+		body["temperature"] = *q.Temperature
+	}
 	path := "/chat/completions"
 	if protocol == "responses" {
 		path = "/responses"

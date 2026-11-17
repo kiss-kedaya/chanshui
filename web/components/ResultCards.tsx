@@ -445,10 +445,31 @@ export default function ResultCards({
           ) : (
             <>
               <div className="metric-line">
-                <strong className={(t.summary_score ?? (t.think_len > 0 ? 5 : 0)) === 5 ? "good" : "warn"}>
-                  {(t.summary_score ?? (t.think_len > 0 ? 5 : 0))} / 5
+                <strong className={((t.score ?? t.summary_score ?? (t.think_len > 0 ? 5 : 0)) === (t.max_score ?? 5)) ? "good" : "warn"}>
+                  {t.score ?? t.summary_score ?? (t.think_len > 0 ? 5 : 0)} / {t.max_score ?? 5}
                 </strong>
               </div>
+              <div className="thinking-checks">
+                <span className={t.signature_present ? "good" : "bad"}>{tr("签名")} {t.signature_present ? tr("有") : tr("无")}</span>
+                <span className={t.original_replay ? "good" : "bad"}>{tr("原始续轮")} {t.original_replay ? tr("通过") : tr("失败")}</span>
+                <span className={t.tamper_rejected ? "good" : "bad"}>{tr("篡改")} {t.tamper_rejected ? tr("被拒") : tr("被接受")}</span>
+                {t.max_score === 12 && (
+                  <span className={t.temperature_rejected ? "good" : "bad"}>
+                    temperature {t.temperature_rejected ? "400" : tr("未拦截")}
+                  </span>
+                )}
+              </div>
+              <p className="muted">{t.reason}</p>
+              <Details
+                label={tr("签名校验回显")}
+                value={{
+                  self_report: t.self_report,
+                  family_consistent: t.family_consistent,
+                  tamper_status: t.tamper_status,
+                  tamper_error: t.tamper_error,
+                  temperature_error: t.temperature_error,
+                }}
+              />
               <Details label={tr("查看思维链全文")} value={t.thinking_text} />
               <Details label={tr("探针回答")} value={t.answer} />
             </>

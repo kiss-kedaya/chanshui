@@ -48,13 +48,16 @@ type thinkAdapter struct {
 
 func (a thinkAdapter) CallMessages(ctx context.Context, q thinking.CallRequest) (thinking.Metrics, error) {
 	req := gateway.CallRequest{
-		Model: q.Model, MaxTokens: q.MaxTokens, Stream: q.Stream, Effort: q.Effort,
+		Model: q.Model, MaxTokens: q.MaxTokens, Stream: q.Stream, Effort: q.Effort, Temperature: q.Temperature,
 		StopOnInvalidSignature: q.StopOnInvalidSignature, TimeoutSeconds: a.timeout,
 	}
 	if q.Replay != nil {
 		req.PriorUser = q.Replay.PriorUser
 		req.PriorSignature = q.Replay.Signature
 		req.Prompt = q.Replay.FollowUp
+		// Without an active thinking block the upstream can skip signature
+		// validation and accept a tampered signature. Keep adaptive on replay.
+		req.Thinking = &gateway.ThinkingConfig{Type: "adaptive"}
 	} else {
 		if len(q.Messages) == 0 {
 			return thinking.Metrics{}, fmt.Errorf("thinking request has no message")
@@ -1098,10 +1101,13 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 	toolPoints, toolKnown := boolPart(v.Tools)
 	webApply, webPoints, webKnown := webPart(v.Web)
 	thinkApply := gateway.IsClaude(model)
-	thinkPoints, thinkKnown := 0, false
+	thinkPoints, thinkKnown, thinkMax := 0, false, 5
 	if thinkApply {
 		if m, ok := v.Thinking.(map[string]any); ok {
 			thinkKnown = true
+			if n, ok := asInt(m["max_score"]); ok && n > 0 {
+				thinkMax = n
+			}
 			errText, _ := m["error"].(string)
 			if errText == "" {
 				if n, ok := asInt(m["score"]); ok {
@@ -1145,7 +1151,7 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		{Key: "injection", Label: "注入大小", Applicable: injApply, Known: injKnown, Points: injPoints, MaxPoints: 10},
 		{Key: "tools", Label: "工具调用", Applicable: want("tools"), Known: toolKnown, Points: toolPoints, MaxPoints: 1},
 		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},
-		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: 5},
+		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: thinkMax},
 		{Key: "cache", Label: "缓存读写", Applicable: cacheApply, Known: cacheKnown, Points: cachePoints, MaxPoints: 1},
 	})
 }
