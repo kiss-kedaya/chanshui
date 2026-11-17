@@ -268,6 +268,8 @@ export const rows: [string, string, string, string, string][] = [
 ["思维摘要 {n} / 5","Summary {n} / 5","思維摘要 {n} / 5","思考要約 {n} / 5","사고 요약 {n} / 5"],
 ["signature {n} / 5","Signature {n} / 5","signature {n} / 5","署名 {n} / 5","서명 {n} / 5"],
 ["签名模型","Signed model","簽名模型","署名上のモデル","서명된 모델"],
+["不透明","Opaque","不透明","不透明","불투명"],
+["不透明签名，不扣分","Opaque signature, no penalty","不透明簽名，不扣分","不透明署名、減点なし","불투명 서명, 감점 없음"],
 ["读不出","Unreadable","讀不出","読めない","읽지 못함"],
 ["与声称模型一致","Matches the claimed model","與聲稱模型一致","自称モデルと一致","주장한 모델과 일치"],
 ["与声称模型不一致","Does not match the claimed model","與聲稱模型不一致","自称モデルと不一致","주장한 모델과 불일치"],

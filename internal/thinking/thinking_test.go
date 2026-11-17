@@ -2,6 +2,7 @@ package thinking
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -156,5 +157,92 @@ func TestCheckCallerError(t *testing.T) {
 	fc := &fakeCaller{firstErr: context.DeadlineExceeded}
 	if _, err := Check(context.Background(), fc, "claude-sonnet-4-5"); err == nil {
 		t.Fatal("expected error to propagate from caller")
+	}
+}
+
+func protoSignature(model string) string {
+	header := []byte{0x42, 0x08}
+	header = append(header, "thinking"...)
+	if model != "" {
+		header = append(header, 0x32, byte(len(model)))
+		header = append(header, model...)
+	}
+	nested := append([]byte{0x0a, byte(len(header))}, header...)
+	raw := append([]byte{0x08, 0x02, 0x12, byte(len(nested))}, nested...)
+	return base64.StdEncoding.EncodeToString(append(raw, 0x18, 0x01))
+}
+
+func TestSignatureModelExtraction(t *testing.T) {
+	if got := signatureModel(protoSignature("claude-opus-4-8")); got != "claude-opus-4-8" {
+		t.Fatalf("signed model = %q", got)
+	}
+	if got := signatureModel(protoSignature("")); got != "" {
+		t.Fatalf("opaque signature model = %q, want empty", got)
+	}
+	if !signatureModelMatches("claude-fable-5-1", "claude-fable-5") {
+		t.Fatal("base family should match a sub-version")
+	}
+	if !signatureModelMatches("claude-haiku-4-5-20251001", "claude-haiku-4-5") {
+		t.Fatal("date stamp should not break the family match")
+	}
+	if signatureModelMatches("claude-opus-5-5", "claude-opus-4-8") {
+		t.Fatal("different families must not match")
+	}
+}
+
+func TestCheckSignedModelMismatchCostsTwo(t *testing.T) {
+	original := protoSignature("claude-opus-4-8")
+	replay := func(req CallRequest) (Metrics, error) {
+		if req.Temperature != nil {
+			return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
+		}
+		if req.Replay != nil && req.Replay.Signature == original {
+			return Metrics{Status: 200, Answer: "I'm Claude."}, nil
+		}
+		return Metrics{Status: 400, Err: "messages.1.content.0: Invalid `signature` in `thinking` block"}, nil
+	}
+	fc := &fakeCaller{
+		first:  Metrics{Status: 200, ThinkLen: 10, SigLen: len(original), ThinkingText: "x", Signature: original},
+		replay: replay,
+	}
+	v, err := Check(context.Background(), fc, "claude-opus-5-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SignedModel != "claude-opus-4-8" || v.SignedModelMatch == nil || *v.SignedModelMatch {
+		t.Fatalf("signed model state = %q / %v", v.SignedModel, v.SignedModelMatch)
+	}
+	if v.Score != 10 || v.MaxScore != 12 || v.Pass {
+		t.Fatalf("score = %d/%d pass=%v, want 10/12 false", v.Score, v.MaxScore, v.Pass)
+	}
+	if !strings.Contains(v.Reason, "签名型号 claude-opus-4-8 与请求不符") {
+		t.Fatalf("reason = %q", v.Reason)
+	}
+}
+
+func TestCheckSignedModelMatchKeepsFullScore(t *testing.T) {
+	original := protoSignature("claude-opus-4-8")
+	replay := func(req CallRequest) (Metrics, error) {
+		if req.Temperature != nil {
+			return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
+		}
+		if req.Replay != nil && req.Replay.Signature == original {
+			return Metrics{Status: 200, Answer: "I'm Claude."}, nil
+		}
+		return Metrics{Status: 400, Err: "messages.1.content.0: Invalid `signature` in `thinking` block"}, nil
+	}
+	fc := &fakeCaller{
+		first:  Metrics{Status: 200, ThinkLen: 10, SigLen: len(original), ThinkingText: "x", Signature: original},
+		replay: replay,
+	}
+	v, err := Check(context.Background(), fc, "claude-opus-4-8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SignedModel != "claude-opus-4-8" || v.SignedModelMatch == nil || !*v.SignedModelMatch {
+		t.Fatalf("signed model state = %q / %v", v.SignedModel, v.SignedModelMatch)
+	}
+	if v.Score != 10 || v.MaxScore != 10 || !v.Pass {
+		t.Fatalf("score = %d/%d pass=%v, want 10/10 true", v.Score, v.MaxScore, v.Pass)
 	}
 }

@@ -451,6 +451,19 @@ export default function ResultCards({
               </div>
               <div className="thinking-checks">
                 <span className={t.signature_present ? "good" : "bad"}>{tr("签名")} {t.signature_present ? tr("有") : tr("无")}</span>
+                {t.signed_model && (
+                  <span
+                    className={t.signed_model_match ? "good" : "warn"}
+                    title={tr(t.signed_model_match ? "与声称模型一致" : "与声称模型不一致")}
+                  >
+                    {tr("签名模型")} {t.signed_model}
+                  </span>
+                )}
+                {t.signature_present && !t.signed_model && (
+                  <span className="muted" title={tr("不透明签名，不扣分")}>
+                    {tr("签名模型")} {tr("不透明")}
+                  </span>
+                )}
                 <span className={t.original_replay ? "good" : "bad"}>{tr("原始续轮")} {t.original_replay ? tr("通过") : tr("失败")}</span>
                 <span className={t.tamper_rejected ? "good" : "bad"}>{tr("篡改")} {t.tamper_rejected ? tr("被拒") : tr("被接受")}</span>
                 {t.max_score === 12 && (
@@ -465,6 +478,8 @@ export default function ResultCards({
                 value={{
                   self_report: t.self_report,
                   family_consistent: t.family_consistent,
+                  signed_model: t.signed_model,
+                  signed_model_match: t.signed_model_match,
                   tamper_status: t.tamper_status,
                   tamper_error: t.tamper_error,
                   temperature_error: t.temperature_error,

@@ -318,6 +318,8 @@ export interface DetectVerdict {
     temperature_score?: number;
     max_score?: number;
     signature_present?: boolean;
+    signed_model?: string;
+    signed_model_match?: boolean;
     original_replay?: boolean;
     tamper_rejected?: boolean;
     tamper_status?: number;

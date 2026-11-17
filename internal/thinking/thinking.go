@@ -2,9 +2,11 @@ package thinking
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 const probePrompt = "求最小正整数 n，使 n 除以 17 余 5，除以 19 余 7，除以 23 余 11。请推导并核验，最后给出数值。"
@@ -31,6 +33,8 @@ type Verdict struct {
 	Err              string `json:"err,omitempty"`
 
 	SignaturePresent    bool   `json:"signature_present"`
+	SignedModel         string `json:"signed_model,omitempty"`
+	SignedModelMatch    *bool  `json:"signed_model_match,omitempty"`
 	OriginalReplay      bool   `json:"original_replay"`
 	TamperRejected      bool   `json:"tamper_rejected"`
 	TamperStatus        int    `json:"tamper_status,omitempty"`
@@ -80,6 +84,11 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 	if m.Signature != "" {
 		v.SignaturePresent = true
 		v.SignatureScore = 2
+		v.SignedModel = signatureModel(m.Signature)
+		if v.SignedModel != "" {
+			match := signatureModelMatches(model, v.SignedModel)
+			v.SignedModelMatch = &match
+		}
 		original, origErr := c.CallMessages(ctx, CallRequest{
 			Model: model, MaxTokens: 2048,
 			Replay:                 &Replay{PriorUser: probePrompt, Signature: m.Signature, FollowUp: identityPrompt},
@@ -120,12 +129,22 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 		}
 	}
 	v.Score = v.SummaryScore + v.SignatureScore + v.ReplayScore + v.TamperScore + v.TemperatureScore
+	if v.SignedModelMatch != nil && !*v.SignedModelMatch {
+		v.Score -= 2
+		if v.Score < 0 {
+			v.Score = 0
+		}
+	}
 	v.Pass = v.Score == v.MaxScore
 	v.Reason = thinkingReason(v)
 	return v, nil
 }
 
 func thinkingReason(v Verdict) string {
+	mismatch := ""
+	if v.SignedModelMatch != nil && !*v.SignedModelMatch {
+		mismatch = fmt.Sprintf("签名型号 %s 与请求不符（-2）；", v.SignedModel)
+	}
 	if !v.SignaturePresent {
 		if v.SummaryScore > 0 {
 			return "没有签名；只拿到思维摘要。"
@@ -133,16 +152,19 @@ func thinkingReason(v Verdict) string {
 		return "没有思维摘要，也没有签名。"
 	}
 	if !v.OriginalReplay {
-		return fmt.Sprintf("签名 %d/2；原始签名续轮失败；篡改拒绝 %d/2。", v.SignatureScore, v.TamperScore)
+		return mismatch + fmt.Sprintf("签名 %d/2；原始签名续轮失败；篡改拒绝 %d/2。", v.SignatureScore, v.TamperScore)
 	}
 	if !v.TamperRejected {
-		return "原始签名可续轮，但篡改签名仍被接受：签名未透传或未校验。"
+		return mismatch + "原始签名可续轮，但篡改签名仍被接受：签名未透传或未校验。"
 	}
 	parts := []string{
 		fmt.Sprintf("摘要 %d/5", v.SummaryScore),
 		fmt.Sprintf("签名 %d/2", v.SignatureScore),
 		fmt.Sprintf("原始续轮 %d/1", v.ReplayScore),
 		fmt.Sprintf("篡改拒绝 %d/2", v.TamperScore),
+	}
+	if mismatch != "" {
+		parts = append([]string{strings.TrimSuffix(mismatch, "；")}, parts...)
 	}
 	if v.MaxScore == 12 {
 		parts = append(parts, fmt.Sprintf("temperature %d/2", v.TemperatureScore))
@@ -198,6 +220,174 @@ func tamperSignature(s string) string {
 		}
 	}
 	return s
+}
+
+// signatureModel reads the model name that legacy Claude thinking signatures
+// store as plaintext. Newer CAQS signatures are opaque and return "".
+func signatureModel(signature string) string {
+	raw := decodeSignature(signature)
+	if len(raw) == 0 {
+		return ""
+	}
+	var found []string
+	collectSignatureStrings(raw, &found, 0)
+	best := ""
+	for _, s := range found {
+		if !signatureModelName(s) {
+			continue
+		}
+		if best == "" || len(s) > len(best) {
+			best = s
+		}
+	}
+	return best
+}
+
+func signatureModelMatches(claimed, signed string) bool {
+	c, b := canonicalModelName(claimed), canonicalModelName(signed)
+	if c == "" || b == "" {
+		return false
+	}
+	return c == b || strings.HasPrefix(c, b+"-") || strings.HasPrefix(b, c+"-")
+}
+
+func canonicalModelName(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, ".", "-")
+	s = strings.Trim(s, "-")
+	if i := strings.LastIndexByte(s, '-'); i > 0 {
+		tail := s[i+1:]
+		if len(tail) == 8 && allDigits(tail) {
+			s = s[:i]
+		}
+	}
+	return s
+}
+
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+func decodeSignature(signature string) []byte {
+	s := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(signature))
+	if s == "" {
+		return nil
+	}
+	for _, enc := range []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	} {
+		buf, err := enc.DecodeString(s)
+		if err == nil && len(buf) > 0 {
+			return buf
+		}
+	}
+	return nil
+}
+
+func collectSignatureStrings(buf []byte, out *[]string, depth int) {
+	if depth > 8 || len(buf) == 0 {
+		return
+	}
+	i := 0
+	var local []string
+	for i < len(buf) {
+		key, n := signatureVarint(buf[i:])
+		if n <= 0 {
+			return
+		}
+		i += n
+		field := int(key >> 3)
+		wt := int(key & 7)
+		if field <= 0 {
+			return
+		}
+		switch wt {
+		case 0:
+			_, n = signatureVarint(buf[i:])
+			if n <= 0 {
+				return
+			}
+			i += n
+		case 1:
+			if i+8 > len(buf) {
+				return
+			}
+			i += 8
+		case 5:
+			if i+4 > len(buf) {
+				return
+			}
+			i += 4
+		case 2:
+			l, n := signatureVarint(buf[i:])
+			if n <= 0 || uint64(i+n)+l > uint64(len(buf)) {
+				return
+			}
+			i += n
+			chunk := buf[i : i+int(l)]
+			i += int(l)
+			if s, ok := signatureText(chunk); ok {
+				local = append(local, s)
+			}
+			collectSignatureStrings(chunk, out, depth+1)
+		default:
+			return
+		}
+	}
+	*out = append(*out, local...)
+}
+
+func signatureVarint(buf []byte) (uint64, int) {
+	var x uint64
+	for i, b := range buf {
+		if i > 9 {
+			return 0, 0
+		}
+		x |= uint64(b&0x7f) << (7 * uint(i))
+		if b < 0x80 {
+			return x, i + 1
+		}
+	}
+	return 0, 0
+}
+
+func signatureText(buf []byte) (string, bool) {
+	if len(buf) < 4 || len(buf) > 80 || !utf8.Valid(buf) {
+		return "", false
+	}
+	for _, b := range buf {
+		if b < 0x20 || b > 0x7e {
+			return "", false
+		}
+	}
+	return string(buf), true
+}
+
+func signatureModelName(s string) bool {
+	s = strings.ToLower(s)
+	if !strings.HasPrefix(s, "claude-") || len(s) < 8 || len(s) > 80 {
+		return false
+	}
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '.' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func clipText(s string, n int) string {
