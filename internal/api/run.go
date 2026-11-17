@@ -407,6 +407,33 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		})
 	}
 	wg.Wait()
+	if (selected == nil || selected["thinking"]) && !thinkingHasSignature(t.Verdict.Thinking) {
+		t.mu.Lock()
+		var seed thinking.Seed
+		for _, item := range t.questions {
+			v := t.answers[item.ID]
+			if strings.TrimSpace(v.Signature) == "" {
+				continue
+			}
+			seed = thinking.Seed{
+				ID: v.ID, Prompt: v.Prompt,
+				Metrics: thinking.Metrics{
+					Status: 200, Answer: v.Answer, ThinkingText: v.ThinkingText, Signature: v.Signature,
+					ThinkLen: len(v.ThinkingText), SigLen: len(v.Signature), Ms: v.Ms,
+					ThinkingTokens: v.Metrics.ThinkingTokens,
+				},
+			}
+			break
+		}
+		t.mu.Unlock()
+		if seed.ID != "" {
+			if v, e := thinking.CheckWithSeed(ctx, thinkAdapter{g, q.Timeout}, q.Model, seed); e == nil {
+				t.mu.Lock()
+				t.Verdict.Thinking = sanitize(v, q.Key)
+				t.mu.Unlock()
+			}
+		}
+	}
 	t.mu.Lock()
 	items := []iq.QItem{}
 	lines := []QuestionResult{}
@@ -461,6 +488,15 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
 	t.mu.Unlock()
 	s.persist(t)
+}
+
+func thinkingHasSignature(v any) bool {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return false
+	}
+	s, _ := m["signature"].(string)
+	return strings.TrimSpace(s) != ""
 }
 
 // convTurn is one request inside the serial conversation. Read and Write come

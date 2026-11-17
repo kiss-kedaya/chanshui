@@ -246,3 +246,28 @@ func TestCheckSignedModelMatchKeepsFullScore(t *testing.T) {
 		t.Fatalf("score = %d/%d pass=%v, want 10/10 true", v.Score, v.MaxScore, v.Pass)
 	}
 }
+
+func TestCheckWithSeedReusesQuestionSignature(t *testing.T) {
+	fc := &fakeCaller{replay: validReplay}
+	v, err := CheckWithSeed(context.Background(), fc, "claude-opus-5-5", Seed{
+		ID: "Q6", Prompt: "candy question",
+		Metrics: Metrics{Status: 200, ThinkingText: "summary", Signature: "VALID", Answer: "21"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Source != "Q6" || v.Score != 12 || v.MaxScore != 12 || !v.Pass {
+		t.Fatalf("verdict = %+v", v)
+	}
+	if len(fc.calls) != 3 {
+		t.Fatalf("calls = %d, want 3 (no fresh thinking request)", len(fc.calls))
+	}
+	for _, req := range fc.calls {
+		if req.Replay != nil && req.Replay.PriorUser != "candy question" {
+			t.Fatalf("prior user = %q", req.Replay.PriorUser)
+		}
+	}
+	if !strings.Contains(v.Reason, "复用 Q6 的签名") {
+		t.Fatalf("reason = %q", v.Reason)
+	}
+}

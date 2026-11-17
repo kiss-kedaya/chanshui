@@ -35,6 +35,7 @@ type Verdict struct {
 	SignaturePresent    bool   `json:"signature_present"`
 	SignedModel         string `json:"signed_model,omitempty"`
 	SignedModelMatch    *bool  `json:"signed_model_match,omitempty"`
+	Source              string `json:"source,omitempty"`
 	OriginalReplay      bool   `json:"original_replay"`
 	TamperRejected      bool   `json:"tamper_rejected"`
 	TamperStatus        int    `json:"tamper_status,omitempty"`
@@ -43,6 +44,14 @@ type Verdict struct {
 	FamilyConsistent    bool   `json:"family_consistent"`
 	TemperatureRejected bool   `json:"temperature_rejected,omitempty"`
 	TemperatureError    string `json:"temperature_error,omitempty"`
+}
+
+// Seed is an existing question response that already carries a thinking
+// signature. Reusing it avoids asking the model to think twice.
+type Seed struct {
+	ID      string
+	Prompt  string
+	Metrics Metrics
 }
 
 // Check asks for summarized thinking, then:
@@ -69,10 +78,25 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 	if m.Err != "" || m.Status != 200 {
 		return Verdict{Err: m.Err}, fmt.Errorf("thinking request failed: HTTP %d %s", m.Status, m.Err)
 	}
+	return audit(ctx, c, model, "", probePrompt, m)
+}
+
+// CheckWithSeed audits a signature that a question already returned.
+func CheckWithSeed(ctx context.Context, c Caller, model string, seed Seed) (Verdict, error) {
+	if c == nil {
+		return Verdict{}, ErrNoCaller
+	}
+	if strings.TrimSpace(seed.Metrics.Signature) == "" {
+		return Verdict{}, fmt.Errorf("thinking: seed has no signature")
+	}
+	return audit(ctx, c, model, seed.ID, seed.Prompt, seed.Metrics)
+}
+
+func audit(ctx context.Context, c Caller, model, source, priorUser string, m Metrics) (Verdict, error) {
 	v := Verdict{
 		ThinkingText: m.ThinkingText, Signature: m.Signature, Answer: m.Answer,
 		ThinkLen: m.ThinkLen, SigLen: m.SigLen, ThinkingTokens: m.ThinkingTokens, Ms: m.Ms,
-		MaxScore: 10,
+		MaxScore: 10, Source: source,
 	}
 	opus55 := strings.Contains(strings.ToLower(model), "opus-5-5")
 	if opus55 {
@@ -91,7 +115,7 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 		}
 		original, origErr := c.CallMessages(ctx, CallRequest{
 			Model: model, MaxTokens: 2048,
-			Replay:                 &Replay{PriorUser: probePrompt, Signature: m.Signature, FollowUp: identityPrompt},
+			Replay:                 &Replay{PriorUser: priorUser, Signature: m.Signature, FollowUp: identityPrompt},
 			StopOnInvalidSignature: true,
 		})
 		if origErr == nil && original.Status == 200 && original.Err == "" {
@@ -102,7 +126,7 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 		}
 		tampered, tamperErr := c.CallMessages(ctx, CallRequest{
 			Model: model, MaxTokens: 2048,
-			Replay:                 &Replay{PriorUser: probePrompt, Signature: tamperSignature(m.Signature), FollowUp: identityPrompt},
+			Replay:                 &Replay{PriorUser: priorUser, Signature: tamperSignature(m.Signature), FollowUp: identityPrompt},
 			StopOnInvalidSignature: true,
 		})
 		v.TamperStatus = tampered.Status
@@ -141,6 +165,10 @@ func Check(ctx context.Context, c Caller, model string) (Verdict, error) {
 }
 
 func thinkingReason(v Verdict) string {
+	source := ""
+	if v.Source != "" && v.SignaturePresent {
+		source = "复用 " + v.Source + " 的签名；"
+	}
 	mismatch := ""
 	if v.SignedModelMatch != nil && !*v.SignedModelMatch {
 		mismatch = fmt.Sprintf("签名型号 %s 与请求不符（-2）；", v.SignedModel)
@@ -152,10 +180,10 @@ func thinkingReason(v Verdict) string {
 		return "没有思维摘要，也没有签名。"
 	}
 	if !v.OriginalReplay {
-		return mismatch + fmt.Sprintf("签名 %d/2；原始签名续轮失败；篡改拒绝 %d/2。", v.SignatureScore, v.TamperScore)
+		return source + mismatch + fmt.Sprintf("签名 %d/2；原始签名续轮失败；篡改拒绝 %d/2。", v.SignatureScore, v.TamperScore)
 	}
 	if !v.TamperRejected {
-		return mismatch + "原始签名可续轮，但篡改签名仍被接受：签名未透传或未校验。"
+		return source + mismatch + "原始签名可续轮，但篡改签名仍被接受：签名未透传或未校验。"
 	}
 	parts := []string{
 		fmt.Sprintf("摘要 %d/5", v.SummaryScore),
@@ -165,6 +193,9 @@ func thinkingReason(v Verdict) string {
 	}
 	if mismatch != "" {
 		parts = append([]string{strings.TrimSuffix(mismatch, "；")}, parts...)
+	}
+	if source != "" {
+		parts = append([]string{strings.TrimSuffix(source, "；")}, parts...)
 	}
 	if v.MaxScore == 12 {
 		parts = append(parts, fmt.Sprintf("temperature %d/2", v.TemperatureScore))

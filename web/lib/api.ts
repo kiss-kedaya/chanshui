@@ -320,6 +320,7 @@ export interface DetectVerdict {
     signature_present?: boolean;
     signed_model?: string;
     signed_model_match?: boolean;
+    source?: string;
     original_replay?: boolean;
     tamper_rejected?: boolean;
     tamper_status?: number;
