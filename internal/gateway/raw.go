@@ -64,15 +64,19 @@ func (c *Client) PostMessagesRaw(ctx context.Context, body map[string]any, beta 
 		return out, fmt.Errorf("%s", Redact(err.Error()))
 	}
 	defer resp.Body.Close()
-	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	out.Status = resp.StatusCode
+	if out.Status == 200 && wantsStream(body) {
+		parseSSEUsage(payload, &out)
+		return out, nil
+	}
 	var parsed struct {
 		StopReason string `json:"stop_reason"`
 		Usage      struct {
-			InputTokens        int `json:"input_tokens"`
-			OutputTokens       int `json:"output_tokens"`
-			CacheReadInput     int `json:"cache_read_input_tokens"`
-			CacheCreation      struct {
+			InputTokens    int `json:"input_tokens"`
+			OutputTokens   int `json:"output_tokens"`
+			CacheReadInput int `json:"cache_read_input_tokens"`
+			CacheCreation  struct {
 				Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
 				Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
 			} `json:"cache_creation"`
@@ -130,4 +134,93 @@ func (c *Client) PostMessagesRaw(ctx context.Context, body map[string]any, beta 
 		}
 	}
 	return out, nil
+}
+
+type rawUsage struct {
+	InputTokens    int `json:"input_tokens"`
+	OutputTokens   int `json:"output_tokens"`
+	CacheReadInput int `json:"cache_read_input_tokens"`
+	CacheCreation  struct {
+		Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
+		Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
+	} `json:"cache_creation"`
+}
+
+func wantsStream(body map[string]any) bool {
+	stream, _ := body["stream"].(bool)
+	return stream
+}
+
+// parseSSEUsage walks Stream events. Usage and cache counters arrive in
+// message_start / message_delta; text and signatures arrive as deltas.
+func parseSSEUsage(payload []byte, out *RawResult) {
+	apply := func(usage rawUsage) {
+		if usage.InputTokens > 0 {
+			out.InputTokens = usage.InputTokens
+		}
+		if usage.OutputTokens > 0 {
+			out.OutputTokens = usage.OutputTokens
+		}
+		if usage.CacheReadInput > 0 {
+			out.CacheRead = usage.CacheReadInput
+		}
+		if usage.CacheCreation.Ephemeral5m > 0 {
+			out.CacheCreation5m = usage.CacheCreation.Ephemeral5m
+		}
+		if usage.CacheCreation.Ephemeral1h > 0 {
+			out.CacheCreation1h = usage.CacheCreation.Ephemeral1h
+		}
+	}
+	for _, line := range strings.Split(string(payload), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var event struct {
+			Type    string `json:"type"`
+			Message struct {
+				Usage rawUsage `json:"usage"`
+			} `json:"message"`
+			Delta struct {
+				Type       string `json:"type"`
+				Text       string `json:"text"`
+				Thinking   string `json:"thinking"`
+				Signature  string `json:"signature"`
+				StopReason string `json:"stop_reason"`
+			} `json:"delta"`
+			Usage rawUsage `json:"usage"`
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal([]byte(data), &event) != nil {
+			continue
+		}
+		switch event.Type {
+		case "message_start":
+			apply(event.Message.Usage)
+		case "content_block_delta":
+			switch event.Delta.Type {
+			case "text_delta":
+				out.Answer += event.Delta.Text
+			case "thinking_delta":
+				out.Answer += event.Delta.Thinking
+			case "signature_delta":
+				if event.Delta.Signature != "" {
+					out.Signature = event.Delta.Signature
+				}
+			}
+		case "message_delta":
+			apply(event.Usage)
+			if event.Delta.StopReason != "" {
+				out.StopReason = event.Delta.StopReason
+			}
+		case "error":
+			out.Err = strings.TrimSpace(event.Error.Message)
+		}
+	}
 }

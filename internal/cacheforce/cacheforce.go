@@ -66,7 +66,7 @@ func Run(ctx context.Context, c Caller, model string, timeoutSeconds int) Verdic
 	for _, stage := range stages {
 		text := corpus(fmt.Sprintf("%s-%d", stage.key, nowNano()))
 		for attempt := 1; attempt <= 2; attempt++ {
-			body := map[string]any{"model": model, "max_tokens": 16}
+			body := map[string]any{"model": model, "max_tokens": 16, "stream": true}
 			if stage.block == nil {
 				body["messages"] = []any{map[string]any{"role": "user", "content": text}}
 			} else {

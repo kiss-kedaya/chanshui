@@ -28,6 +28,9 @@ func hasBlock(body map[string]any) (string, bool) {
 }
 
 func (f fakeCaller) PostMessagesRaw(ctx context.Context, body map[string]any, beta string, timeoutSeconds int) (Result, error) {
+	if stream, _ := body["stream"].(bool); !stream {
+		return Result{Status: 500, Err: "forced cache probe must stream"}, nil
+	}
 	if f.forced {
 		if _, ok := hasBlock(body); !ok {
 			return Result{Status: 200, InputTokens: 2, CacheRead: 7000}, nil
