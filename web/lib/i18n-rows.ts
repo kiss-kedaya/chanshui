@@ -506,5 +506,12 @@ export const rows: [string, string, string, string, string][] = [
 ["未拒绝","accepted","未拒絕","拒否されず","거부 안 됨"],
 ["签名解码自 protobuf：时间戳、字段数与 serving 基础设施","Signature decoded from protobuf: timestamp, field count and serving infrastructure","簽名解碼自 protobuf：時間戳、欄位數與 serving 基礎設施","署名を protobuf から復号：時刻・フィールド数・serving 基盤","protobuf에서 서명 해독: 시각, 필드 수, serving 인프라"],
 ["签名内时间戳与本次响应的时间差","Gap between the signature timestamp and this response","簽名內時間戳與本次回應的時間差","署名内の時刻と今回の応答との差","서명 시각과 이번 응답의 차이"],
+["Claude 深度体检","Claude deep audit","Claude 深度體檢","Claude 深掘り検査","Claude 심층 검사"],
+["跳过","skipped","跳過","スキップ","건너뜀"],
+["通过","pass","通過","通過","통과"],
+["未通过","fail","未通過","不合格","실패"],
+["thinking block 绑定","thinking block binding","thinking block 綁定","thinking ブロックの束縛","thinking 블록 바인딩"],
+["上下文压缩","context compaction","上下文壓縮","コンテキスト圧縮","컨텍스트 압축"],
+["可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。","Optional beta checks: thinking block binding and context compaction, about 50k extra input tokens.","可選。跑 beta 專項：thinking block 綁定與上下文壓縮，大約多花 5 萬輸入 token。","任意。beta 専用：thinking ブロック束縛とコンテキスト圧縮、入力は約5万トークン増。","선택. beta 전용: thinking 블록 바인딩과 컨텍스트 압축, 입력 약 5만 토큰 추가."],
 ];
 

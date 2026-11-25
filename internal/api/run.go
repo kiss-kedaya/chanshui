@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/kiss-kedaya/chanshui/internal/cachecheck"
 	"github.com/kiss-kedaya/chanshui/internal/capability"
+	"github.com/kiss-kedaya/chanshui/internal/claudecheck"
 	"github.com/kiss-kedaya/chanshui/internal/fingerprint"
 	"github.com/kiss-kedaya/chanshui/internal/gateway"
 
@@ -44,6 +45,19 @@ func sanitize(v any, key string) any {
 type thinkAdapter struct {
 	g       gateway.Client
 	timeout int
+}
+
+type deepAdapter struct {
+	g       gateway.Client
+	timeout int
+}
+
+func (a deepAdapter) PostMessagesRaw(ctx context.Context, body map[string]any, beta string, timeoutSeconds int) (claudecheck.Result, error) {
+	raw, e := a.g.PostMessagesRaw(ctx, body, beta, timeoutSeconds)
+	if e != nil {
+		return claudecheck.Result{}, e
+	}
+	return claudecheck.Result{Status: raw.Status, Err: raw.Err, Answer: raw.Answer, StopReason: raw.StopReason, Transforms: raw.Transforms, InputTokens: raw.InputTokens, OutputTokens: raw.OutputTokens}, nil
 }
 
 func (a thinkAdapter) ProbeStrictness(ctx context.Context, model string) []thinking.StrictnessCheck {
@@ -454,6 +468,44 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 				t.mu.Unlock()
 			}
 		}
+	}
+	if q.ClaudeDeep && gateway.IsClaude(q.Model) {
+		sig, prior := "", ""
+		t.mu.Lock()
+		if m, ok := t.Verdict.Thinking.(map[string]any); ok {
+			sig, _ = m["signature"].(string)
+			if src, _ := m["source"].(string); src != "" {
+				if answer, ok := t.answers[src]; ok {
+					prior = answer.Prompt
+				}
+			}
+		}
+		for i := range t.Probes {
+			if t.Probes[i].ID == "claude_deep" {
+				t.Probes[i].Status = "running"
+			}
+		}
+		t.mu.Unlock()
+		if sig != "" && prior == "" {
+			prior = thinking.ProbePrompt()
+		}
+		deepStart := time.Now()
+		v, e := claudecheck.Run(ctx, deepAdapter{g, q.Timeout}, q.Model, sig, prior, q.Timeout)
+		t.mu.Lock()
+		t.Verdict.ClaudeDeep = sanitize(v, q.Key)
+		for i := range t.Probes {
+			if t.Probes[i].ID != "claude_deep" {
+				continue
+			}
+			t.Probes[i].Ms = time.Since(deepStart).Milliseconds()
+			if e != nil {
+				t.Probes[i].Status = "error"
+				t.Probes[i].Error = redact(e.Error(), q.Key)
+			} else {
+				t.Probes[i].Status = "done"
+			}
+		}
+		t.mu.Unlock()
 	}
 	t.mu.Lock()
 	items := []iq.QItem{}

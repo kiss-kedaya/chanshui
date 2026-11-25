@@ -518,6 +518,27 @@ export default function ResultCards({
           )}
         </section>
       )}
+      {claude && v.claude_deep && (
+        <section className="result-card">
+          <div className="rc-head">
+            <h3>{tr("Claude 深度体检")}</h3>
+            <span className="card-number">04</span>
+          </div>
+          <div className="thinking-checks">
+            {v.claude_deep.checks.map((c) => (
+              <span
+                key={c.name}
+                className={c.skipped ? "muted" : c.pass ? "good" : "warn"}
+                title={c.detail || ""}
+              >
+                {tr(c.title || c.name)} {c.skipped ? tr("跳过") : c.pass ? tr("通过") : tr("未通过")}
+              </span>
+            ))}
+          </div>
+          <p className="muted">{v.claude_deep.note}</p>
+          {v.claude_deep.error ? <ErrorFold text={v.claude_deep.error} /> : null}
+        </section>
+      )}
       <section className="result-card knowledge-card">
         <div className="rc-head">
           <h3>{tr("知识截止日期")}</h3>

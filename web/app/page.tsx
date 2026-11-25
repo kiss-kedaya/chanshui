@@ -33,6 +33,7 @@ export default function DetectPage() {
   const [timeout, setTimeoutValue] = useState(360);
   const [cacheOn, setCacheOn] = useState(false);
   const [conversationOn, setConversationOn] = useState(false);
+  const [claudeDeep, setClaudeDeep] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("summary");
   const [budget, setBudget] = useState(2048);
@@ -67,6 +68,7 @@ export default function DetectPage() {
       if (["auto", "chat", "anthropic", "openai"].includes(p.protocol))
         setProtocol(p.protocol);
       if (typeof p.cache === "boolean") setCacheOn(p.cache);
+      if (typeof p.claude_deep === "boolean") setClaudeDeep(p.claude_deep);
       if (typeof p.conversation === "boolean") {
         setConversationOn(p.conversation);
         if (p.conversation) setCacheOn(false);
@@ -97,6 +99,7 @@ export default function DetectPage() {
     timeout,
     cache: conversationOn ? false : cacheOn,
     conversation: conversationOn,
+    claude_deep: modelFamily(model) === "claude" ? claudeDeep : undefined,
   });
   // 首页只负责“新建检测”：提交成功后直接跳到报告页，结果、重跑都在 /history 处理。
   const run = async () => {
@@ -106,7 +109,7 @@ export default function DetectPage() {
       try {
         localStorage.setItem(
           "chanshui-settings",
-          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: conversationOn ? false : cacheOn, conversation: conversationOn }),
+          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: conversationOn ? false : cacheOn, conversation: conversationOn, claude_deep: claudeDeep }),
         );
       } catch {}
       // Key 单独加固落盘（IndexedDB 里不可提取的 AES 密钥加密），方便回报告页重试。
@@ -360,6 +363,17 @@ export default function DetectPage() {
                     label={tr("缓存读写说明")}
                     text={tr("默认关闭。打开后用 6 轮普通对话串行检测：上一条读加写等于下一条读就是 100%。只对勾选的任务计分。")}
                   />
+                </label>
+              )}
+              {modelFamily(model) === "claude" && (
+                <label className="cache-opt cache-beside" title={tr("可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。")}>
+                  <input
+                    type="checkbox"
+                    checked={claudeDeep}
+                    disabled={busy}
+                    onChange={(e) => setClaudeDeep(e.target.checked)}
+                  />
+                  {tr("Claude 深度体检")}
                 </label>
               )}
               <label className="cache-opt cache-beside" title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>

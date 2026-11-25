@@ -227,6 +227,9 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		t.Probes = append(t.Probes, Probe{ID: section, Name: names[section], Status: "queued"})
 	}
+	if q.ClaudeDeep && gateway.IsClaude(q.Model) {
+		t.Probes = append(t.Probes, Probe{ID: "claude_deep", Name: "Claude 深度体检", Status: "queued"})
+	}
 	rng := mathrand.New(mathrand.NewSource(now.UnixNano()))
 	if selected["iq"] {
 		t.questions = append(t.questions, iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge())

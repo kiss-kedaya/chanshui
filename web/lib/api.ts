@@ -11,6 +11,7 @@ export interface DetectRequest {
   timeout?: number;
   cache?: boolean;
   conversation?: boolean;
+  claude_deep?: boolean;
 }
 export interface Metrics {
   Status: number;
@@ -306,6 +307,11 @@ export interface DetectVerdict {
       error: string;
       ms: number;
     }[];
+    error?: string;
+  } | null;
+  claude_deep?: {
+    checks: { name: string; title: string; pass: boolean; skipped?: boolean; status?: number; detail?: string }[];
+    note: string;
     error?: string;
   } | null;
   thinking: {

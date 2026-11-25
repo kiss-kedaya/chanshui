@@ -71,6 +71,9 @@ type Request struct {
 	// Conversation runs the reasoning paper as one serial chat thread so a
 	// gateway that classifies or re-routes mid-session shows up as a cache drop.
 	Conversation bool `json:"conversation,omitempty"`
+	// ClaudeDeep opts into the expensive Claude-only checks: thinking block
+	// binding and context compaction.
+	ClaudeDeep bool `json:"claude_deep,omitempty"`
 }
 type Probe struct {
 	ID     string `json:"id"`
@@ -89,6 +92,7 @@ type Verdict struct {
 	Hidden         any     `json:"hidden"`
 	Fingerprint    any     `json:"fingerprint"`
 	Thinking       any     `json:"thinking"`
+	ClaudeDeep     any     `json:"claude_deep,omitempty"`
 	Vision         any     `json:"vision"`
 	Conversation   any     `json:"conversation,omitempty"`
 	Cache          any     `json:"cache"`
@@ -364,6 +368,9 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	}
 	if gateway.IsClaude(q.Model) {
 		t.Probes = append(t.Probes, Probe{ID: "thinking", Name: "思维链回传", Status: "queued"})
+		if q.ClaudeDeep {
+			t.Probes = append(t.Probes, Probe{ID: "claude_deep", Name: "Claude 深度体检", Status: "queued"})
+		}
 	}
 	for _, item := range t.questions {
 		if item.ID == "vision" {
