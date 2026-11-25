@@ -464,6 +464,27 @@ export default function ResultCards({
                     {tr("签名模型")} {tr("不透明")}
                   </span>
                 )}
+                {t.sig_class && (
+                  <span
+                    className={t.sig_class.startsWith("真签") ? "good" : "warn"}
+                    title={tr("签名解码自 protobuf：时间戳、字段数与 serving 基础设施")}
+                  >
+                    {tr("签名结构")} {tr(t.sig_class)}
+                  </span>
+                )}
+                {typeof t.sig_age_seconds === "number" && (
+                  <span className={t.sig_fresh ? "good" : "warn"} title={tr("签名内时间戳与本次响应的时间差")}>
+                    {tr("签名时间")} {t.sig_age_seconds <= 5 ? tr("刚刚") : tr("{n} 秒前", { n: Math.abs(t.sig_age_seconds) })}
+                  </span>
+                )}
+                {t.strictness && t.strictness.length > 0 && (
+                  <span
+                    className={t.strictness.every((c) => c.pass) ? "good" : "warn"}
+                    title={t.strictness.map((c) => c.name + " · " + (c.pass ? tr("已拒绝") : tr("未拒绝") + " " + c.status)).join("\n")}
+                  >
+                    {tr("协议校验")} {t.strictness.filter((c) => c.pass).length}/{t.strictness.length}
+                  </span>
+                )}
                 <span className={t.original_replay ? "good" : "bad"}>{tr("原始续轮")} {t.original_replay ? tr("通过") : tr("失败")}</span>
                 <span className={t.tamper_rejected ? "good" : "bad"}>{tr("篡改")} {t.tamper_rejected ? tr("被拒") : tr("被接受")}</span>
                 {t.max_score === 12 && (
@@ -480,6 +501,12 @@ export default function ResultCards({
                   family_consistent: t.family_consistent,
                   signed_model: t.signed_model,
                   signed_model_match: t.signed_model_match,
+                  sig_class: t.sig_class,
+                  sig_field_count: t.sig_field_count,
+                  sig_infra: t.sig_infra,
+                  sig_timestamp: t.sig_timestamp,
+                  sig_age_seconds: t.sig_age_seconds,
+                  strictness: t.strictness,
                   tamper_status: t.tamper_status,
                   tamper_error: t.tamper_error,
                   temperature_error: t.temperature_error,

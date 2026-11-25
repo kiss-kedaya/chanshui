@@ -320,6 +320,13 @@ export interface DetectVerdict {
     signature_present?: boolean;
     signed_model?: string;
     signed_model_match?: boolean;
+    sig_class?: string;
+    sig_field_count?: number;
+    sig_infra?: string;
+    sig_timestamp?: number;
+    sig_age_seconds?: number;
+    sig_fresh?: boolean;
+    strictness?: { name: string; status: number; pass: boolean; detail?: string }[];
     source?: string;
     original_replay?: boolean;
     tamper_rejected?: boolean;

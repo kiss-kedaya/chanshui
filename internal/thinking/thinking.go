@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -32,18 +33,25 @@ type Verdict struct {
 	Answer           string `json:"answer"`
 	Err              string `json:"err,omitempty"`
 
-	SignaturePresent    bool   `json:"signature_present"`
-	SignedModel         string `json:"signed_model,omitempty"`
-	SignedModelMatch    *bool  `json:"signed_model_match,omitempty"`
-	Source              string `json:"source,omitempty"`
-	OriginalReplay      bool   `json:"original_replay"`
-	TamperRejected      bool   `json:"tamper_rejected"`
-	TamperStatus        int    `json:"tamper_status,omitempty"`
-	TamperError         string `json:"tamper_error,omitempty"`
-	SelfReport          string `json:"self_report,omitempty"`
-	FamilyConsistent    bool   `json:"family_consistent"`
-	TemperatureRejected bool   `json:"temperature_rejected,omitempty"`
-	TemperatureError    string `json:"temperature_error,omitempty"`
+	SignaturePresent    bool              `json:"signature_present"`
+	SignedModel         string            `json:"signed_model,omitempty"`
+	SignedModelMatch    *bool             `json:"signed_model_match,omitempty"`
+	SigClass            string            `json:"sig_class,omitempty"`
+	SigFieldCount       int               `json:"sig_field_count,omitempty"`
+	SigInfra            string            `json:"sig_infra,omitempty"`
+	SigTimestamp        int64             `json:"sig_timestamp,omitempty"`
+	SigAgeSeconds       int64             `json:"sig_age_seconds,omitempty"`
+	SigFresh            *bool             `json:"sig_fresh,omitempty"`
+	Strictness          []StrictnessCheck `json:"strictness,omitempty"`
+	Source              string            `json:"source,omitempty"`
+	OriginalReplay      bool              `json:"original_replay"`
+	TamperRejected      bool              `json:"tamper_rejected"`
+	TamperStatus        int               `json:"tamper_status,omitempty"`
+	TamperError         string            `json:"tamper_error,omitempty"`
+	SelfReport          string            `json:"self_report,omitempty"`
+	FamilyConsistent    bool              `json:"family_consistent"`
+	TemperatureRejected bool              `json:"temperature_rejected,omitempty"`
+	TemperatureError    string            `json:"temperature_error,omitempty"`
 }
 
 // Seed is an existing question response that already carries a thinking
@@ -109,6 +117,17 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 		v.SignaturePresent = true
 		v.SignatureScore = 2
 		v.SignedModel = signatureModel(m.Signature)
+		if anatomy, class := signatureAnatomy(m.Signature, time.Now()); class != "" {
+			v.SigClass = class
+			v.SigFieldCount = anatomy.Fields
+			v.SigInfra = anatomy.Infra
+			if anatomy.HasTimestamp && anatomy.Timestamp > 0 {
+				v.SigTimestamp = anatomy.Timestamp
+				v.SigAgeSeconds = time.Now().Unix() - anatomy.Timestamp
+				fresh := strings.HasPrefix(class, "真签")
+				v.SigFresh = &fresh
+			}
+		}
 		if v.SignedModel != "" {
 			match := signatureModelMatches(model, v.SignedModel)
 			v.SignedModelMatch = &match
@@ -152,6 +171,11 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 			v.TemperatureScore = 2
 		}
 	}
+	if p, ok := c.(StrictnessProber); ok {
+		if checks := p.ProbeStrictness(ctx, model); len(checks) > 0 {
+			v.Strictness = checks
+		}
+	}
 	v.Score = v.SummaryScore + v.SignatureScore + v.ReplayScore + v.TamperScore + v.TemperatureScore
 	if v.SignedModelMatch != nil && !*v.SignedModelMatch {
 		v.Score -= 2
@@ -161,7 +185,44 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 	}
 	v.Pass = v.Score == v.MaxScore
 	v.Reason = thinkingReason(v)
+	if extra := v.evidenceSuffix(); extra != "" {
+		v.Reason = strings.TrimRight(v.Reason, "。") + "；" + extra + "。"
+	}
 	return v, nil
+}
+
+// evidenceSuffix summarizes the signature anatomy and the protocol strictness
+// checks without changing the score.
+func (v Verdict) evidenceSuffix() string {
+	parts := []string{}
+	if v.SigClass != "" {
+		part := "签名结构 " + v.SigClass
+		if v.SigFieldCount > 0 {
+			part += fmt.Sprintf("（%d 字段", v.SigFieldCount)
+			if v.SigInfra != "" {
+				part += "，" + v.SigInfra
+			}
+			part += "）"
+		}
+		parts = append(parts, part)
+	}
+	if len(v.Strictness) > 0 {
+		passed := 0
+		failed := []string{}
+		for _, check := range v.Strictness {
+			if check.Pass {
+				passed++
+			} else {
+				failed = append(failed, check.Name)
+			}
+		}
+		part := fmt.Sprintf("协议严格性 %d/%d", passed, len(v.Strictness))
+		if len(failed) > 0 {
+			part += "（未拒绝：" + strings.Join(failed, "、") + "）"
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "；")
 }
 
 func thinkingReason(v Verdict) string {

@@ -64,3 +64,17 @@ type Metrics struct {
 type Caller interface {
 	CallMessages(ctx context.Context, req CallRequest) (Metrics, error)
 }
+
+// StrictnessCheck is one Anthropic Messages validation probe: a real upstream
+// rejects the malformed request with 400.
+type StrictnessCheck struct {
+	Name   string `json:"name"`
+	Status int    `json:"status"`
+	Pass   bool   `json:"pass"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// StrictnessProber is optional; only the Claude adapter implements it.
+type StrictnessProber interface {
+	ProbeStrictness(ctx context.Context, model string) []StrictnessCheck
+}

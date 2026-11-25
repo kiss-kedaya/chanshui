@@ -497,5 +497,14 @@ export const rows: [string, string, string, string, string][] = [
 ["返回响应","Responses","返回響應","レスポンス","응답"],
 ["示例","Example","示例","例","예시"],
 ["复制一段给编程 Agent 的接入说明","Copies a setup prompt for an AI coding tool","複製一段給程式 Agent 的接入說明","コーディング Agent 向けの接続文をコピー","코딩 에이전트용 접속 안내를 복사"],
+["签名结构","Signature structure","簽名結構","署名構造","서명 구조"],
+["签名时间","Signed at","簽名時間","署名時刻","서명 시각"],
+["刚刚","just now","剛剛","たった今","방금"],
+["{n} 秒前","{n}s ago","{n} 秒前","{n} 秒前","{n}초 전"],
+["协议校验","Protocol checks","協議校驗","プロトコル検証","프로토콜 검증"],
+["已拒绝","rejected","已拒絕","拒否","거부됨"],
+["未拒绝","accepted","未拒絕","拒否されず","거부 안 됨"],
+["签名解码自 protobuf：时间戳、字段数与 serving 基础设施","Signature decoded from protobuf: timestamp, field count and serving infrastructure","簽名解碼自 protobuf：時間戳、欄位數與 serving 基礎設施","署名を protobuf から復号：時刻・フィールド数・serving 基盤","protobuf에서 서명 해독: 시각, 필드 수, serving 인프라"],
+["签名内时间戳与本次响应的时间差","Gap between the signature timestamp and this response","簽名內時間戳與本次回應的時間差","署名内の時刻と今回の応答との差","서명 시각과 이번 응답의 차이"],
 ];
 

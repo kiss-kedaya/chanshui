@@ -46,6 +46,15 @@ type thinkAdapter struct {
 	timeout int
 }
 
+func (a thinkAdapter) ProbeStrictness(ctx context.Context, model string) []thinking.StrictnessCheck {
+	raw := a.g.ProbeStrictness(ctx, model, a.timeout)
+	out := make([]thinking.StrictnessCheck, 0, len(raw))
+	for _, check := range raw {
+		out = append(out, thinking.StrictnessCheck{Name: check.Name, Status: check.Status, Pass: check.Pass, Detail: check.Detail})
+	}
+	return out
+}
+
 func (a thinkAdapter) CallMessages(ctx context.Context, q thinking.CallRequest) (thinking.Metrics, error) {
 	req := gateway.CallRequest{
 		Model: q.Model, MaxTokens: q.MaxTokens, Stream: q.Stream, Effort: q.Effort, Temperature: q.Temperature,
@@ -407,23 +416,35 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		})
 	}
 	wg.Wait()
-	if (selected == nil || selected["thinking"]) && !thinkingHasSignature(t.Verdict.Thinking) {
+	if selected == nil || selected["thinking"] {
 		t.mu.Lock()
+		// Ask the model to think again only when the probe left us without a
+		// usable summary or signature. A probe that returned a signature but no
+		// summary is still upgraded by replaying the question that produced the
+		// longest real reasoning text.
+		reuse := !thinkingHasSignature(t.Verdict.Thinking) || !thinkingHasText(t.Verdict.Thinking)
 		var seed thinking.Seed
-		for _, item := range t.questions {
-			v := t.answers[item.ID]
-			if strings.TrimSpace(v.Signature) == "" {
-				continue
+		best := -1
+		if reuse {
+			for _, item := range t.questions {
+				v := t.answers[item.ID]
+				if strings.TrimSpace(v.Signature) == "" {
+					continue
+				}
+				weight := len(v.Signature) + 2*len(v.ThinkingText)
+				if weight <= best {
+					continue
+				}
+				best = weight
+				seed = thinking.Seed{
+					ID: v.ID, Prompt: v.Prompt,
+					Metrics: thinking.Metrics{
+						Status: 200, Answer: v.Answer, ThinkingText: v.ThinkingText, Signature: v.Signature,
+						ThinkLen: len(v.ThinkingText), SigLen: len(v.Signature), Ms: v.Ms,
+						ThinkingTokens: v.Metrics.ThinkingTokens,
+					},
+				}
 			}
-			seed = thinking.Seed{
-				ID: v.ID, Prompt: v.Prompt,
-				Metrics: thinking.Metrics{
-					Status: 200, Answer: v.Answer, ThinkingText: v.ThinkingText, Signature: v.Signature,
-					ThinkLen: len(v.ThinkingText), SigLen: len(v.Signature), Ms: v.Ms,
-					ThinkingTokens: v.Metrics.ThinkingTokens,
-				},
-			}
-			break
 		}
 		t.mu.Unlock()
 		if seed.ID != "" {
@@ -496,6 +517,15 @@ func thinkingHasSignature(v any) bool {
 		return false
 	}
 	s, _ := m["signature"].(string)
+	return strings.TrimSpace(s) != ""
+}
+
+func thinkingHasText(v any) bool {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return false
+	}
+	s, _ := m["thinking_text"].(string)
 	return strings.TrimSpace(s) != ""
 }
 
