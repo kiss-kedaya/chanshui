@@ -24,6 +24,10 @@ type RawResult struct {
 	Fields                  []string
 	InputTokens             int
 	OutputTokens            int
+	Signature               string
+	CacheCreation5m         int
+	CacheCreation1h         int
+	CacheRead               int
 }
 
 // PostMessagesRaw POSTs an arbitrary Messages body. The deep checks need
@@ -65,15 +69,21 @@ func (c *Client) PostMessagesRaw(ctx context.Context, body map[string]any, beta 
 	var parsed struct {
 		StopReason string `json:"stop_reason"`
 		Usage      struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
+			InputTokens        int `json:"input_tokens"`
+			OutputTokens       int `json:"output_tokens"`
+			CacheReadInput     int `json:"cache_read_input_tokens"`
+			CacheCreation      struct {
+				Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
+				Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
+			} `json:"cache_creation"`
 		} `json:"usage"`
 		Error struct {
 			Message string `json:"message"`
 		} `json:"error"`
 		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type      string `json:"type"`
+			Text      string `json:"text"`
+			Signature string `json:"signature"`
 		} `json:"content"`
 		InputTransformations json.RawMessage `json:"input_transformations"`
 	}
@@ -81,10 +91,18 @@ func (c *Client) PostMessagesRaw(ctx context.Context, body map[string]any, beta 
 		out.StopReason = parsed.StopReason
 		out.InputTokens = parsed.Usage.InputTokens
 		out.OutputTokens = parsed.Usage.OutputTokens
+		out.CacheRead = parsed.Usage.CacheReadInput
+		out.CacheCreation5m = parsed.Usage.CacheCreation.Ephemeral5m
+		out.CacheCreation1h = parsed.Usage.CacheCreation.Ephemeral1h
 		out.Err = strings.TrimSpace(parsed.Error.Message)
 		for _, block := range parsed.Content {
-			if block.Type == "text" {
+			switch block.Type {
+			case "text":
 				out.Answer += block.Text
+			case "thinking", "redacted_thinking":
+				if block.Signature != "" {
+					out.Signature = block.Signature
+				}
 			}
 		}
 		if len(parsed.InputTransformations) > 0 && string(parsed.InputTransformations) != "null" {

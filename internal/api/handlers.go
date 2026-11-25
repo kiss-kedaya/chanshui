@@ -71,9 +71,12 @@ type Request struct {
 	// Conversation runs the reasoning paper as one serial chat thread so a
 	// gateway that classifies or re-routes mid-session shows up as a cache drop.
 	Conversation bool `json:"conversation,omitempty"`
-	// ClaudeDeep opts into the expensive Claude-only checks: thinking block
-	// binding and context compaction.
+	// ClaudeDeep opts into the expensive Claude-only checks: channel
+	// fingerprint, thinking block binding and context compaction.
 	ClaudeDeep bool `json:"claude_deep,omitempty"`
+	// ForceCache measures whether the upstream writes cache without
+	// cache_control. Costs about 48k input tokens.
+	ForceCache bool `json:"force_cache,omitempty"`
 }
 type Probe struct {
 	ID     string `json:"id"`
@@ -93,6 +96,7 @@ type Verdict struct {
 	Fingerprint    any     `json:"fingerprint"`
 	Thinking       any     `json:"thinking"`
 	ClaudeDeep     any     `json:"claude_deep,omitempty"`
+	ForceCache     any     `json:"force_cache,omitempty"`
 	Vision         any     `json:"vision"`
 	Conversation   any     `json:"conversation,omitempty"`
 	Cache          any     `json:"cache"`
@@ -370,6 +374,9 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 		t.Probes = append(t.Probes, Probe{ID: "thinking", Name: "思维链回传", Status: "queued"})
 		if q.ClaudeDeep {
 			t.Probes = append(t.Probes, Probe{ID: "claude_deep", Name: "Claude 深度体检", Status: "queued"})
+		}
+		if q.ForceCache {
+			t.Probes = append(t.Probes, Probe{ID: "cache_force", Name: "强制缓存检测", Status: "queued"})
 		}
 	}
 	for _, item := range t.questions {

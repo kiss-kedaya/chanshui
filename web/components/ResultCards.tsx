@@ -487,6 +487,11 @@ export default function ResultCards({
                     {tr("协议校验")} {t.strictness.filter((c) => c.pass).length}/{t.strictness.filter((c) => !c.skipped).length}
                   </span>
                 )}
+                {typeof t.aws_b === "boolean" && (
+                  <span className={t.aws_b ? "good" : "muted"} title={t.aws_b_detail || ""}>
+                    AWS-B {t.aws_b ? tr("是") : tr("否")}
+                  </span>
+                )}
                 <span className={t.original_replay ? "good" : "bad"}>{tr("原始续轮")} {t.original_replay ? tr("通过") : tr("失败")}</span>
                 <span className={t.tamper_rejected ? "good" : "bad"}>{tr("篡改")} {t.tamper_rejected ? tr("被拒") : tr("被接受")}</span>
                 {t.max_score === 12 && (
@@ -542,6 +547,24 @@ export default function ResultCards({
           </div>
           <p className="muted">{v.claude_deep.note}</p>
           {v.claude_deep.error ? <ErrorFold text={v.claude_deep.error} /> : null}
+        </section>
+      )}
+      {claude && v.force_cache && (
+        <section className="result-card">
+          <div className="rc-head">
+            <h3>{tr("强制缓存检测")}</h3>
+            <span className="card-number">05</span>
+          </div>
+          <p className="muted">{v.force_cache.conclusion}</p>
+          <div className="thinking-checks">
+            {v.force_cache.steps.map((s, index) => (
+              <span key={s.key + "-" + index} className="muted">
+                {tr(s.label)} · input {s.input} · 5m {s.write_5m} · 1h {s.write_1h} · read {s.read}
+              </span>
+            ))}
+          </div>
+          <p className="muted">{v.force_cache.note}</p>
+          {v.force_cache.error ? <ErrorFold text={v.force_cache.error} /> : null}
         </section>
       )}
       <section className="result-card knowledge-card">

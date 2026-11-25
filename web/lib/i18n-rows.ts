@@ -513,6 +513,13 @@ export const rows: [string, string, string, string, string][] = [
 ["thinking block 绑定","thinking block binding","thinking block 綁定","thinking ブロックの束縛","thinking 블록 바인딩"],
 ["上下文压缩","context compaction","上下文壓縮","コンテキスト圧縮","컨텍스트 압축"],
 ["协议校验明细","Protocol check details","協議校驗明細","プロトコル検証の詳細","프로토콜 검증 상세"],
+["强制缓存检测","Forced cache audit","強制快取檢測","強制キャッシュ検査","강제 캐시 검사"],
+["是","yes","是","はい","예"],
+["否","no","否","いいえ","아니오"],
+["无 cache_control","No cache_control","無 cache_control","cache_control なし","cache_control 없음"],
+["5 分钟缓存","5-minute cache","5 分鐘快取","5分キャッシュ","5분 캐시"],
+["1 小时缓存","1-hour cache","1 小時快取","1時間キャッシュ","1시간 캐시"],
+["可选。四步测上游会不会在没带 cache_control 时强制写缓存，约多花 5 万输入 token。","Optional. Four steps check whether the upstream writes cache without cache_control; about 50k extra input tokens.","可選。四步測上游會不會在沒帶 cache_control 時強制寫快取，約多花 5 萬輸入 token。","任意。cache_control なしでも強制書き込みするか4段階で検査、入力は約5万トークン増。","선택. cache_control 없이 강제 캐시 기록 여부를 4단계로 확인, 입력 약 5만 토큰 추가."],
 ["可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。","Optional beta checks: thinking block binding and context compaction, about 50k extra input tokens.","可選。跑 beta 專項：thinking block 綁定與上下文壓縮，大約多花 5 萬輸入 token。","任意。beta 専用：thinking ブロック束縛とコンテキスト圧縮、入力は約5万トークン増。","선택. beta 전용: thinking 블록 바인딩과 컨텍스트 압축, 입력 약 5만 토큰 추가."],
 ];
 

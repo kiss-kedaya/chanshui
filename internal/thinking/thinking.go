@@ -52,6 +52,8 @@ type Verdict struct {
 	FamilyConsistent    bool              `json:"family_consistent"`
 	TemperatureRejected bool              `json:"temperature_rejected,omitempty"`
 	TemperatureError    string            `json:"temperature_error,omitempty"`
+	AwSB                *bool             `json:"aws_b,omitempty"`
+	AwSBDetail          string            `json:"aws_b_detail,omitempty"`
 }
 
 // Seed is an existing question response that already carries a thinking
@@ -156,6 +158,11 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 				v.TamperScore = 2
 			}
 		}
+		if tampered.Status == 400 {
+			awsB, detail := bedrockRejection(tampered.Err)
+			v.AwSB = &awsB
+			v.AwSBDetail = detail
+		}
 	}
 	if opus55 {
 		temp := 0.1
@@ -205,6 +212,13 @@ func (v Verdict) evidenceSuffix() string {
 			part += "）"
 		}
 		parts = append(parts, part)
+	}
+	if v.AwSB != nil {
+		if *v.AwSB {
+			parts = append(parts, "AWS-B 坏签 400（Bedrock 关键字）")
+		} else {
+			parts = append(parts, "拒签但无 Bedrock 标记")
+		}
 	}
 	if len(v.Strictness) > 0 {
 		passed := 0
@@ -265,6 +279,21 @@ func thinkingReason(v Verdict) string {
 		parts = append(parts, "自述："+clipText(v.SelfReport, 80))
 	}
 	return strings.Join(parts, "；")
+}
+
+// bedrockRejection classifies a bad-signature 400 from an AWS Bedrock style
+// upstream. The official Anthropic API quotes a request id instead of the
+// Bedrock runtime keywords.
+func bedrockRejection(errText string) (bool, string) {
+	lower := strings.ToLower(errText)
+	hit := strings.Contains(lower, "request id") ||
+		strings.Contains(lower, "validationexception") ||
+		strings.Contains(lower, "bedrock runtime")
+	detail := clipText(errText, 200)
+	if !hit {
+		detail = "拒签但报错里没有 Bedrock 关键字：" + detail
+	}
+	return hit, detail
 }
 
 func mentionsClaudeFamily(s string) bool {

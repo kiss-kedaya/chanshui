@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/kiss-kedaya/chanshui/internal/cachecheck"
+	"github.com/kiss-kedaya/chanshui/internal/cacheforce"
 	"github.com/kiss-kedaya/chanshui/internal/capability"
 	"github.com/kiss-kedaya/chanshui/internal/claudecheck"
 	"github.com/kiss-kedaya/chanshui/internal/fingerprint"
@@ -47,6 +48,18 @@ type thinkAdapter struct {
 	timeout int
 }
 
+type cacheForceAdapter struct {
+	g gateway.Client
+}
+
+func (a cacheForceAdapter) PostMessagesRaw(ctx context.Context, body map[string]any, beta string, timeoutSeconds int) (cacheforce.Result, error) {
+	raw, e := a.g.PostMessagesRaw(ctx, body, beta, timeoutSeconds)
+	if e != nil {
+		return cacheforce.Result{}, e
+	}
+	return cacheforce.Result{Status: raw.Status, Err: raw.Err, Answer: raw.Answer, InputTokens: raw.InputTokens, CacheCreation5m: raw.CacheCreation5m, CacheCreation1h: raw.CacheCreation1h, CacheRead: raw.CacheRead}, nil
+}
+
 type deepAdapter struct {
 	g       gateway.Client
 	timeout int
@@ -57,7 +70,7 @@ func (a deepAdapter) PostMessagesRaw(ctx context.Context, body map[string]any, b
 	if e != nil {
 		return claudecheck.Result{}, e
 	}
-	return claudecheck.Result{Status: raw.Status, Err: raw.Err, Answer: raw.Answer, StopReason: raw.StopReason, Transforms: raw.Transforms, HasInputTransformations: raw.HasInputTransformations, InputTokens: raw.InputTokens, OutputTokens: raw.OutputTokens}, nil
+	return claudecheck.Result{Status: raw.Status, Err: raw.Err, Answer: raw.Answer, StopReason: raw.StopReason, Transforms: raw.Transforms, HasInputTransformations: raw.HasInputTransformations, InputTokens: raw.InputTokens, OutputTokens: raw.OutputTokens, Signature: raw.Signature}, nil
 }
 
 func (a thinkAdapter) ProbeStrictness(ctx context.Context, model string) []thinking.StrictnessCheck {
@@ -501,6 +514,32 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 			if e != nil {
 				t.Probes[i].Status = "error"
 				t.Probes[i].Error = redact(e.Error(), q.Key)
+			} else {
+				t.Probes[i].Status = "done"
+			}
+		}
+		t.mu.Unlock()
+	}
+	if q.ForceCache && gateway.IsClaude(q.Model) {
+		for i := range t.Probes {
+			if t.Probes[i].ID == "cache_force" {
+				t.mu.Lock()
+				t.Probes[i].Status = "running"
+				t.mu.Unlock()
+			}
+		}
+		cacheStart := time.Now()
+		cv := cacheforce.Run(ctx, cacheForceAdapter{g}, q.Model, q.Timeout)
+		t.mu.Lock()
+		t.Verdict.ForceCache = sanitize(cv, q.Key)
+		for i := range t.Probes {
+			if t.Probes[i].ID != "cache_force" {
+				continue
+			}
+			t.Probes[i].Ms = time.Since(cacheStart).Milliseconds()
+			if cv.Error != "" {
+				t.Probes[i].Status = "error"
+				t.Probes[i].Error = redact(cv.Error, q.Key)
 			} else {
 				t.Probes[i].Status = "done"
 			}

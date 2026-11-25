@@ -18,6 +18,7 @@ type Result struct {
 	HasInputTransformations bool
 	InputTokens             int
 	OutputTokens            int
+	Signature               string
 }
 
 // Caller posts one Messages body with an optional beta header.
@@ -50,7 +51,11 @@ const compactTriggerTokens = 50000
 // context compaction. Both are expensive or beta-only, so they run only when
 // the caller opts into the deep audit.
 func Run(ctx context.Context, c Caller, model, signature, priorUser string, timeoutSeconds int) (Verdict, error) {
-	v := Verdict{Note: "深度体检只跑 beta/重请求项：thinking block 绑定与上下文压缩。签名解码和协议严格性在常规检测里。"}
+	v := Verdict{Note: "深度体检跑渠道指纹（hi 用量、行为注入、现签/复签、system 透传）加 beta 项（thinking 绑定、上下文压缩）。签名解码和协议严格性在常规检测里。"}
+	v.Checks = append(v.Checks, hiUsage(ctx, c, model, timeoutSeconds))
+	v.Checks = append(v.Checks, behaviorInjection(ctx, c, model, timeoutSeconds))
+	v.Checks = append(v.Checks, signatureFresh(ctx, c, model, timeoutSeconds))
+	v.Checks = append(v.Checks, systemPassthrough(ctx, c, model, timeoutSeconds))
 	v.Checks = append(v.Checks, binding(ctx, c, model, signature, priorUser, timeoutSeconds))
 	v.Checks = append(v.Checks, compact(ctx, c, model, timeoutSeconds))
 	return v, nil

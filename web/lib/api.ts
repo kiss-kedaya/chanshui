@@ -12,6 +12,7 @@ export interface DetectRequest {
   cache?: boolean;
   conversation?: boolean;
   claude_deep?: boolean;
+  force_cache?: boolean;
 }
 export interface Metrics {
   Status: number;
@@ -314,6 +315,13 @@ export interface DetectVerdict {
     note: string;
     error?: string;
   } | null;
+  force_cache?: {
+    steps: { key: string; label: string; status: number; input: number; write_5m: number; write_1h: number; read: number }[];
+    forced?: boolean;
+    conclusion: string;
+    note: string;
+    error?: string;
+  } | null;
   thinking: {
     pass: boolean;
     score?: number;
@@ -342,6 +350,8 @@ export interface DetectVerdict {
     family_consistent?: boolean;
     temperature_rejected?: boolean;
     temperature_error?: string;
+    aws_b?: boolean;
+    aws_b_detail?: string;
     think_len: number;
     sig_len: number;
     reason: string;

@@ -34,6 +34,7 @@ export default function DetectPage() {
   const [cacheOn, setCacheOn] = useState(false);
   const [conversationOn, setConversationOn] = useState(false);
   const [claudeDeep, setClaudeDeep] = useState(false);
+  const [forceCache, setForceCache] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("summary");
   const [budget, setBudget] = useState(2048);
@@ -69,6 +70,7 @@ export default function DetectPage() {
         setProtocol(p.protocol);
       if (typeof p.cache === "boolean") setCacheOn(p.cache);
       if (typeof p.claude_deep === "boolean") setClaudeDeep(p.claude_deep);
+      if (typeof p.force_cache === "boolean") setForceCache(p.force_cache);
       if (typeof p.conversation === "boolean") {
         setConversationOn(p.conversation);
         if (p.conversation) setCacheOn(false);
@@ -100,6 +102,7 @@ export default function DetectPage() {
     cache: conversationOn ? false : cacheOn,
     conversation: conversationOn,
     claude_deep: modelFamily(model) === "claude" ? claudeDeep : undefined,
+    force_cache: modelFamily(model) === "claude" ? forceCache : undefined,
   });
   // 首页只负责“新建检测”：提交成功后直接跳到报告页，结果、重跑都在 /history 处理。
   const run = async () => {
@@ -109,7 +112,7 @@ export default function DetectPage() {
       try {
         localStorage.setItem(
           "chanshui-settings",
-          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: conversationOn ? false : cacheOn, conversation: conversationOn, claude_deep: claudeDeep }),
+          JSON.stringify({ base_url: baseUrl.trim(), model, protocol, cache: conversationOn ? false : cacheOn, conversation: conversationOn, claude_deep: claudeDeep, force_cache: forceCache }),
         );
       } catch {}
       // Key 单独加固落盘（IndexedDB 里不可提取的 AES 密钥加密），方便回报告页重试。
@@ -374,6 +377,17 @@ export default function DetectPage() {
                     onChange={(e) => setClaudeDeep(e.target.checked)}
                   />
                   {tr("Claude 深度体检")}
+                </label>
+              )}
+              {modelFamily(model) === "claude" && (
+                <label className="cache-opt cache-beside" title={tr("可选。四步测上游会不会在没带 cache_control 时强制写缓存，约多花 5 万输入 token。")}>
+                  <input
+                    type="checkbox"
+                    checked={forceCache}
+                    disabled={busy}
+                    onChange={(e) => setForceCache(e.target.checked)}
+                  />
+                  {tr("强制缓存检测")}
                 </label>
               )}
               <label className="cache-opt cache-beside" title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>
