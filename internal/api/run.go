@@ -284,6 +284,14 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	t.mu.Unlock()
 
 	g, clientErr := s.client(q)
+	if clientErr == nil && selected == nil {
+		// Full runs only: retries must not spend an extra request or re-check
+		// auth, and a retry already knows which probes still need work.
+		if msg := s.preflight(ctx, g, q); msg != "" {
+			s.abortTask(t, msg)
+			return
+		}
+	}
 	var wg sync.WaitGroup
 	jobWithSignal := func(id string, f func() (any, error), signal chan struct{}) {
 		if selected != nil && !selected[id] {
@@ -579,6 +587,45 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	t.Verdict.Timing.FinishedAt = t.finished.UTC().Format(time.RFC3339Nano)
 	t.Verdict.Timing.LastRunMs = time.Since(started).Milliseconds()
 	t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
+	t.mu.Unlock()
+	s.persist(t)
+}
+
+// preflight sends one tiny request so a wrong key or an unknown model fails in
+// seconds instead of spending every probe on the same error. Transport errors
+// and 5xx still go through the normal probes.
+func (s *Server) preflight(ctx context.Context, g gateway.Client, q Request) string {
+	timeout := q.Timeout
+	if timeout <= 0 || timeout > 20 {
+		timeout = 20
+	}
+	m, err := g.CallMessages(ctx, gateway.CallRequest{Model: q.Model, Prompt: "hi", MaxTokens: 8, TimeoutSeconds: timeout, SuppressDefaultEffort: true})
+	if err != nil {
+		return ""
+	}
+	switch {
+	case m.Status == 401 || m.Status == 403:
+		return "整单失败：" + gateway.FriendlyError(m.Status, m.Err, m.Attempts)
+	case m.Status == 404 && strings.Contains(strings.ToLower(m.Err), "model"):
+		return "整单失败：" + gateway.FriendlyError(m.Status, m.Err, m.Attempts)
+	}
+	return ""
+}
+
+// abortTask marks every unfinished probe with the preflight error.
+func (s *Server) abortTask(t *Task, msg string) {
+	t.mu.Lock()
+	for i := range t.Probes {
+		if t.Probes[i].Status == "queued" || t.Probes[i].Status == "running" {
+			t.Probes[i].Status = "error"
+			t.Probes[i].Error = msg
+		}
+	}
+	if t.Verdict.Timing != nil {
+		t.Verdict.Timing.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	t.Status = "partial"
+	t.finished = time.Now()
 	t.mu.Unlock()
 	s.persist(t)
 }
