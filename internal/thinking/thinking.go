@@ -232,7 +232,13 @@ func (v Verdict) evidenceSuffix() string {
 		}
 		part := fmt.Sprintf("协议严格性 %d/%d", passed, len(v.Strictness))
 		if len(failed) > 0 {
-			part += "（未拒绝：" + strings.Join(failed, "、") + "）"
+			shown := failed
+			suffix := ""
+			if len(shown) > 3 {
+				suffix = fmt.Sprintf(" 等 %d 项", len(shown))
+				shown = shown[:3]
+			}
+			part += "（未拒绝：" + strings.Join(shown, "、") + suffix + "）"
 		}
 		parts = append(parts, part)
 	}
