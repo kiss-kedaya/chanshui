@@ -16,7 +16,7 @@ func (f *fakeCaller) PostMessagesRaw(ctx context.Context, body map[string]any, b
 }
 
 func TestRunPassesWhenUpstreamHonoursBeta(t *testing.T) {
-	c := &fakeCaller{result: Result{Status: 200, StopReason: "compaction", Transforms: []string{"thinking_dropped"}, InputTokens: 52000}}
+	c := &fakeCaller{result: Result{Status: 200, StopReason: "compaction", Transforms: []string{"thinking_dropped"}, HasInputTransformations: true, InputTokens: 52000}}
 	v, err := Run(context.Background(), c, "claude-opus-5", "sig-abc", "prior question", 30)
 	if err != nil {
 		t.Fatal(err)

@@ -512,6 +512,7 @@ export const rows: [string, string, string, string, string][] = [
 ["未通过","fail","未通過","不合格","실패"],
 ["thinking block 绑定","thinking block binding","thinking block 綁定","thinking ブロックの束縛","thinking 블록 바인딩"],
 ["上下文压缩","context compaction","上下文壓縮","コンテキスト圧縮","컨텍스트 압축"],
+["协议校验明细","Protocol check details","協議校驗明細","プロトコル検証の詳細","프로토콜 검증 상세"],
 ["可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。","Optional beta checks: thinking block binding and context compaction, about 50k extra input tokens.","可選。跑 beta 專項：thinking block 綁定與上下文壓縮，大約多花 5 萬輸入 token。","任意。beta 専用：thinking ブロック束縛とコンテキスト圧縮、入力は約5万トークン増。","선택. beta 전용: thinking 블록 바인딩과 컨텍스트 압축, 입력 약 5만 토큰 추가."],
 ];
 

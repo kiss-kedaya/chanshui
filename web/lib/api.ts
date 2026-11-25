@@ -332,7 +332,7 @@ export interface DetectVerdict {
     sig_timestamp?: number;
     sig_age_seconds?: number;
     sig_fresh?: boolean;
-    strictness?: { name: string; status: number; pass: boolean; detail?: string }[];
+    strictness?: { name: string; title?: string; status: number; pass: boolean; skipped?: boolean; detail?: string }[];
     source?: string;
     original_replay?: boolean;
     tamper_rejected?: boolean;

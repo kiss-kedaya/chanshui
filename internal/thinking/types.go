@@ -68,10 +68,12 @@ type Caller interface {
 // StrictnessCheck is one Anthropic Messages validation probe: a real upstream
 // rejects the malformed request with 400.
 type StrictnessCheck struct {
-	Name   string `json:"name"`
-	Status int    `json:"status"`
-	Pass   bool   `json:"pass"`
-	Detail string `json:"detail,omitempty"`
+	Name    string `json:"name"`
+	Title   string `json:"title,omitempty"`
+	Status  int    `json:"status"`
+	Pass    bool   `json:"pass"`
+	Skipped bool   `json:"skipped,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // StrictnessProber is optional; only the Claude adapter implements it.

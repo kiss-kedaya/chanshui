@@ -8,13 +8,16 @@ import (
 
 // Result mirrors the fields the deep checks read from a Messages response.
 type Result struct {
-	Status       int
-	Err          string
-	Answer       string
-	StopReason   string
-	Transforms   []string
-	InputTokens  int
-	OutputTokens int
+	Status     int
+	Err        string
+	Answer     string
+	StopReason string
+	Transforms []string
+	// HasInputTransformations reports whether the upstream sent the field at
+	// all; official Anthropic does not, so absence cannot mean "dropped".
+	HasInputTransformations bool
+	InputTokens             int
+	OutputTokens            int
 }
 
 // Caller posts one Messages body with an optional beta header.
@@ -104,8 +107,11 @@ func binding(ctx context.Context, c Caller, model, signature, priorUser string, 
 	case contains(res.Transforms, "thinking_dropped"):
 		check.Pass = true
 		check.Detail = "前缀变更后思维链被丢弃（thinking_dropped）"
+	case !res.HasInputTransformations:
+		check.Skipped = true
+		check.Detail = "响应没有 input_transformations 字段（官方直连口径），这项无法用该字段判定"
 	default:
-		check.Detail = "响应没有 thinking_dropped：" + strings.Join(res.Transforms, ",")
+		check.Detail = "响应有 input_transformations 但没有 thinking_dropped：" + strings.Join(res.Transforms, ",")
 	}
 	return check
 }

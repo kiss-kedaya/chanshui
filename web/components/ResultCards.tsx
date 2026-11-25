@@ -479,10 +479,12 @@ export default function ResultCards({
                 )}
                 {t.strictness && t.strictness.length > 0 && (
                   <span
-                    className={t.strictness.every((c) => c.pass) ? "good" : "warn"}
-                    title={t.strictness.map((c) => c.name + " · " + (c.pass ? tr("已拒绝") : tr("未拒绝") + " " + c.status)).join("\n")}
+                    className={t.strictness.every((c) => c.pass || c.skipped) ? "good" : "warn"}
+                    title={t.strictness
+                      .map((c) => (c.title || c.name) + " · " + (c.skipped ? tr("跳过") : c.pass ? tr("已拒绝") : tr("未拒绝") + " " + c.status))
+                      .join("\n")}
                   >
-                    {tr("协议校验")} {t.strictness.filter((c) => c.pass).length}/{t.strictness.length}
+                    {tr("协议校验")} {t.strictness.filter((c) => c.pass).length}/{t.strictness.filter((c) => !c.skipped).length}
                   </span>
                 )}
                 <span className={t.original_replay ? "good" : "bad"}>{tr("原始续轮")} {t.original_replay ? tr("通过") : tr("失败")}</span>
@@ -512,6 +514,9 @@ export default function ResultCards({
                   temperature_error: t.temperature_error,
                 }}
               />
+              {t.strictness && t.strictness.length > 0 && (
+                <Details label={tr("协议校验明细")} value={t.strictness} />
+              )}
               <Details label={tr("查看思维链全文")} value={t.thinking_text} />
               <Details label={tr("探针回答")} value={t.answer} />
             </>

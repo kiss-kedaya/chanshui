@@ -57,14 +57,14 @@ func (a deepAdapter) PostMessagesRaw(ctx context.Context, body map[string]any, b
 	if e != nil {
 		return claudecheck.Result{}, e
 	}
-	return claudecheck.Result{Status: raw.Status, Err: raw.Err, Answer: raw.Answer, StopReason: raw.StopReason, Transforms: raw.Transforms, InputTokens: raw.InputTokens, OutputTokens: raw.OutputTokens}, nil
+	return claudecheck.Result{Status: raw.Status, Err: raw.Err, Answer: raw.Answer, StopReason: raw.StopReason, Transforms: raw.Transforms, HasInputTransformations: raw.HasInputTransformations, InputTokens: raw.InputTokens, OutputTokens: raw.OutputTokens}, nil
 }
 
 func (a thinkAdapter) ProbeStrictness(ctx context.Context, model string) []thinking.StrictnessCheck {
 	raw := a.g.ProbeStrictness(ctx, model, a.timeout)
 	out := make([]thinking.StrictnessCheck, 0, len(raw))
 	for _, check := range raw {
-		out = append(out, thinking.StrictnessCheck{Name: check.Name, Status: check.Status, Pass: check.Pass, Detail: check.Detail})
+		out = append(out, thinking.StrictnessCheck{Name: check.Name, Title: check.Title, Status: check.Status, Pass: check.Pass, Skipped: check.Skipped, Detail: check.Detail})
 	}
 	return out
 }

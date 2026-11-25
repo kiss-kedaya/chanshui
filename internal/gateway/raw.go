@@ -13,13 +13,17 @@ import (
 
 // RawResult is the subset of a Messages response the deep Claude checks need.
 type RawResult struct {
-	Status       int
-	Err          string
-	Answer       string
-	StopReason   string
-	Transforms   []string
-	InputTokens  int
-	OutputTokens int
+	Status     int
+	Err        string
+	Answer     string
+	StopReason string
+	Transforms []string
+	// HasInputTransformations reports whether the upstream sent the field at
+	// all; official Anthropic does not, so absence must not read as "dropped".
+	HasInputTransformations bool
+	Fields                  []string
+	InputTokens             int
+	OutputTokens            int
 }
 
 // PostMessagesRaw POSTs an arbitrary Messages body. The deep checks need
@@ -71,9 +75,7 @@ func (c *Client) PostMessagesRaw(ctx context.Context, body map[string]any, beta 
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
-		InputTransformations []struct {
-			Type string `json:"type"`
-		} `json:"input_transformations"`
+		InputTransformations json.RawMessage `json:"input_transformations"`
 	}
 	if err := json.Unmarshal(payload, &parsed); err == nil {
 		out.StopReason = parsed.StopReason
@@ -85,8 +87,22 @@ func (c *Client) PostMessagesRaw(ctx context.Context, body map[string]any, beta 
 				out.Answer += block.Text
 			}
 		}
-		for _, t := range parsed.InputTransformations {
-			out.Transforms = append(out.Transforms, t.Type)
+		if len(parsed.InputTransformations) > 0 && string(parsed.InputTransformations) != "null" {
+			out.HasInputTransformations = true
+			var transforms []struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(parsed.InputTransformations, &transforms) == nil {
+				for _, t := range transforms {
+					out.Transforms = append(out.Transforms, t.Type)
+				}
+			}
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(payload, &fields) == nil {
+			for key := range fields {
+				out.Fields = append(out.Fields, key)
+			}
 		}
 	}
 	if out.Err == "" && out.Status != 200 {
