@@ -107,6 +107,9 @@ func binding(ctx context.Context, c Caller, model, signature, priorUser string, 
 	}
 	check.Status = res.Status
 	switch {
+	case res.Status != 200 && unstable(res.Status):
+		check.Skipped = true
+		check.Detail = "上游不可用/限流（HTTP " + fmt.Sprint(res.Status) + "），按不定处理"
 	case res.Status != 200:
 		check.Detail = "HTTP " + fmt.Sprint(res.Status) + " " + clip(res.Err, 160)
 	case contains(res.Transforms, "thinking_dropped"):
@@ -146,6 +149,9 @@ func compact(ctx context.Context, c Caller, model string, timeoutSeconds int) Ch
 	}
 	check.Status = res.Status
 	switch {
+	case res.Status != 200 && unstable(res.Status):
+		check.Skipped = true
+		check.Detail = "上游不可用/限流（HTTP " + fmt.Sprint(res.Status) + "），按不定处理"
 	case res.Status != 200:
 		check.Detail = "HTTP " + fmt.Sprint(res.Status) + " " + clip(res.Err, 160)
 	case strings.EqualFold(res.StopReason, "compaction"):
@@ -169,6 +175,12 @@ func compactCorpus(tokens int) string {
 		fmt.Fprintf(&b, "Record %d: the quick brown fox jumps over the lazy dog near warehouse %d, shipment status pending, priority level %d.\n", line, line%97, line%5)
 	}
 	return b.String()
+}
+
+// unstable marks statuses that say nothing about the channel: outages, rate
+// limits and timeouts. The fingerprint spec calls these 不定 instead of fail.
+func unstable(status int) bool {
+	return status >= 500 || status == 429 || status == 408
 }
 
 func contains(values []string, want string) bool {

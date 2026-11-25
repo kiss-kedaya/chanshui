@@ -92,6 +92,7 @@ func behaviorInjection(ctx context.Context, c Caller, model string, timeoutSecon
 	}
 	detected := []string{}
 	answers := []string{}
+	okCount := 0
 	for _, item := range prompts {
 		res, err := c.PostMessagesRaw(ctx, map[string]any{
 			"model": model, "max_tokens": 300,
@@ -104,6 +105,7 @@ func behaviorInjection(ctx context.Context, c Caller, model string, timeoutSecon
 		if res.Status != 200 {
 			continue
 		}
+		okCount++
 		lower := strings.ToLower(res.Answer)
 		for _, phrase := range injectionPhrases {
 			if strings.Contains(lower, phrase.needle) && !strings.Contains(strings.Join(detected, " "), phrase.label) {
@@ -113,6 +115,11 @@ func behaviorInjection(ctx context.Context, c Caller, model string, timeoutSecon
 		answers = append(answers, item.name+"="+clip(strings.TrimSpace(res.Answer), 40))
 	}
 	check.Detail = strings.Join(answers, " | ")
+	if okCount == 0 {
+		check.Skipped = true
+		check.Detail = "四问都被上游拒绝，按不定处理：" + check.Detail
+		return check
+	}
 	if len(detected) == 0 {
 		check.Pass = true
 		check.Detail = "未检出固定系统提示；" + check.Detail
