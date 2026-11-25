@@ -451,27 +451,8 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		// longest real reasoning text.
 		reuse := !thinkingHasSignature(t.Verdict.Thinking) || !thinkingHasText(t.Verdict.Thinking)
 		var seed thinking.Seed
-		best := -1
 		if reuse {
-			for _, item := range t.questions {
-				v := t.answers[item.ID]
-				if strings.TrimSpace(v.Signature) == "" {
-					continue
-				}
-				weight := len(v.Signature) + 2*len(v.ThinkingText)
-				if weight <= best {
-					continue
-				}
-				best = weight
-				seed = thinking.Seed{
-					ID: v.ID, Prompt: v.Prompt,
-					Metrics: thinking.Metrics{
-						Status: 200, Answer: v.Answer, ThinkingText: v.ThinkingText, Signature: v.Signature,
-						ThinkLen: len(v.ThinkingText), SigLen: len(v.Signature), Ms: v.Ms,
-						ThinkingTokens: v.Metrics.ThinkingTokens,
-					},
-				}
-			}
+			seed, _ = bestQuestionSeed(t.questions, t.answers)
 		}
 		t.mu.Unlock()
 		if seed.ID != "" {
@@ -600,6 +581,41 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
 	t.mu.Unlock()
 	s.persist(t)
+}
+
+// bestQuestionSeed picks the question whose response best represents the
+// channel's reasoning. A summary is worth more than a huge signature: relays
+// can return 40 KB signatures with empty thinking text, and reusing those loses
+// the summary entirely.
+func bestQuestionSeed(questions []iq.Question, answers map[string]QuestionResult) (thinking.Seed, bool) {
+	bestRank := -1
+	bestSig := -1
+	var seed thinking.Seed
+	found := false
+	for _, item := range questions {
+		v := answers[item.ID]
+		if strings.TrimSpace(v.Signature) == "" {
+			continue
+		}
+		rank := len(v.Signature)
+		if len(v.ThinkingText) > 0 {
+			rank = 1000000 + len(v.ThinkingText)
+		}
+		if rank < bestRank || (rank == bestRank && len(v.Signature) <= bestSig) {
+			continue
+		}
+		bestRank, bestSig = rank, len(v.Signature)
+		found = true
+		seed = thinking.Seed{
+			ID: v.ID, Prompt: v.Prompt,
+			Metrics: thinking.Metrics{
+				Status: 200, Answer: v.Answer, ThinkingText: v.ThinkingText, Signature: v.Signature,
+				ThinkLen: len(v.ThinkingText), SigLen: len(v.Signature), Ms: v.Ms,
+				ThinkingTokens: v.Metrics.ThinkingTokens,
+			},
+		}
+	}
+	return seed, found
 }
 
 func thinkingHasSignature(v any) bool {
