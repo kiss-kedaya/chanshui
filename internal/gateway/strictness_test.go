@@ -34,6 +34,11 @@ func TestProbeStrictnessStrictUpstream(t *testing.T) {
 			} `json:"messages"`
 		}
 		json.Unmarshal([]byte(body), &parsed)
+		if strings.Contains(body, "\"thinking\"") {
+			w.WriteHeader(400)
+			fmt.Fprint(w, "thinking.type.enabled is not supported for this model")
+			return
+		}
 		malformed := strings.Contains(body, "foo_unknown_field") || parsed.MaxTokens == nil || *parsed.MaxTokens == 0
 		for _, m := range parsed.Messages {
 			if m.Role == "system" {
@@ -51,7 +56,7 @@ func TestProbeStrictnessStrictUpstream(t *testing.T) {
 	defer up.Close()
 	client := Client{BaseURL: up.URL, Key: "k"}
 	checks := client.ProbeStrictness(context.Background(), "claude-opus-5", 10)
-	if len(checks) != 9 {
+	if len(checks) != 10 {
 		t.Fatalf("checks = %d", len(checks))
 	}
 	for _, check := range checks {

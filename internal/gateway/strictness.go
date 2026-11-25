@@ -74,7 +74,38 @@ func (c *Client) ProbeStrictness(ctx context.Context, model string, timeoutSecon
 	out = append(out, c.responseFields(ctx, model, timeoutSeconds))
 	out = append(out, c.betaDocs(ctx, model, timeoutSeconds))
 	out = append(out, c.contextInjection(ctx, model, timeoutSeconds))
+	out = append(out, c.paramName(ctx, model, timeoutSeconds))
 	return out
+}
+
+func (c *Client) paramName(ctx context.Context, model string, timeoutSeconds int) StrictnessCheck {
+	check := StrictnessCheck{Name: "param_name", Title: "报错参数名打码"}
+	p, err := c.strictPost(ctx, map[string]any{
+		"model": model, "max_tokens": 1024,
+		"thinking": map[string]any{"type": "enabled", "budget_tokens": 1024},
+		"messages": []any{map[string]any{"role": "user", "content": "reply OK"}},
+	}, "", timeoutSeconds)
+	if err != nil {
+		check.Detail = err.Error()
+		return check
+	}
+	check.Status = p.status
+	if p.status != 400 {
+		check.Skipped = true
+		check.Detail = fmt.Sprintf("thinking.enabled 未被拒绝（HTTP %d），无法检查报错文本", p.status)
+		return check
+	}
+	switch {
+	case strings.Contains(p.body, "[redacted]"), strings.Contains(p.body, "***.***"), strings.Contains(p.body, "******"):
+		check.Detail = "报错里的参数名被打码：" + clipText(p.body, 160)
+	case strings.Contains(strings.ToLower(p.body), "thinking"):
+		check.Pass = true
+		check.Detail = "报错保留了参数名 thinking.type"
+	default:
+		check.Skipped = true
+		check.Detail = "报错里没有参数名可供判断：" + clipText(p.body, 120)
+	}
+	return check
 }
 
 type strictSpec struct {
@@ -140,17 +171,12 @@ func (c *Client) responseFields(ctx context.Context, model string, timeoutSecond
 		check.Detail = fmt.Sprintf("HTTP %d，跳过", p.status)
 		return check
 	}
-	extra := []string{}
-	for _, key := range []string{"diagnostics", "input_transformations"} {
-		if containsKey(p.keys, key) {
-			extra = append(extra, key)
-		}
-	}
-	if len(extra) == 0 {
+	// diagnostics is an official Message field; input_transformations is not.
+	if !containsKey(p.keys, "input_transformations") {
 		check.Pass = true
 		return check
 	}
-	check.Detail = "含非官方字段：" + strings.Join(extra, "、")
+	check.Detail = "含非官方字段：input_transformations"
 	return check
 }
 
