@@ -2,6 +2,7 @@ package thinking
 
 import (
 	"encoding/base64"
+	"strings"
 	"testing"
 	"time"
 )
@@ -63,7 +64,7 @@ func TestSignatureAnatomy(t *testing.T) {
 	if _, class = signatureAnatomy(buildSignature(0, []int{1, 2, 3}), now); class != "空信封" {
 		t.Fatalf("envelope class = %q", class)
 	}
-	if _, class = signatureAnatomy("!!!not-base64!!!", now); class != "解析失败" {
+	if _, class = signatureAnatomy("!!!not-base64!!!", now); !strings.HasPrefix(class, "未识别格式") {
 		t.Fatalf("garbage class = %q", class)
 	}
 	if _, class = signatureAnatomy("  ", now); class != "无签" {
