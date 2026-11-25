@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-const bankStateKey = "modeltrace-bank-v1"
-const latestBankCommitURL = "https://api.github.com/repos/xqy2006/ModelTrace/commits/main"
+const bankStateKey = "lm-detector-bank-v2"
+const latestBankCommitURL = "https://api.github.com/repos/Ikaleio/lm-detector/commits/main"
 
 var commitPattern = regexp.MustCompile("^[a-f0-9]{40}$")
 
@@ -101,11 +101,11 @@ func (s *Server) syncBank(ctx context.Context, c *http.Client) error {
 		fingerprint.NumericBank
 		BuiltAt string `json:"built_at"`
 	}
-	url := "https://raw.githubusercontent.com/xqy2006/ModelTrace/" + head.SHA + "/data/unified_bank.json"
+	url := "https://raw.githubusercontent.com/Ikaleio/lm-detector/" + head.SHA + "/data/unified_bank.json"
 	if e := fetchSyncJSON(ctx, c, url, &remote); e != nil {
 		return e
 	}
-	next := &fingerprint.Bank{Numeric: remote.NumericBank, Behavioral: current.Behavioral, Source: map[string]string{"repository": "xqy2006/ModelTrace", "commit": head.SHA, "path": "data/unified_bank.json", "built_at": remote.BuiltAt, "synced_at": time.Now().UTC().Format(time.RFC3339)}}
+	next := &fingerprint.Bank{Numeric: remote.NumericBank, Behavioral: current.Behavioral, Source: map[string]string{"repository": "Ikaleio/lm-detector", "commit": head.SHA, "path": "data/unified_bank.json", "built_at": remote.BuiltAt, "synced_at": time.Now().UTC().Format(time.RFC3339)}}
 	return s.publishBank(ctx, next)
 }
 func (s *Server) startBankSync() {

@@ -34046,7 +34046,7 @@
   },
   {
     "id": "claude-fable-5-1",
-    "aliases": null,
+    "aliases": ["claude-fable-5.1"],
     "family": "claude",
     "family_name": "Claude",
     "source": "https://kedaya.ai/v1",
@@ -45736,7 +45736,7 @@
   },
   {
     "id": "claude-fable-5-2",
-    "aliases": null,
+    "aliases": ["claude-fable-5.2"],
     "family": "claude",
     "family_name": "Claude",
     "source": "https://kedaya.ai/v1",

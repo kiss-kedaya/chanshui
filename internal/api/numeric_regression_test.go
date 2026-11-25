@@ -4,14 +4,47 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kiss-kedaya/chanshui/internal/fingerprint"
 	"github.com/kiss-kedaya/chanshui/internal/gateway"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// bankSample renders n numbers drawn from the bank distribution of modelID so
+// the probe's own attribution can reach the confidence target early.
+func bankSample(t *testing.T, s *Server, modelID string, n int) string {
+	t.Helper()
+	bank := s.currentBank()
+	ref := bank.NumericModel(modelID)
+	if ref == nil || len(ref.Counts) == 0 {
+		t.Fatalf("no bank distribution for %s", modelID)
+	}
+	total := 0
+	for _, c := range ref.Counts {
+		total += c
+	}
+	r := rand.New(rand.NewSource(11))
+	parts := make([]string, n)
+	for i := range parts {
+		x := r.Intn(total)
+		v := fingerprint.NumMinValue
+		for j, c := range ref.Counts {
+			if x < c {
+				v = fingerprint.NumMinValue + j
+				break
+			}
+			x -= c
+		}
+		parts[i] = strconv.Itoa(v)
+	}
+	return strings.Join(parts, ", ")
+}
 
 func TestNumericSelectsStreamByProtocol(t *testing.T) {
 	for _, tc := range []struct {
@@ -28,6 +61,7 @@ func TestNumericSelectsStreamByProtocol(t *testing.T) {
 		t.Run(tc.mode+"-"+tc.model, func(t *testing.T) {
 			s, _, _, _ := testSetup(t)
 			var calls atomic.Int32
+			answer := bankSample(t, s, tc.model, 315)
 			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				var body struct{ Stream bool }
@@ -38,7 +72,6 @@ func TestNumericSelectsStreamByProtocol(t *testing.T) {
 				if r.URL.Path != tc.path {
 					t.Errorf("path=%s want %s", r.URL.Path, tc.path)
 				}
-				answer := strings.Repeat("247,83,319,", 105)
 				var response any
 				switch tc.path {
 				case "/v1/responses":
@@ -56,8 +89,13 @@ func TestNumericSelectsStreamByProtocol(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := result.(map[string]any)
-			if out["used_outputs"] != 3 || out["requests"] != 3 || calls.Load() != 3 {
+			used, _ := out["used_outputs"].(int)
+			reqs, _ := out["requests"].(int)
+			if used < 3 || reqs > 10 || int(calls.Load()) < reqs {
 				t.Fatalf("outputs=%v requests=%v calls=%d", out["used_outputs"], out["requests"], calls.Load())
+			}
+			if reached, _ := out["confidence_reached"].(bool); reached && reqs != 3 {
+				t.Fatalf("stopped late despite reaching confidence: requests=%d", reqs)
 			}
 		})
 	}
@@ -107,10 +145,11 @@ func TestNumericResamplesInvalidAnswersWithinChallengeBudget(t *testing.T) {
 		t.Run(fmt.Sprint(recover), func(t *testing.T) {
 			s, _, _, _ := testSetup(t)
 			var calls atomic.Int32
+			valid := bankSample(t, s, "claude-opus-5", 315)
 			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				answer := "not a numeric sample"
 				if calls.Add(1) > 3 && recover {
-					answer = strings.Repeat("247,83,319,", 105)
+					answer = valid
 				}
 				json.NewEncoder(w).Encode(map[string]any{"content": []any{map[string]string{"type": "text", "text": answer}}})
 			}))
@@ -131,9 +170,9 @@ func TestNumericResamplesInvalidAnswersWithinChallengeBudget(t *testing.T) {
 func TestNumericAliasUsesFamilyBaseline(t *testing.T) {
 	s, _, _, _ := testSetup(t)
 	var calls atomic.Int32
+	answer := bankSample(t, s, "deepseek-v4-flash", 315)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		answer := strings.Repeat("247,83,319,", 105)
 		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []any{map[string]any{
 				"message":       map[string]string{"content": answer},
