@@ -6,6 +6,10 @@ This project contains code, model references and captured model outputs from sev
 
 Some numeric candidate baselines are derived from the ModelTrace data referenced in `data_ref/provenance.json` (commit `d4131b30243dfa05e70180b5eedde742103f1d73` at the time of writing). Check the upstream repository's license and terms before redistributing or using the data commercially.
 
+## lm-detector numeric baselines
+
+The current 75-model numeric bank in `internal/fingerprint/bank.generated.json` is converted from `Ikaleio/lm-detector` commit `70159b7536a2ceb55c478c8c9472da81d3627e59` (`data/unified_bank.json`). That data derives from ModelTrace captures, so both upstream repositories' licenses and terms apply to the derived matrices. `data_ref/unified_bank.json` keeps the earlier ModelTrace snapshot for reference.
+
 ## DeepSeek samples
 
 The dated `DeepSeek-V4.1-Flash-0910` and `DeepSeek-V4.1-Flash-1017` baselines were captured through `https://api.deepseek.com` with the request name `deepseek-flash`. Each baseline records 36 training samples and 12 independent validation samples. The dated names are capture labels, not an official version claim by the API. See `docs/deepseek-fingerprint-2026-10-05.md` and the capture files under `data_ref/`.

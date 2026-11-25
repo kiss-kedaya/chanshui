@@ -176,7 +176,7 @@ Linux 部署包：
 
 ## 数据与第三方说明
 
-数字/行为基线包含 ModelTrace 数据和本地采集样本；DeepSeek/Grok 基线有独立采集记录。第三方模型名称、数据和依赖分别遵循其自身条款，详见 `THIRD_PARTY_NOTICES.md`。
+数字基线来自 Ikaleio/lm-detector（源出 ModelTrace 采集），行为基线来自本地采集样本；DeepSeek/Grok 基线有独立采集记录。第三方模型名称、数据和依赖分别遵循其自身条款，详见 `THIRD_PARTY_NOTICES.md`。
 
 ## 贡献
 
