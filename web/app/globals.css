@@ -5261,3 +5261,41 @@ html[data-mode="dark"] .agent-onboard-tip {
     padding-right: 360px;
   }
 }
+/* 可选检测：一行胶囊开关，和站点圆角/暖色保持同一套语言。 */
+.form-bottom { flex-direction: column; align-items: stretch; gap: 14px; margin-top: 18px; }
+.detect-extras { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.detect-extras-label { margin-right: 2px; color: var(--muted); font-size: 11px; letter-spacing: 0.04em; }
+.opt-chip { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--muted); font-size: 12px; cursor: pointer; transition: border-color var(--t-fast), background var(--t-fast), color var(--t-fast); }
+.opt-chip:hover { border-color: #d8d4c8; color: var(--ink); }
+.opt-chip.is-on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+.opt-chip input { appearance: none; -webkit-appearance: none; display: grid; place-content: center; width: 14px; height: 14px; margin: 0; border: 1px solid #c9c5b7; border-radius: 4px; background: #fff; }
+.opt-chip.is-on input { border-color: var(--accent); background: var(--accent); }
+.opt-chip input::after { content: ""; width: 7px; height: 4px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) translateY(-1px); opacity: 0; }
+.opt-chip input:checked::after { opacity: 1; }
+.opt-chip input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.opt-chip:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
+.form-bottom-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.form-bottom-row > p { display: flex; align-items: center; gap: 5px; margin: 0; color: #9b9789; font-size: 11px; white-space: nowrap; }
+@media (max-width: 760px) {
+  .form-bottom-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .form-bottom-row > p { white-space: normal; }
+  .form-bottom-row .detect-button { width: 100%; }
+}
+.detect-extras { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.detect-extras-label { grid-column: 1 / -1; margin: 0 0 2px; }
+.opt-chip { justify-content: flex-start; height: 32px; }
+
+/* 结果卡里的指标行：统一 12px，标签灰、值加粗，状态只换颜色不换字号。 */
+.check-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 10px 0; font-size: 12px; line-height: 1.5; }
+.check-item { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.check-item > i { font-style: normal; color: var(--muted); white-space: nowrap; }
+.check-item > b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.check-item > b.ok { color: var(--ok); }
+.check-item > b.no { color: var(--bad); }
+.check-item > b.warn { color: var(--warn); }
+.check-item > b.skip { color: var(--muted); font-weight: 500; }
+.check-rows { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; font-size: 12px; color: var(--muted); }
+.check-row { display: flex; justify-content: space-between; gap: 14px; }
+.check-row > i { font-style: normal; white-space: nowrap; }
+.check-row > b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .check-list { grid-template-columns: 1fr; } }

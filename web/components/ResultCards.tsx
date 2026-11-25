@@ -41,6 +41,22 @@ function Details({ label, value }: { label: string; value: unknown }) {
 }
 
 
+function sigShort(cls: string): string {
+  if (cls.startsWith("真签")) return "真签";
+  if (cls.startsWith("历史")) return "历史缓存";
+  if (cls.startsWith("标准信封")) return "标准信封";
+  if (cls.startsWith("空信封")) return "空信封";
+  if (cls.startsWith("半成品")) return "半成品";
+  if (cls.startsWith("未识别")) return "未识别";
+  if (cls.startsWith("无签")) return "无签";
+  return cls;
+}
+
+function sigBytes(cls: string): string {
+  const m = cls.match(/密文\s*(\d+)\s*字节/);
+  return m ? m[1] + " B" : "";
+}
+
 function knowledgeMark(row: { kind?: string; ok: boolean; unsure: boolean; error?: string }, tr: (source: string) => string) {
   if (row.kind === "know" || (row.ok && row.kind !== "wrong" && row.kind !== "error" && row.kind !== "invalid")) {
     return { text: tr("知道"), cls: "good" };
@@ -449,54 +465,62 @@ export default function ResultCards({
                   {t.score ?? t.summary_score ?? (t.think_len > 0 ? 5 : 0)} / {t.max_score ?? 5}
                 </strong>
               </div>
-              <div className="thinking-checks">
-                <span className={t.signature_present ? "good" : "bad"}>{tr("签名")} {t.signature_present ? tr("有") : tr("无")}</span>
-                {t.signed_model && (
-                  <span
-                    className={t.signed_model_match ? "good" : "warn"}
-                    title={tr(t.signed_model_match ? "与声称模型一致" : "与声称模型不一致")}
-                  >
-                    {tr("签名模型")} {t.signed_model}
-                  </span>
-                )}
-                {t.signature_present && !t.signed_model && (
-                  <span className="muted" title={tr("不透明签名，不扣分")}>
-                    {tr("签名模型")} {tr("不透明")}
+              <div className="check-list">
+                <span className="check-item">
+                  <i>{tr("签名")}</i>
+                  <b className={t.signature_present ? "ok" : "no"}>
+                    {t.signature_present ? tr("有") : tr("无")}
+                    {t.signature_present && t.source ? " · " + tr("复用") + " " + t.source : ""}
+                  </b>
+                </span>
+                {t.signature_present && (
+                  <span className="check-item">
+                    <i>{tr("签名模型")}</i>
+                    <b className={!t.signed_model ? "skip" : t.signed_model_match ? "ok" : "warn"}>
+                      {t.signed_model || tr("不透明")}
+                    </b>
                   </span>
                 )}
                 {t.sig_class && (
-                  <span
-                    className={t.sig_class.startsWith("真签") ? "good" : "warn"}
-                    title={tr("签名解码自 protobuf：时间戳、字段数与 serving 基础设施")}
-                  >
-                    {tr("签名结构")} {tr(t.sig_class)}
-                  </span>
-                )}
-                {typeof t.sig_age_seconds === "number" && (
-                  <span className={t.sig_fresh ? "good" : "warn"} title={tr("签名内时间戳与本次响应的时间差")}>
-                    {tr("签名时间")} {t.sig_age_seconds <= 5 ? tr("刚刚") : tr("{n} 秒前", { n: Math.abs(t.sig_age_seconds) })}
+                  <span className="check-item" title={t.sig_class}>
+                    <i>{tr("签名结构")}</i>
+                    <b className={t.sig_class.startsWith("真签") ? "ok" : "warn"}>
+                      {sigShort(t.sig_class)}
+                      {sigBytes(t.sig_class) ? " · " + sigBytes(t.sig_class) : ""}
+                    </b>
                   </span>
                 )}
                 {t.strictness && t.strictness.length > 0 && (
                   <span
-                    className={t.strictness.every((c) => c.pass || c.skipped) ? "good" : "warn"}
+                    className="check-item"
                     title={t.strictness
                       .map((c) => (c.title || c.name) + " · " + (c.skipped ? tr("跳过") : c.pass ? tr("已拒绝") : tr("未拒绝") + " " + c.status))
                       .join("\n")}
                   >
-                    {tr("协议校验")} {t.strictness.filter((c) => c.pass).length}/{t.strictness.filter((c) => !c.skipped).length}
+                    <i>{tr("协议校验")}</i>
+                    <b className={t.strictness.every((c) => c.pass || c.skipped) ? "ok" : "warn"}>
+                      {t.strictness.filter((c) => c.pass).length}/{t.strictness.filter((c) => !c.skipped).length}
+                    </b>
+                  </span>
+                )}
+                <span className="check-item">
+                  <i>{tr("原始续轮")}</i>
+                  <b className={t.original_replay ? "ok" : "no"}>{t.original_replay ? tr("通过") : tr("失败")}</b>
+                </span>
+                <span className="check-item">
+                  <i>{tr("篡改")}</i>
+                  <b className={t.tamper_rejected ? "ok" : "no"}>{t.tamper_rejected ? tr("被拒") : tr("被接受")}</b>
+                </span>
+                {t.max_score === 12 && (
+                  <span className="check-item">
+                    <i>temperature</i>
+                    <b className={t.temperature_rejected ? "ok" : "no"}>{t.temperature_rejected ? "400" : tr("未拦截")}</b>
                   </span>
                 )}
                 {typeof t.aws_b === "boolean" && (
-                  <span className={t.aws_b ? "good" : "muted"} title={t.aws_b_detail || ""}>
-                    AWS-B {t.aws_b ? tr("是") : tr("否")}
-                  </span>
-                )}
-                <span className={t.original_replay ? "good" : "bad"}>{tr("原始续轮")} {t.original_replay ? tr("通过") : tr("失败")}</span>
-                <span className={t.tamper_rejected ? "good" : "bad"}>{tr("篡改")} {t.tamper_rejected ? tr("被拒") : tr("被接受")}</span>
-                {t.max_score === 12 && (
-                  <span className={t.temperature_rejected ? "good" : "bad"}>
-                    temperature {t.temperature_rejected ? "400" : tr("未拦截")}
+                  <span className="check-item" title={t.aws_b_detail || ""}>
+                    <i>AWS-B</i>
+                    <b className={t.aws_b ? "ok" : "skip"}>{t.aws_b ? tr("是") : tr("否")}</b>
                   </span>
                 )}
               </div>
@@ -532,16 +556,14 @@ export default function ResultCards({
         <section className="result-card">
           <div className="rc-head">
             <h3>{tr("Claude 深度体检")}</h3>
-            <span className="card-number">04</span>
           </div>
-          <div className="thinking-checks">
+          <div className="check-list">
             {v.claude_deep.checks.map((c) => (
-              <span
-                key={c.name}
-                className={c.skipped ? "muted" : c.pass ? "good" : "warn"}
-                title={c.detail || ""}
-              >
-                {tr(c.title || c.name)} {c.skipped ? tr("跳过") : c.pass ? tr("通过") : tr("未通过")}
+              <span key={c.name} className="check-item" title={c.detail || ""}>
+                <i>{tr(c.title || c.name)}</i>
+                <b className={c.skipped ? "skip" : c.pass ? "ok" : "no"}>
+                  {c.skipped ? tr("跳过") : c.pass ? tr("通过") : tr("未通过")}
+                </b>
               </span>
             ))}
           </div>
@@ -553,13 +575,15 @@ export default function ResultCards({
         <section className="result-card">
           <div className="rc-head">
             <h3>{tr("强制缓存检测")}</h3>
-            <span className="card-number">05</span>
           </div>
           <p className="muted">{v.force_cache.conclusion}</p>
-          <div className="thinking-checks">
+          <div className="check-rows">
             {v.force_cache.steps.map((s, index) => (
-              <span key={s.key + "-" + index} className="muted">
-                {tr(s.label)} · input {s.input} · 5m {s.write_5m} · 1h {s.write_1h} · read {s.read}
+              <span key={s.key + "-" + index} className="check-row">
+                <i>{tr(s.label) + " · " + (index % 2 === 0 ? tr("首写") : tr("重放"))}</i>
+                <b>
+                  input {s.input} · 5m {s.write_5m} · 1h {s.write_1h} · read {s.read}
+                </b>
               </span>
             ))}
           </div>

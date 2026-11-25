@@ -345,16 +345,10 @@ export default function DetectPage() {
             </div>
           </details>
           <div className="form-bottom">
-            <p>
-              <span className="usage-note">{tr("会产生接口用量")}</span>
-              <Hint
-                label={tr("检测用量说明")}
-                text={tr("注入大小使用两个独立小请求。勾选多轮对话时直接复用对话缓存，不再跑 6 轮缓存探针。每个失败请求独立最多重试 3 次。报告全站可见，有效期 24 小时。")}
-              />
-            </p>
-            <div className="actions">
+            <div className="detect-extras">
+              <span className="detect-extras-label">{tr("可选检测")}</span>
               {!conversationOn && (
-                <label className="cache-opt cache-beside" title={tr("可选。按普通多轮对话测前缀缓存，默认不跑。")}>
+                <label className={"opt-chip" + (cacheOn ? " is-on" : "")} title={tr("可选。按普通多轮对话测前缀缓存，默认不跑。")}>
                   <input
                     type="checkbox"
                     checked={cacheOn}
@@ -369,7 +363,7 @@ export default function DetectPage() {
                 </label>
               )}
               {modelFamily(model) === "claude" && (
-                <label className="cache-opt cache-beside" title={tr("可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。")}>
+                <label className={"opt-chip" + (claudeDeep ? " is-on" : "")} title={tr("可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。")}>
                   <input
                     type="checkbox"
                     checked={claudeDeep}
@@ -380,7 +374,7 @@ export default function DetectPage() {
                 </label>
               )}
               {modelFamily(model) === "claude" && (
-                <label className="cache-opt cache-beside" title={tr("可选。四步测上游会不会在没带 cache_control 时强制写缓存，约多花 5 万输入 token。")}>
+                <label className={"opt-chip" + (forceCache ? " is-on" : "")} title={tr("可选。四步测上游会不会在没带 cache_control 时强制写缓存，约多花 5 万输入 token。")}>
                   <input
                     type="checkbox"
                     checked={forceCache}
@@ -390,7 +384,7 @@ export default function DetectPage() {
                   {tr("强制缓存检测")}
                 </label>
               )}
-              <label className="cache-opt cache-beside" title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>
+              <label className={"opt-chip" + (conversationOn ? " is-on" : "")} title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>
                 <input
                   type="checkbox"
                   checked={conversationOn}
@@ -406,6 +400,15 @@ export default function DetectPage() {
                   text={tr("默认关闭。打开后开场先寒暄，再按 Q1 到 Q9 串行追问，中途插入几句闲聊。逐轮看读取有没有接上前一轮读加写，能抓到按请求分类后换池的中转。串行会明显变慢。")}
                 />
               </label>
+            </div>
+            <div className="form-bottom-row">
+              <p>
+                <span className="usage-note">{tr("会产生接口用量")}</span>
+                <Hint
+                  label={tr("检测用量说明")}
+                  text={tr("注入大小使用两个独立小请求。勾选多轮对话时直接复用对话缓存，不再跑 6 轮缓存探针。每个失败请求独立最多重试 3 次。报告全站可见，有效期 24 小时。")}
+                />
+              </p>
               <button
                 className="btn-primary detect-button"
                 type="submit"
