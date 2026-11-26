@@ -24,13 +24,13 @@ func TestBuildTotalFullPassAndDilutedFingerprint(t *testing.T) {
 	}
 	v.Fingerprint = map[string]any{"basis": "numeric", "top_prob": 1.0, "family": "claude", "top_model": "claude-sonnet-4-5", "used_outputs": 3}
 	total = buildTotal(v, "claude-opus-4-6")
-	if total.Score != 79 {
-		t.Fatalf("diluted score %d", total.Score)
+	if total.Score != 65 {
+		t.Fatalf("diluted score %d, want 65", total.Score)
 	}
 	v.Fingerprint = map[string]any{"family": "claude", "top_model": "claude-opus-4-6", "used_outputs": 0}
 	total = buildTotal(v, "claude-opus-4-6")
-	if total.Score != 79 {
-		t.Fatalf("empty fingerprint score %d", total.Score)
+	if total.Score != 65 {
+		t.Fatalf("empty fingerprint score %d, want 65", total.Score)
 	}
 }
 

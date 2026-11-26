@@ -215,7 +215,7 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 		answers:   map[string]QuestionResult{},
 	}
 	t.Verdict.Protocol = q.Protocol
-	t.Verdict.ScoringVersion = "2026-11-26-v7-claude-channel"
+	t.Verdict.ScoringVersion = "2026-11-26-v8-identity-weight"
 	names := map[string]string{
 		"fingerprint": "模型指纹归因", "injection": "注入大小", "cache": "缓存读写验证",
 		"tools": "工具调用检测", "web": "联网检测", "knowledge": "知识截止日期", "thinking": "思维链回传",

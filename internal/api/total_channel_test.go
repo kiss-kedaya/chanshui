@@ -161,3 +161,31 @@ func TestSelectedSectionsDecideWhetherStrictnessCounts(t *testing.T) {
 		t.Fatalf("the opt-in deep audit scores whatever sections were chosen: %+v", part)
 	}
 }
+
+// The fingerprint is the one section that can prove a substitution, so a
+// confirmed swap must not read as a decent score even when every other section
+// passes. This guards the weight, not a cap: the scale stays plain percent.
+func TestConfirmedSwapCannotLookDecent(t *testing.T) {
+	v := claudeVerdict()
+	v.Fingerprint = map[string]any{"basis": "numeric", "top_prob": 1.0, "family": "claude", "top_model": "claude-haiku-4-5", "used_outputs": 3}
+	v.Vision = map[string]any{"score": 100}
+	if got := buildTotal(v, "claude-opus-5-5").Score; got > 75 {
+		t.Fatalf("swapped Claude run with everything else perfect scored %d, want at most 75", got)
+	}
+	g := Verdict{
+		Fingerprint: map[string]any{"basis": "numeric", "top_prob": 1.0, "family": "gpt", "top_model": "gpt-6-astra", "used_outputs": 3},
+		IQ:          map[string]any{"complete": true, "score": 100},
+		Vision:      map[string]any{"score": 100},
+		Injection:   map[string]any{"score": 10},
+		Tools:       map[string]any{"pass": true},
+		Web:         map[string]any{"status": "pass", "pass": true, "protocol": "messages"},
+	}
+	if got := buildTotal(g, "gpt-6.1-sol").Score; got > 70 {
+		t.Fatalf("swapped GPT run with everything else perfect scored %d, want at most 70", got)
+	}
+	// And a clean run is still a full 100: nothing was capped or shifted.
+	g.Fingerprint = map[string]any{"basis": "numeric", "top_prob": 1.0, "family": "gpt", "top_model": "gpt-6.1-sol", "used_outputs": 3}
+	if got := buildTotal(g, "gpt-6.1-sol").Score; got != 100 {
+		t.Fatalf("clean GPT run scored %d, want 100", got)
+	}
+}

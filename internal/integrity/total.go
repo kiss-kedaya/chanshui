@@ -25,12 +25,15 @@ type Total struct {
 	Reason string `json:"reason"`
 }
 
-// Raw weights. Fingerprint is a small share: the name check is weak evidence.
-// The first eight weights sum to 100 when cache and thinking both apply; the
-// Claude channel sections only exist on Claude runs. Whatever applies is
-// rescaled to 100.
+// Raw weights. Fingerprint is the largest single share because it is the only
+// section that can prove a substitution: a numeric baseline that pins another
+// model at 99.9% costs the whole section, anything less keeps it. At 18 a
+// confirmed swap still averaged 54 against 82 for clean reports on 282 saved
+// runs; at 36 the gap is about 40 points and every confirmed swap in that set
+// lands under 60, with no cap on the scale. Whatever applies is rescaled to
+// 100, and the Claude channel sections only exist on Claude runs.
 var sectionWeight = map[string]int{
-	"fingerprint": 18,
+	"fingerprint": 36,
 	"iq":          24,
 	"vision":      15,
 	"injection":   13,

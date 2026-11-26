@@ -26,7 +26,7 @@ func TestComposeFullClaudeWithCacheIs100(t *testing.T) {
 		got[p.Key] = p.Coefficient
 		sum += p.Contribution
 	}
-	if sum != 100 || got["fingerprint"] != 18 || got["iq"] != 24 || got["vision"] != 15 || got["injection"] != 13 || got["tools"] != 10 || got["web"] != 8 || got["thinking"] != 7 || got["cache"] != 5 {
+	if sum != 100 || got["fingerprint"] != 31 || got["iq"] != 20 || got["vision"] != 13 || got["injection"] != 11 || got["tools"] != 8 || got["web"] != 7 || got["thinking"] != 6 || got["cache"] != 4 {
 		t.Fatalf("coeffs %+v sum %d", got, sum)
 	}
 }
@@ -54,7 +54,7 @@ func TestComposeDropsOptionalSectionsAndStillTotals100(t *testing.T) {
 			}
 		}
 	}
-	if sum != 100 || fp != 24 {
+	if sum != 100 || fp != 40 {
 		t.Fatalf("renorm sum %d fingerprint %d", sum, fp)
 	}
 }
@@ -114,7 +114,7 @@ func TestComposeClaudeChannelSectionsShareTheHundred(t *testing.T) {
 		t.Fatalf("channel coefficients out of order: %+v", got)
 	}
 	// Adding the channel sections must take weight from the old ones, not add to 100.
-	if got["iq"] >= 24 || got["fingerprint"] >= 18 {
+	if got["iq"] >= 20 || got["fingerprint"] >= 31 {
 		t.Fatalf("old sections did not shrink: %+v", got)
 	}
 }
