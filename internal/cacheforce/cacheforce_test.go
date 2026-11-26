@@ -63,3 +63,14 @@ func TestPassthroughKeepsTtl(t *testing.T) {
 		t.Fatalf("conclusion = %q", v.Conclusion)
 	}
 }
+
+func TestTierFlagsOnlyWhenNotForced(t *testing.T) {
+	pass := Run(context.Background(), fakeCaller{}, "claude-opus-5", 10)
+	if pass.Tier5m == nil || !*pass.Tier5m || pass.Tier1h == nil || !*pass.Tier1h {
+		t.Fatalf("passthrough tiers = %v %v", pass.Tier5m, pass.Tier1h)
+	}
+	forced := Run(context.Background(), fakeCaller{forced: true}, "claude-opus-5", 10)
+	if forced.Tier5m != nil || forced.Tier1h != nil {
+		t.Fatalf("forced upstream must not report tiers: %v %v", forced.Tier5m, forced.Tier1h)
+	}
+}

@@ -36,8 +36,13 @@ type Step struct {
 
 // Verdict reports whether the upstream writes cache without cache_control.
 type Verdict struct {
-	Steps      []Step `json:"steps"`
-	Forced     *bool  `json:"forced,omitempty"`
+	Steps  []Step `json:"steps"`
+	Forced *bool  `json:"forced,omitempty"`
+	// Tier5m and Tier1h say whether an explicit cache_control wrote to the
+	// tier it asked for. Only measured once the upstream is known not to force
+	// cache writes, so both stay nil otherwise.
+	Tier5m     *bool  `json:"tier_5m,omitempty"`
+	Tier1h     *bool  `json:"tier_1h,omitempty"`
 	Conclusion string `json:"conclusion"`
 	Note       string `json:"note"`
 	Error      string `json:"error,omitempty"`
@@ -102,12 +107,17 @@ func Run(ctx context.Context, c Caller, model string, timeoutSeconds int) Verdic
 		v.Conclusion = fmt.Sprintf("样本介于两者之间：input=%d write5m=%d write1h=%d read=%d", plain.Input, plain.Write5m, plain.Write1h, plain.Read)
 	}
 	if v.Forced != nil && !*v.Forced {
-		if five := v.Steps[2]; five.Write5m > 0 && five.Write1h == 0 {
+		five := v.Steps[2]
+		hour := v.Steps[4]
+		tier5m := five.Write5m > 0 && five.Write1h == 0
+		tier1h := hour.Write1h > 0
+		v.Tier5m, v.Tier1h = &tier5m, &tier1h
+		if tier5m {
 			v.Conclusion += "；5 分钟档生效"
 		} else {
 			v.Conclusion += "；5 分钟档没有按参数写入"
 		}
-		if hour := v.Steps[4]; hour.Write1h > 0 {
+		if tier1h {
 			v.Conclusion += "；1 小时档生效"
 		} else {
 			v.Conclusion += "；1 小时档没有按参数写入"

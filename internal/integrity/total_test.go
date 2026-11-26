@@ -82,3 +82,60 @@ func TestComposeFingerprintMissAndPartialInjection(t *testing.T) {
 		t.Fatalf("score %d fp %d inj %d", r.Score, fp, inj)
 	}
 }
+
+func TestComposeClaudeChannelSectionsShareTheHundred(t *testing.T) {
+	r := Compose([]Part{
+		full("fingerprint", "模型指纹归因", 10),
+		full("iq", "推理表现", 100),
+		full("vision", "识图能力", 100),
+		full("injection", "注入大小", 10),
+		full("tools", "工具调用", 1),
+		full("web", "联网检测", 1),
+		full("thinking", "思维链回传", 12),
+		full("cache", "缓存读写", 1),
+		full("strictness", "协议校验", 10),
+		full("deep", "深度体检", 6),
+		full("forcecache", "强制缓存", 3),
+	})
+	if r.Score != 100 {
+		t.Fatalf("score %d", r.Score)
+	}
+	got := map[string]int{}
+	sum := 0
+	for _, p := range r.Parts {
+		got[p.Key] = p.Coefficient
+		sum += p.Coefficient
+	}
+	if sum != 100 {
+		t.Fatalf("coefficients sum %d: %+v", sum, got)
+	}
+	// 8 + 10 + 5 of 123 raw weight: deep outweighs strictness, which outweighs forced cache.
+	if !(got["deep"] > got["strictness"] && got["strictness"] > got["forcecache"] && got["forcecache"] > 0) {
+		t.Fatalf("channel coefficients out of order: %+v", got)
+	}
+	// Adding the channel sections must take weight from the old ones, not add to 100.
+	if got["iq"] >= 24 || got["fingerprint"] >= 18 {
+		t.Fatalf("old sections did not shrink: %+v", got)
+	}
+}
+
+func TestComposeLenientChannelCostsOnlyItsOwnShare(t *testing.T) {
+	r := Compose([]Part{
+		full("fingerprint", "模型指纹归因", 10),
+		full("iq", "推理表现", 100),
+		full("injection", "注入大小", 10),
+		full("tools", "工具调用", 1),
+		full("web", "联网检测", 1),
+		{Key: "strictness", Label: "协议校验", Applicable: true, Known: true, Points: 2, MaxPoints: 10},
+	})
+	var strict Part
+	for _, p := range r.Parts {
+		if p.Key == "strictness" {
+			strict = p
+		}
+	}
+	lost := strict.Coefficient - strict.Contribution
+	if lost <= 0 || r.Score != 100-lost {
+		t.Fatalf("score %d should be 100 minus the strictness shortfall %d: %+v", r.Score, lost, strict)
+	}
+}

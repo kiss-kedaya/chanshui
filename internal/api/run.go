@@ -1364,7 +1364,7 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 	if selected != nil {
 		cacheApply = selected["cache"]
 	}
-	return integrity.Compose([]integrity.Part{
+	parts := []integrity.Part{
 		{Key: "fingerprint", Label: "模型指纹归因", Applicable: want("fingerprint"), Known: fpKnown, Points: fpPoints, MaxPoints: 10},
 		{Key: "iq", Label: "推理表现", Applicable: want("iq"), Known: iqKnown, Points: iqPoints, MaxPoints: 100},
 		{Key: "vision", Label: "识图能力", Applicable: visionApply, Known: visionKnown, Points: visionPoints, MaxPoints: 100},
@@ -1373,7 +1373,8 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 		{Key: "web", Label: "联网检测", Applicable: webApply, Known: webKnown, Points: webPoints, MaxPoints: 1},
 		{Key: "thinking", Label: "思维链回传", Applicable: thinkApply, Known: thinkKnown, Points: thinkPoints, MaxPoints: thinkMax},
 		{Key: "cache", Label: "缓存读写", Applicable: cacheApply, Known: cacheKnown, Points: cachePoints, MaxPoints: 1},
-	})
+	}
+	return integrity.Compose(append(parts, claudeChannelParts(v, model, want("thinking"))...))
 }
 
 func boolPart(v any) (int, bool) {

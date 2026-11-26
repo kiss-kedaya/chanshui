@@ -26,8 +26,9 @@ type Total struct {
 }
 
 // Raw weights. Fingerprint is a small share: the name check is weak evidence.
-// The eight weights sum to 100 when cache and thinking both apply; otherwise
-// they are rescaled.
+// The first eight weights sum to 100 when cache and thinking both apply; the
+// Claude channel sections only exist on Claude runs. Whatever applies is
+// rescaled to 100.
 var sectionWeight = map[string]int{
 	"fingerprint": 18,
 	"iq":          24,
@@ -37,6 +38,11 @@ var sectionWeight = map[string]int{
 	"web":         8,
 	"thinking":    7,
 	"cache":       5,
+	// Claude channel evidence. strictness always runs with the thinking probe;
+	// deep and forcecache exist only when the user opted in.
+	"strictness": 8,
+	"deep":       10,
+	"forcecache": 5,
 }
 
 // Compose rescales applicable weights so they sum to 100, then scores each
@@ -85,7 +91,7 @@ func Compose(parts []Part) Total {
 		Score:  score,
 		Max:    100,
 		Parts:  out,
-		Reason: "总分 100。指纹只在数字基线 99.9% 以上确认是别的模型时才扣分，其余情况不参与评分。缓存未开启、非 Claude 思维链、Chat Completions 无法核联网时，这些项不占分，其余按原权重重分配，全通过仍是 100。未完成的适用项按 0 分计入。知识截止日期只展示，不计入。",
+		Reason: "总分 100。指纹只在数字基线 99.9% 以上确认是别的模型时才扣分，其余情况不参与评分。缓存未开启、非 Claude 思维链、Chat Completions 无法核联网时，这些项不占分，其余按原权重重分配，全通过仍是 100。Claude 的协议校验、深度体检、强制缓存按通过项计分，上游不稳（全部跳过）时不占分。未完成的适用项按 0 分计入。知识截止日期只展示，不计入。",
 	}
 }
 
