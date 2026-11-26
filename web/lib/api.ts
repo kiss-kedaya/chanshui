@@ -318,6 +318,8 @@ export interface DetectVerdict {
   force_cache?: {
     steps: { key: string; label: string; status: number; input: number; write_5m: number; write_1h: number; read: number }[];
     forced?: boolean;
+    tier_5m?: boolean;
+    tier_1h?: boolean;
     conclusion: string;
     note: string;
     error?: string;

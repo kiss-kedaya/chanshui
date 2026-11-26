@@ -1,3 +1,5 @@
+import type { DetectVerdict } from "@/lib/api";
+
 // Formatting only: scoring and fingerprint inference remain on the Go backend.
 export function reportHost(base: string): string {
   try {
@@ -106,4 +108,189 @@ export function presentedTotal<T extends { key: string; contribution: number; co
   const next = Math.max(0, score - fingerprint.contribution + target);
   fingerprint.contribution = target;
   return { score: next, parts: rows };
+}
+
+// ---- Report verdict -------------------------------------------------------
+// The total is a weighted average, so one hard failure can hide behind many
+// passes (a confirmed swap still scores 80+). The verdict is a separate layer
+// over the same data: it never changes the number, it says how far to trust
+// it. Pure and derived from the saved verdict, so old reports get it too.
+
+export type VerdictLevel = "ok" | "caution" | "fake" | "unknown";
+export type FindingTone = "bad" | "warn" | "note";
+export interface Finding {
+  tone: FindingTone;
+  text: string; // Chinese source string; the caller translates it with vars.
+  vars?: Record<string, string | number>;
+}
+export interface ReportVerdict {
+  level: VerdictLevel;
+  tone: "ok" | "ink" | "warn" | "bad" | "muted";
+  findings: Finding[];
+  failed: number;
+  scored: number;
+  applicable: number;
+}
+
+const clip = (text: string, n: number) => (text.length > n ? text.slice(0, n) + "…" : text);
+const SIGNATURE_ODD = ["空信封", "半成品", "未识别", "历史"];
+const SOFT_DEEP_CHECKS = ["thinking_binding", "context_compact"]; // beta features: unsupported is not dilution
+
+export function reportVerdict(v: DetectVerdict, fp: FingerprintState): ReportVerdict | null {
+  const total = v.total;
+  if (!total) return null;
+  const parts = (total.parts ?? []).filter((p) => p.applicable);
+  const weight = parts.reduce((n, p) => n + (p.coefficient || 0), 0);
+  const findings: Finding[] = [];
+  const add = (tone: FindingTone, text: string, vars?: Finding["vars"]) => findings.push({ tone, text, vars });
+
+  const f = v.fingerprint;
+  if (f && !f.error && fp !== "match") {
+    const top = f.top_display || f.top_model || f.family_name || "?";
+    if (fp === "fake") add("bad", "指纹显示实际是 {model}（{p}%）", { model: top, p: ((f.top_prob ?? 0) * 100).toFixed(1) });
+    else add("warn", "指纹更像 {model}，证据不足以判假", { model: top });
+  }
+
+  const inj = v.injection;
+  if (inj && !inj.error && inj.reliable !== false && typeof inj.score === "number" && inj.score <= 6) {
+    add(inj.score <= 2 ? "bad" : "warn", "隐藏注入约 {n} token", { n: Math.round(inj.inj || 0) });
+  }
+
+  const t = v.thinking;
+  if (t && !t.error && !t.err) {
+    if (t.signature_present === false) {
+      add("warn", "没有拿到思维链签名");
+    } else if (t.signature_present) {
+      if (t.original_replay === false) add("warn", "原始签名无法续轮");
+      else if (!t.tamper_rejected && t.tamper_status === 200) add("warn", "篡改过的签名被接受，渠道没校验签名");
+      if (t.signed_model_match === false) add("warn", "签名里的模型名与声称不一致");
+      const odd = SIGNATURE_ODD.find((name) => (t.sig_class || "").startsWith(name));
+      if (odd) add("warn", "签名结构异常：{cls}", { cls: odd });
+    }
+    const checks = (t.strictness ?? []).filter((c) => !c.skipped);
+    const missed = checks.filter((c) => !c.pass).length;
+    if (checks.length > 0 && missed >= Math.ceil(checks.length / 2)) {
+      add("note", "协议校验 {a}/{b}：渠道对非法请求偏宽松", { a: checks.length - missed, b: checks.length });
+    }
+  }
+
+  for (const c of v.claude_deep?.checks ?? []) {
+    if (c.skipped || c.pass) continue;
+    add(SOFT_DEEP_CHECKS.includes(c.name) ? "note" : "warn", "{title}：{detail}", {
+      title: c.title || c.name,
+      detail: clip(c.detail || "", 60),
+    });
+  }
+  if (v.force_cache?.forced === true) add("warn", "没带 cache_control 也被记成缓存读写");
+
+  if (v.tools && !v.tools.error && v.tools.pass === false) add("warn", "工具调用没通过");
+  if (v.cache && !v.cache.error && v.cache.pass === false) add("warn", "缓存读写没有衔接");
+  // A probe that errored is scored 0 by the backend, which reads as "bad" when
+  // it only means "no answer". Count them so the score is not over-trusted.
+  const iq = v.iq;
+  const questions = (iq?.per_question ?? []).filter((q) => !q.skipped);
+  const errored: Record<string, boolean> = {
+    fingerprint: !!f?.error,
+    injection: !!inj?.error,
+    tools: !!v.tools?.error,
+    web: !!v.web?.error,
+    thinking: !!(t?.error || t?.err),
+    vision: !!v.vision?.error,
+    cache: !!v.cache?.error,
+    deep: !!v.claude_deep?.error,
+    forcecache: !!v.force_cache?.error,
+    iq: questions.length > 0 && questions.filter((q) => q.error).length * 2 > questions.length,
+  };
+  if (iq && typeof iq.score === "number" && iq.score <= 60 && !errored.iq) {
+    add("warn", "推理表现偏低：{n}/100", { n: iq.score });
+  }
+  const failedParts = parts.filter((p) => errored[p.key]);
+  const failedWeight = failedParts.reduce((n, p) => n + (p.coefficient || 0), 0);
+  if (failedParts.length > 0) add("note", "{n} 项请求失败，按 0 分计入", { n: failedParts.length });
+
+  const order: Record<FindingTone, number> = { bad: 0, warn: 1, note: 2 };
+  findings.sort((a, b) => order[a.tone] - order[b.tone]);
+
+  const level: VerdictLevel =
+    fp === "fake"
+      ? "fake"
+      : weight > 0 && failedWeight / weight >= 0.4
+        ? "unknown"
+        : fp === "suspicious" || findings.some((item) => item.tone !== "note")
+          ? "caution"
+          : "ok";
+  const tone: ReportVerdict["tone"] =
+    level === "fake"
+      ? "bad"
+      : level === "unknown"
+        ? "muted"
+        : total.score < 60
+          ? "bad"
+          : level === "caution"
+            ? "warn"
+            : total.score >= 85
+              ? "ok"
+              : "ink";
+  return { level, tone, findings, failed: failedParts.length, scored: parts.length - failedParts.length, applicable: parts.length };
+}
+
+// ---- Claude channel summary ----------------------------------------------
+// The channel-fingerprint spec ends in one line: fresh signature | zero
+// injection | ccmax | AWS-B. These chips are that line, built from the checks
+// that already ran; a check that did not run simply has no chip.
+
+export type ChipState = "ok" | "no" | "warn" | "info" | "unsure";
+export interface Chip {
+  key: string;
+  label: string;
+  value: string; // Chinese source string
+  state: ChipState;
+}
+
+export function channelChips(v: DetectVerdict): Chip[] {
+  const checks = new Map((v.claude_deep?.checks ?? []).map((c) => [c.name, c] as const));
+  const out: Chip[] = [];
+  const push = (key: string, label: string, value: string, state: ChipState) => out.push({ key, label, value, state });
+
+  const fresh = checks.get("signature_fresh");
+  if (fresh) {
+    if (fresh.skipped) push("fresh", "现签", "不定", "unsure");
+    else push("fresh", "现签", fresh.pass ? "是" : "复签", fresh.pass ? "ok" : "no");
+  }
+
+  const hi = checks.get("hi_usage");
+  const inject = checks.get("injection");
+  if (hi || inject) {
+    const seen = [hi, inject].filter((c): c is NonNullable<typeof c> => c !== undefined);
+    if (seen.some((c) => !c.pass && !c.skipped)) push("zero", "0 注入", "否", "no");
+    else if (seen.length === 2 && seen.every((c) => c.pass)) push("zero", "0 注入", "是", "ok");
+    else push("zero", "0 注入", "不定", "unsure");
+  }
+
+  if (inject) {
+    const detail = inject.detail || "";
+    if (inject.skipped) push("ccmax", "ccmax", "不定", "unsure");
+    else if (detail.includes("ccmax")) push("ccmax", "ccmax", "是", "warn");
+    else if (detail.includes("Agent SDK")) push("ccmax", "ccmax", "Agent SDK", "warn");
+    else if (detail.includes("claude.ai")) push("ccmax", "ccmax", "claude.ai", "warn");
+    else push("ccmax", "ccmax", "否", "info");
+  }
+
+  const t = v.thinking;
+  if (typeof t?.aws_b === "boolean") push("awsb", "AWS-B", t.aws_b ? "是" : "否", "info");
+  else if (t?.tamper_status === 200) push("awsb", "AWS-B", "否", "info");
+
+  const pass = checks.get("system_passthrough");
+  if (pass) {
+    if (pass.skipped) push("system", "system 透传", "不定", "unsure");
+    else push("system", "system 透传", pass.pass ? "是" : "否", pass.pass ? "ok" : "no");
+  }
+
+  const force = v.force_cache;
+  if (force) {
+    if (force.forced === true) push("force", "强制缓存", "强制", "no");
+    else if (force.forced === false) push("force", "强制缓存", "透传", "ok");
+    else push("force", "强制缓存", "不定", "unsure");
+  }
+  return out;
 }

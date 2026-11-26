@@ -179,6 +179,9 @@ export default function DetectPage() {
     }
   };
   const canRun = !!(baseUrl.trim() && key.trim() && model.trim() && !busy);
+  // The two Claude-only extras each read about 50k input tokens; say so up
+  // front, because a tooltip is invisible on touch screens.
+  const extraTokens = modelFamily(model) === "claude" ? (claudeDeep ? 5 : 0) + (forceCache ? 5 : 0) : 0;
 
   return (
     <div className="page-shell">
@@ -371,6 +374,7 @@ export default function DetectPage() {
                     onChange={(e) => setClaudeDeep(e.target.checked)}
                   />
                   {tr("Claude 深度体检")}
+                  <small className="opt-cost">{tr("≈5 万 token")}</small>
                 </label>
               )}
               {modelFamily(model) === "claude" && (
@@ -382,6 +386,7 @@ export default function DetectPage() {
                     onChange={(e) => setForceCache(e.target.checked)}
                   />
                   {tr("强制缓存检测")}
+                  <small className="opt-cost">{tr("≈5 万 token")}</small>
                 </label>
               )}
               <label className={"opt-chip" + (conversationOn ? " is-on" : "")} title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>
@@ -399,11 +404,13 @@ export default function DetectPage() {
                   label={tr("多轮对话说明")}
                   text={tr("默认关闭。打开后开场先寒暄，再按 Q1 到 Q9 串行追问，中途插入几句闲聊。逐轮看读取有没有接上前一轮读加写，能抓到按请求分类后换池的中转。串行会明显变慢。")}
                 />
+                <small className="opt-cost">{tr("较慢")}</small>
               </label>
             </div>
             <div className="form-bottom-row">
               <p>
                 <span className="usage-note">{tr("会产生接口用量")}</span>
+                {extraTokens > 0 && <span className="usage-extra">{tr("可选项额外约 {n} 万 token", { n: extraTokens })}</span>}
                 <Hint
                   label={tr("检测用量说明")}
                   text={tr("注入大小使用两个独立小请求。勾选多轮对话时直接复用对话缓存，不再跑 6 轮缓存探针。每个失败请求独立最多重试 3 次。报告全站可见，有效期 24 小时。")}

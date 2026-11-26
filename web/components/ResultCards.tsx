@@ -1,12 +1,27 @@
 "use client";
+import { ReactNode } from "react";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import ResultSkeleton from "@/components/ResultSkeleton";
 import ConversationPanel from "@/components/ConversationPanel";
 import ErrorFold from "@/components/ErrorFold";
 import Hint from "@/components/Hint";
+import ScoreHero from "@/components/ScoreHero";
 import { fingerprintState, presentedTotal, probabilityVisible } from "@/lib/report-view";
 import { DetectVerdict } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+// One heading per kind of evidence, so a long report reads as chapters
+// instead of a flat pile of cards.
+function Group({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  const { t: tr } = useI18n();
+  return (
+    <section className="result-group" aria-labelledby={id}>
+      <h2 className="group-title" id={id}>
+        {tr(title)}
+      </h2>
+      <div className="group-cards">{children}</div>
+    </section>
+  );
+}
 function ScoreShare({ verdict, part }: { verdict: DetectVerdict; part: string }) {
   const { t: tr } = useI18n();
   const row = verdict.total?.parts?.find((item) => item.key === part && item.applicable);
@@ -57,6 +72,14 @@ function sigBytes(cls: string): string {
   return m ? m[1] + " B" : "";
 }
 
+// Only a 200 on the tampered signature proves it was accepted. A 429, 5xx,
+// timeout or a 400 that is not about the signature says nothing either way.
+function tamperView(t: { tamper_rejected?: boolean; tamper_status?: number }, tr: (source: string) => string) {
+  if (t.tamper_rejected) return { cls: "ok", text: tr("被拒") };
+  if (t.tamper_status === 200) return { cls: "no", text: tr("被接受") };
+  return { cls: "skip", text: t.tamper_status ? "HTTP " + t.tamper_status : tr("不定") };
+}
+
 function knowledgeMark(row: { kind?: string; ok: boolean; unsure: boolean; error?: string }, tr: (source: string) => string) {
   if (row.kind === "know" || (row.ok && row.kind !== "wrong" && row.kind !== "error" && row.kind !== "invalid")) {
     return { text: tr("知道"), cls: "good" };
@@ -81,11 +104,13 @@ export default function ResultCards({
   model,
   loading = false,
   showCache = false,
+  progress,
 }: {
   verdict: DetectVerdict;
   model?: string;
   loading?: boolean;
   showCache?: boolean;
+  progress?: { done: number; total: number };
 }) {
   const { t: tr } = useI18n();
   const a = v.injection,
@@ -142,6 +167,9 @@ export default function ResultCards({
         });
   const diluted = fpState === "fake";
   const suspicious = fpState === "suspicious";
+  const strictChecks = t?.strictness ?? [];
+  const strictAnswered = strictChecks.filter((c) => !c.skipped).length;
+  const strictPassed = strictChecks.filter((c) => c.pass && !c.skipped).length;
   const scored: DetectVerdict = v.total
     ? {
         ...v,
@@ -155,36 +183,13 @@ export default function ResultCards({
     <div
       className={"results " + (loading ? "results-loading" : "results-settled")}
     >
-      {scored.total && (
-        <section className="result-card total-card">
-          <div className="rc-head">
-            <h3>{tr("总分")}</h3>
-            <b className="score-chip">{scored.total.score} / 100</b>
-          </div>
-          <div className="metric-line">
-            <strong className={scored.total.score >= 90 ? "good" : scored.total.score >= 60 ? "score-mid" : "bad"}>
-              <AnimatedNumber value={scored.total.score} />
-            </strong>
-            <span>/ 100</span>
-          </div>
-          <div className="integrity-signals">
-            {scored.total.parts.filter((item) => item.applicable).map((item) => (
-              <div className="integrity-signal" key={item.key}>
-                <span>{tr(item.label)}</span>
-                <b className={item.contribution === item.coefficient ? "good" : "bad"}>
-                  {item.contribution}/{item.coefficient}
-                </b>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <ScoreHero verdict={scored} fp={fpState} claude={claude} loading={loading} progress={progress} />
+      <Group id="group-identity" title="身份与渠道">
       <section className={"result-card" + (diluted ? " fingerprint-bad" : "")}>
         <div className="rc-head">
           <CardTitle title={tr("模型指纹归因")} label={tr("指纹归因说明")} text={f?.note} />
           <span className="rc-score">
             <ScoreShare verdict={scored} part="fingerprint" />
-            <span className="card-number">01</span>
           </span>
         </div>
         {(diluted || suspicious) && (
@@ -306,7 +311,6 @@ export default function ResultCards({
           <CardTitle title={tr("注入大小")} label={tr("注入估计说明")} text={a?.note} />
           <span className="rc-score">
             <ScoreShare verdict={scored} part="injection" />
-            <span className="card-number">02</span>
           </span>
         </div>
         {!a ? (
@@ -423,7 +427,6 @@ export default function ResultCards({
         <section className="result-card integrity-card">
           <div className="rc-head">
             <CardTitle title={tr("接口完整性")} label={tr("接口完整性说明")} text={tr("只评价协议和证据链，不代表模型智力。未支持或缺字段会降低覆盖率，不会伪判为失败。")} />
-            <span className="card-number">API</span>
           </div>
           <div className="metric-line">
             <strong className={integrity.score == null ? "warn" : "good"}>
@@ -451,7 +454,6 @@ export default function ResultCards({
             <h3>{tr("思维链回传")}</h3>
             <span className="rc-score">
               <ScoreShare verdict={scored} part="thinking" />
-              <span className="card-number">03</span>
             </span>
           </div>
           {!t ? (
@@ -490,26 +492,13 @@ export default function ResultCards({
                     </b>
                   </span>
                 )}
-                {t.strictness && t.strictness.length > 0 && (
-                  <span
-                    className="check-item"
-                    title={t.strictness
-                      .map((c) => (c.title || c.name) + " · " + (c.skipped ? tr("跳过") : c.pass ? tr("已拒绝") : tr("未拒绝") + " " + c.status))
-                      .join("\n")}
-                  >
-                    <i>{tr("协议校验")}</i>
-                    <b className={t.strictness.every((c) => c.pass || c.skipped) ? "ok" : "warn"}>
-                      {t.strictness.filter((c) => c.pass).length}/{t.strictness.filter((c) => !c.skipped).length}
-                    </b>
-                  </span>
-                )}
                 <span className="check-item">
                   <i>{tr("原始续轮")}</i>
                   <b className={t.original_replay ? "ok" : "no"}>{t.original_replay ? tr("通过") : tr("失败")}</b>
                 </span>
                 <span className="check-item">
                   <i>{tr("篡改")}</i>
-                  <b className={t.tamper_rejected ? "ok" : "no"}>{t.tamper_rejected ? tr("被拒") : tr("被接受")}</b>
+                  <b className={tamperView(t, tr).cls}>{tamperView(t, tr).text}</b>
                 </span>
                 {t.max_score === 12 && (
                   <span className="check-item">
@@ -537,25 +526,53 @@ export default function ResultCards({
                   sig_infra: t.sig_infra,
                   sig_timestamp: t.sig_timestamp,
                   sig_age_seconds: t.sig_age_seconds,
-                  strictness: t.strictness,
                   tamper_status: t.tamper_status,
                   tamper_error: t.tamper_error,
                   temperature_error: t.temperature_error,
                 }}
               />
-              {t.strictness && t.strictness.length > 0 && (
-                <Details label={tr("协议校验明细")} value={t.strictness} />
-              )}
               <Details label={tr("查看思维链全文")} value={t.thinking_text} />
               <Details label={tr("探针回答")} value={t.answer} />
             </>
           )}
         </section>
       )}
+      {claude && strictChecks.length > 0 && (
+        <section className="result-card">
+          <div className="rc-head">
+            <CardTitle
+              title={tr("协议校验")}
+              label={tr("协议校验说明")}
+              text={tr("向渠道发 10 个官方 API 必定拒绝的请求：缺 max_tokens、未知字段、system role 等。被拒绝才算通过；上游不可用、限流或超时算不定，不计分。")}
+            />
+            <span className="rc-score">
+              <ScoreShare verdict={scored} part="strictness" />
+            </span>
+          </div>
+          <div className="metric-line">
+            <strong className={strictPassed === strictAnswered ? "good" : "warn"}>
+              {strictPassed} / {strictAnswered}
+            </strong>
+          </div>
+          <div className="check-rows">
+            {strictChecks.map((c) => (
+              <span key={c.name} className="check-row" title={c.detail || ""}>
+                <i>{tr(c.title || c.name)}</i>
+                <b className={c.skipped ? "skip" : c.pass ? "ok" : "no"}>
+                  {c.skipped ? tr("跳过") : c.pass ? tr("已拒绝") : tr("未拒绝") + " " + c.status}
+                </b>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
       {claude && v.claude_deep && (
         <section className="result-card">
           <div className="rc-head">
             <h3>{tr("Claude 深度体检")}</h3>
+            <span className="rc-score">
+              <ScoreShare verdict={scored} part="deep" />
+            </span>
           </div>
           <div className="check-list">
             {v.claude_deep.checks.map((c) => (
@@ -571,66 +588,13 @@ export default function ResultCards({
           {v.claude_deep.error ? <ErrorFold text={v.claude_deep.error} /> : null}
         </section>
       )}
-      {claude && v.force_cache && (
-        <section className="result-card">
-          <div className="rc-head">
-            <h3>{tr("强制缓存检测")}</h3>
-          </div>
-          <p className="muted">{v.force_cache.conclusion}</p>
-          <div className="check-rows">
-            {v.force_cache.steps.map((s, index) => (
-              <span key={s.key + "-" + index} className="check-row">
-                <i>{tr(s.label) + " · " + (index % 2 === 0 ? tr("首写") : tr("重放"))}</i>
-                <b>
-                  input {s.input} · 5m {s.write_5m} · 1h {s.write_1h} · read {s.read}
-                </b>
-              </span>
-            ))}
-          </div>
-          <p className="muted">{v.force_cache.note}</p>
-          {v.force_cache.error ? <ErrorFold text={v.force_cache.error} /> : null}
-        </section>
-      )}
-      <section className="result-card knowledge-card">
-        <div className="rc-head">
-          <h3>{tr("知识截止日期")}</h3>
-          <span className="card-number">INFO</span>
-        </div>
-        {!knowledge ? (
-          <ResultSkeleton label={loading ? tr("知识截止探针中…") : tr("暂无结果")} />
-        ) : knowledge.error ? (
-          <ErrorFold text={knowledge.error} />
-        ) : (
-          <>
-            <div className="metric-line">
-              <strong className={knowledge.correct ? "good" : "warn"}>
-                {knowledgeLabel(knowledge, tr)}
-              </strong>
-              <span>{tr("客观事件")}</span>
-            </div>
-            <p className="muted">{tr(knowledge.reason || "")}</p>
-            {knowledge.web_suspect && <p className="knowledge-note">{tr(knowledge.web_suspect)}</p>}
-            {knowledge.gap_note && <p className="knowledge-note">{tr(knowledge.gap_note)}</p>}
-            {!!knowledge.rows?.length && (
-              <ul className="knowledge-ladder">
-                {knowledge.rows.map((row) => (
-                  <li key={row.id}>
-                    <b className={knowledgeMark(row, tr).cls}>{knowledgeMark(row, tr).text}</b>
-                    <span>{row.happened_at || row.quarter}</span>
-                    <span>{row.event}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
-      </section>
+      </Group>
+      <Group id="group-ability" title="能力表现">
       <section className={"result-card" + (v.conversation ? " conversation-wide" : "")}>
         <div className="rc-head">
           <CardTitle title={tr("推理表现")} label={tr("评分说明")} text={q?.note} />
           <span className="rc-score">
             <ScoreShare verdict={scored} part="iq" />
-            <span className="card-number">04</span>
           </span>
         </div>
         {!q ? (
@@ -720,7 +684,6 @@ export default function ResultCards({
             />
             <span className="rc-score">
               <ScoreShare verdict={scored} part="vision" />
-              <span className="card-number">05</span>
             </span>
           </div>
           {!vision ? (
@@ -783,12 +746,89 @@ export default function ResultCards({
           )}
         </section>
       )}
+      {(
+        [
+          [tr("工具调用检测"), v.tools],
+          [tr("联网检测"), v.web],
+        ] as const
+      ).map(([title, result]) => (
+        <section className="result-card" key={title}>
+          <div className="rc-head">
+            <h3>{title}</h3>
+            <span className="rc-score">
+              {result?.protocol === "deepseek_search" && (
+                <span className="basis-chip behavioral">DeepSeek Search API</span>
+              )}
+              <ScoreShare
+                verdict={scored}
+                part={title === tr("工具调用检测") ? "tools" : "web"}
+              />
+            </span>
+          </div>
+          {!result ? (
+            <ResultSkeleton label={loading ? tr("检测中…") : tr("暂无结果")} />
+          ) : result.error ? (
+            <ErrorFold text={result.error} />
+          ) : (
+            <>
+              <div className="metric-line">
+                <strong className={result.pass === true ? "good" : "warn"}>
+                  {result.pass === true
+                    ? tr("通过")
+                    : result.pass === false
+                      ? tr("未通过")
+                      : tr("未经验证")}
+                </strong>
+              </div>
+              <p className="muted">{tr(result.reason || "")}</p>
+              {result.evidence != null && (
+                <Details label={tr("检测证据")} value={result.evidence} />
+              )}
+            </>
+          )}
+        </section>
+      ))}
+      <section className="result-card knowledge-card">
+        <div className="rc-head">
+          <h3>{tr("知识截止日期")}</h3>
+        </div>
+        {!knowledge ? (
+          <ResultSkeleton label={loading ? tr("知识截止探针中…") : tr("暂无结果")} />
+        ) : knowledge.error ? (
+          <ErrorFold text={knowledge.error} />
+        ) : (
+          <>
+            <div className="metric-line">
+              <strong className={knowledge.correct ? "good" : "warn"}>
+                {knowledgeLabel(knowledge, tr)}
+              </strong>
+              <span>{tr("客观事件")}</span>
+            </div>
+            <p className="muted">{tr(knowledge.reason || "")}</p>
+            {knowledge.web_suspect && <p className="knowledge-note">{tr(knowledge.web_suspect)}</p>}
+            {knowledge.gap_note && <p className="knowledge-note">{tr(knowledge.gap_note)}</p>}
+            {!!knowledge.rows?.length && (
+              <ul className="knowledge-ladder">
+                {knowledge.rows.map((row) => (
+                  <li key={row.id}>
+                    <b className={knowledgeMark(row, tr).cls}>{knowledgeMark(row, tr).text}</b>
+                    <span>{row.happened_at || row.quarter}</span>
+                    <span>{row.event}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+      </Group>
+      {(showCache || cache || (claude && v.force_cache)) && (
+        <Group id="group-cache" title="缓存">
       {(showCache || cache) && <section className="result-card cache-card">
         <div className="rc-head">
           <h3>{tr("缓存读写验证")}</h3>
           <span className="rc-score">
             <ScoreShare verdict={scored} part="cache" />
-            <span className="card-number">CACHE</span>
           </span>
         </div>
         {!v.cache ? (
@@ -907,48 +947,51 @@ export default function ResultCards({
           </>
         )}
       </section>}
-      {(
-        [
-          [tr("工具调用检测"), v.tools],
-          [tr("联网检测"), v.web],
-        ] as const
-      ).map(([title, result]) => (
-        <section className="result-card" key={title}>
+      {claude && v.force_cache && (
+        <section className="result-card">
           <div className="rc-head">
-            <h3>{title}</h3>
+            <h3>{tr("强制缓存检测")}</h3>
             <span className="rc-score">
-              {result?.protocol === "deepseek_search" && (
-                <span className="basis-chip behavioral">DeepSeek Search API</span>
-              )}
-              <ScoreShare
-                verdict={scored}
-                part={title === tr("工具调用检测") ? "tools" : "web"}
-              />
+              <ScoreShare verdict={scored} part="forcecache" />
             </span>
           </div>
-          {!result ? (
-            <ResultSkeleton label={loading ? tr("检测中…") : tr("暂无结果")} />
-          ) : result.error ? (
-            <ErrorFold text={result.error} />
-          ) : (
-            <>
-              <div className="metric-line">
-                <strong className={result.pass === true ? "good" : "warn"}>
-                  {result.pass === true
-                    ? tr("通过")
-                    : result.pass === false
-                      ? tr("未通过")
-                      : tr("未经验证")}
-                </strong>
-              </div>
-              <p className="muted">{tr(result.reason || "")}</p>
-              {result.evidence != null && (
-                <Details label={tr("检测证据")} value={result.evidence} />
+          {typeof v.force_cache.forced === "boolean" && (
+            <div className="check-list">
+              <span className="check-item">
+                <i>{tr("无参数写缓存")}</i>
+                <b className={v.force_cache.forced ? "no" : "ok"}>{v.force_cache.forced ? tr("会（强制）") : tr("不会")}</b>
+              </span>
+              {typeof v.force_cache.tier_5m === "boolean" && (
+                <span className="check-item">
+                  <i>{tr("5 分钟档")}</i>
+                  <b className={v.force_cache.tier_5m ? "ok" : "no"}>{v.force_cache.tier_5m ? tr("生效") : tr("未生效")}</b>
+                </span>
               )}
-            </>
+              {typeof v.force_cache.tier_1h === "boolean" && (
+                <span className="check-item">
+                  <i>{tr("1 小时档")}</i>
+                  <b className={v.force_cache.tier_1h ? "ok" : "no"}>{v.force_cache.tier_1h ? tr("生效") : tr("未生效")}</b>
+                </span>
+              )}
+            </div>
           )}
+          <p className="muted">{v.force_cache.conclusion}</p>
+          <div className="check-rows">
+            {v.force_cache.steps.map((s, index) => (
+              <span key={s.key + "-" + index} className="check-row">
+                <i>{tr(s.label) + " · " + (index % 2 === 0 ? tr("首写") : tr("重放"))}</i>
+                <b>
+                  input {s.input} · 5m {s.write_5m} · 1h {s.write_1h} · read {s.read}
+                </b>
+              </span>
+            ))}
+          </div>
+          <p className="muted">{v.force_cache.note}</p>
+          {v.force_cache.error ? <ErrorFold text={v.force_cache.error} /> : null}
         </section>
-      ))}
+      )}
+        </Group>
+      )}
     </div>
   );
 }
