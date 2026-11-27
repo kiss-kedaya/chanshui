@@ -1,3 +1,7 @@
+import { docsAdminRows } from "@/lib/i18n-rows-docs-admin";
+import { homeRows } from "@/lib/i18n-rows-home";
+import { reportRows } from "@/lib/i18n-rows-report";
+
 export const rows: [string, string, string, string, string][] = [
 ["跳到主内容","Skip to content","跳到主要內容","本文へ移動","본문으로 이동"],
 ["掺水？","Watered down?","摻水？","水増し？","희석?"],
@@ -593,5 +597,35 @@ export const rows: [string, string, string, string, string][] = [
 ["1 小时档","1-hour tier","1 小時檔","1 時間ティア","1시간 티어"],
 ["生效","Honored","生效","有効","적용됨"],
 ["未生效","Not honored","未生效","無効","적용 안 됨"],
+["黑白灰","Monochrome","黑白灰","モノクロ","모노크롬"],
+["全站报告","Reports","全站報告","全報告","전체 보고서"],
+["主导航","Primary navigation","主導航","メインナビ","주 탐색"],
+["侧边导航","Sidebar navigation","側邊導航","サイドナビ","사이드 탐색"],
+["站点规则","Domain rule","站點規則","ドメイン規則","도메인 규칙"],
+["已知针对性作假站点（直接判 0 分）","Confirmed anti-detection site (auto-scored 0)","已知針對性作假站點（直接判 0 分）","既知の標的型不正サイト（即時 0 点）","확인된 표적 조작 사이트(즉시 0점)"],
+["全流程公开探针 · 自动识别回放与伪造签名","Open end-to-end probes · Auto replay & forged signature detection","全流程公開探針 · 自動識別回放與偽造簽名","全工程公開プローブ · リプレイと偽造署名を自動検出","전체 공개 프로브 · 리플레이·위조 서명 자동 탐지"],
+["检测到针对性作假","Targeted cheating detected","偵測到針對性作假","標的型不正を検出","표적 조작 감지됨"],
+["探针原始证据命中回放、伪造签名或查表特征，对应作假板块已按 0 分计入。","Raw probe evidence matched replay, forged signature, or lookup-table patterns; affected sections are scored 0.","探針原始證據命中回放、偽造簽名或查表特徵，對應作假板塊已按 0 分計入。","生証拠でリプレイ・偽造署名・テーブル参照を検出。該当項目は0点扱いになります。","원본 증거에서 리플레이·위조 서명·테이블 참조가 확인되어 해당 항목은 0점 처리되었습니다."],
+["反作弊实锤证据","Confirmed anti-cheat evidence","反作弊實錘證據","不正検出の確定証拠","안티치트 확정 증거"],
+["{n} 项命中","{n} confirmed","{n} 項命中","{n} 件検出","{n}건 적발"],
+["作假","Cheat","作假","不正","조작"],
+["隐藏注入","Hidden injection","隱藏注入","隠し注入","숨은 주입"],
+["签名验真","Signature audit","簽名驗真","署名検証","서명 검증"],
+["反作弊拦截","Anti-cheat","反作弊攔截","不正対策","안티치트"],
+["网络连接中断或超时，请稍后重试","Network connection dropped or timed out. Please try again.","網路連線中斷或逾時，請稍後重試","通信が切断またはタイムアウトしました。もう一度お試しください。","네트워크 연결이 끊기거나 시간 초과되었습니다. 다시 시도해 주세요."],
+["自述暴露本地回放服务","Self-report confessed local replay service","自述暴露本地回放服務","自己申告でローカルリプレイが露出","자기 진술에서 로컬 리플레이 서비스 노출"],
+["检测到伪造思维链签名","Forged thinking signature detected","偵測到偽造思維鏈簽名","偽造された思考署名を検出","위조된 사고 서명 감지됨"],
+["本地模拟篡改拒签报错","Fabricated local bad-signature error","本地模擬篡改拒簽報錯","ローカル擬似拒否エラーを検出","로컬 모의 거부 오류 감지"],
+["推理题零 token 本地回放","Zero-token local reasoning replay","推理題零 token 本地回放","推論問題の0トークンリプレイ","추론 문제 0토큰 로컬 리플레이"],
+["识图题零 token 本地直出","Zero-token local vision replay","識圖題零 token 本地直出","画像問題の0トークン即答","이미지 문제 0토큰 즉답"],
+["工具调用伪造本地 ID","Synthetic local tool call ID","工具調用偽造本地 ID","偽造ローカルツールID","위조 로컬 도구 호출 ID"],
+["数字指纹返回耗时异常（查表/回放）","Impossible fingerprint latency (table/replay)","數字指紋返回耗時異常（查表/回放）","指紋応答時間が異常に短い（リプレイ）","지문 응답 시간 이상(테이블/리플레이)"],
+["数字指纹跨样本静态数组回放","Cross-sample static fingerprint array replay","數字指紋跨樣本靜態陣列回放","サンプル間の静的配列リプレイ","샘플 간 정적 배열 지문 리플레이"],
+["数字指纹忽略题面长度固定回放","Fixed-length fingerprint replay ignoring prompt count","數字指紋忽略題面長度固定回放","指定個数を無視した固定長リプレイ","요청 길이를 무시한 고정 길이 리플레이"],
+["数字指纹暴露本地题库报错","Fingerprint probe returned local replay bank error","數字指紋暴露本地題庫報錯","ローカル問題集エラーを検出","로컬 리플레이 뱅크 오류 노출"],
+["重新加载","Reload","重新載入","再読み込み","다시 불러오기"],
+...homeRows,
+...reportRows,
+...docsAdminRows,
 ];
 

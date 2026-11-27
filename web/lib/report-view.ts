@@ -94,16 +94,23 @@ function claimDiffers(requested: string, family: string, topModel: string): bool
 }
 
 // Rebuilds the total against the current fingerprint rule so reports saved
-// before it follow the same scoring.
+// before it follow the same scoring. Never restores fingerprint points when
+// anti-cheat explicitly penalized the fingerprint section.
 export function presentedTotal<T extends { key: string; contribution: number; coefficient?: number; applicable?: boolean }>(
   score: number,
   parts: T[] | undefined,
   state: FingerprintState,
+  anticheat?: DetectVerdict["anticheat"],
 ): { score: number; parts: T[] } {
   const rows = parts ? parts.map((item) => ({ ...item })) : [];
   const fingerprint = rows.find((item) => item.key === "fingerprint");
   if (!fingerprint?.coefficient || fingerprint.coefficient <= 0) return { score, parts: rows };
-  const target = state === "fake" ? 0 : fingerprint.coefficient;
+  const fpPenalizedByAntiCheat = Boolean(
+    anticheat?.detected &&
+      (anticheat.penalized_parts?.includes("fingerprint") ||
+        anticheat.signals?.some((sig) => sig.section === "fingerprint")),
+  );
+  const target = state === "fake" || fpPenalizedByAntiCheat ? 0 : fingerprint.coefficient;
   if (target === fingerprint.contribution) return { score, parts: rows };
   const next = Math.max(0, score - fingerprint.contribution + target);
   fingerprint.contribution = target;
@@ -133,7 +140,7 @@ export interface ReportVerdict {
 }
 
 const clip = (text: string, n: number) => (text.length > n ? text.slice(0, n) + "…" : text);
-const SIGNATURE_ODD = ["空信封", "半成品", "未识别", "历史"];
+const SIGNATURE_ODD = ["伪造", "空信封", "半成品", "未识别", "历史"];
 const SOFT_DEEP_CHECKS = ["thinking_binding", "context_compact"]; // beta features: unsupported is not dilution
 
 export function reportVerdict(v: DetectVerdict, fp: FingerprintState): ReportVerdict | null {
@@ -143,6 +150,14 @@ export function reportVerdict(v: DetectVerdict, fp: FingerprintState): ReportVer
   const weight = parts.reduce((n, p) => n + (p.coefficient || 0), 0);
   const findings: Finding[] = [];
   const add = (tone: FindingTone, text: string, vars?: Finding["vars"]) => findings.push({ tone, text, vars });
+
+  const ac = v.anticheat;
+  const cheated = Boolean(ac?.detected && (ac.signals?.length ?? 0) > 0);
+  if (cheated) {
+    for (const sig of ac?.signals ?? []) {
+      add("bad", "{title}：{detail}", { title: sig.title, detail: clip(sig.detail || "", 68) });
+    }
+  }
 
   const f = v.fingerprint;
   if (f && !f.error && fp !== "match") {
@@ -158,14 +173,18 @@ export function reportVerdict(v: DetectVerdict, fp: FingerprintState): ReportVer
 
   const t = v.thinking;
   if (t && !t.error && !t.err) {
-    if (t.signature_present === false) {
+    if (t.replay_confessed && !cheated) {
+      add("bad", "自述暴露本地回放服务");
+    } else if (t.sig_forged && !cheated) {
+      add("bad", "检测到伪造思维链签名");
+    } else if (t.signature_present === false) {
       add("warn", "没有拿到思维链签名");
     } else if (t.signature_present) {
       if (t.original_replay === false) add("warn", "原始签名无法续轮");
       else if (!t.tamper_rejected && t.tamper_status === 200) add("warn", "篡改过的签名被接受，渠道没校验签名");
       if (t.signed_model_match === false) add("warn", "签名里的模型名与声称不一致");
       const odd = SIGNATURE_ODD.find((name) => (t.sig_class || "").startsWith(name));
-      if (odd) add("warn", "签名结构异常：{cls}", { cls: odd });
+      if (odd && !(odd === "伪造" && cheated)) add(odd === "伪造" ? "bad" : "warn", "签名结构异常：{cls}", { cls: odd });
     }
     const checks = (t.strictness ?? []).filter((c) => !c.skipped);
     const missed = checks.filter((c) => !c.pass).length;
@@ -212,7 +231,7 @@ export function reportVerdict(v: DetectVerdict, fp: FingerprintState): ReportVer
   findings.sort((a, b) => order[a.tone] - order[b.tone]);
 
   const level: VerdictLevel =
-    fp === "fake"
+    cheated || fp === "fake" || Boolean(t?.sig_forged || t?.replay_confessed)
       ? "fake"
       : weight > 0 && failedWeight / weight >= 0.4
         ? "unknown"

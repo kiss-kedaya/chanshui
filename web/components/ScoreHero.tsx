@@ -21,6 +21,18 @@ const LEDE = {
 } as const;
 const SHOWN = 4;
 
+function translateFindingVars(
+  vars: Record<string, string | number> | undefined,
+  tr: (source: string, vars?: Record<string, string | number>) => string,
+): Record<string, string | number> | undefined {
+  if (!vars) return vars;
+  const out: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(vars)) {
+    out[key] = typeof value === "string" && key !== "model" ? tr(value) : value;
+  }
+  return out;
+}
+
 // Verdict first, number second, evidence third: the score is a weighted
 // average, so the headline says how far to trust it and the rows show where
 // the points went.
@@ -44,19 +56,49 @@ export default function ScoreHero({
     if (!loading) return null;
     // Keep the slot (no layout jump when the verdict lands) and show how far
     // the audit is, so progress is visible without scrolling to the timeline.
+    const pendingRatio =
+      progress && progress.total > 0
+        ? Math.min(1, Math.max(0, progress.done / progress.total))
+        : 0;
+    const pendingR = 14;
+    const pendingC = 2 * Math.PI * pendingR;
     return (
       <section className="result-card score-hero is-pending" aria-busy="true">
         <h2 className="sh-kicker">{tr("检测结论")}</h2>
         {progress && progress.total > 0 ? (
           <>
-            <p className="sh-headline">
-              {tr("正在收集证据")}
-              <span className="sh-count">
-                {progress.done} / {progress.total}
-              </span>
-            </p>
+            <div className="sh-pending-head">
+              <svg className="sh-pending-ring" viewBox="0 0 36 36" aria-hidden="true">
+                <circle
+                  className="sh-pending-track"
+                  cx="18"
+                  cy="18"
+                  r={pendingR}
+                  fill="none"
+                  strokeWidth="3"
+                />
+                <circle
+                  className="sh-pending-fill"
+                  cx="18"
+                  cy="18"
+                  r={pendingR}
+                  fill="none"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={pendingC}
+                  strokeDashoffset={pendingC * (1 - pendingRatio)}
+                  transform="rotate(-90 18 18)"
+                />
+              </svg>
+              <p className="sh-headline">
+                {tr("正在收集证据")}
+                <span className="sh-count">
+                  {progress.done} / {progress.total}
+                </span>
+              </p>
+            </div>
             <div
-              className="progress-track"
+              className="progress-track is-pill"
               role="progressbar"
               aria-label={tr("已完成探针")}
               aria-valuemin={0}
@@ -78,32 +120,81 @@ export default function ScoreHero({
   const more = result.findings.length - shown.length;
   const parts = (total.parts ?? []).filter((item) => item.applicable);
   const chips = claude ? channelChips(verdict) : [];
+  const cheated = Boolean(verdict.anticheat?.detected || verdict.thinking?.sig_forged || verdict.thinking?.replay_confessed);
+  const headlineText = cheated
+    ? tr("检测到针对性作假")
+    : tr(HEADLINE[result.level], { n: Math.max(1, real) });
+  const ledeText = cheated
+    ? tr("探针原始证据命中回放、伪造签名或查表特征，对应作假板块已按 0 分计入。")
+    : tr(LEDE[result.level]);
+  const scoreMax = total.max || 100;
+  const scoreRatio = Math.min(1, Math.max(0, total.score / scoreMax));
+  const gaugeR = 58;
+  const gaugeC = 2 * Math.PI * gaugeR;
+  const gaugeArc = 0.75 * gaugeC;
   return (
     <section className="result-card score-hero" data-level={result.level} aria-labelledby="score-hero-title">
       <div className="sh-top">
         <h2 className="sh-kicker" id="score-hero-title">
           {tr("检测结论")}
           <Hint
-            label={tr("总分说明")}
-            text={tr("总分按各板块权重加权，没有适用的板块不占分，其余按比例补足到 100。指纹只在数字基线 99.9% 以上确认是别的模型时才扣分。知识截止日期只展示，不计分。")}
+            label="总分说明"
+            text="总分按各板块权重加权，没有适用的板块不占分，其余按比例补足到 100。指纹只在数字基线 99.9% 以上确认是别的模型时才扣分。知识截止日期只展示，不计分。"
           />
         </h2>
       </div>
       <div className="sh-body">
-        <div className="sh-score">
-          <strong className={"sh-number tone-" + result.tone}>
-            <AnimatedNumber value={total.score} />
-          </strong>
-          <span className="sh-max">/ {total.max || 100}</span>
+        <div className="sh-gauge" data-gauge-tone={result.tone}>
+          <svg className="sh-gauge-svg" viewBox="0 0 144 144" aria-hidden="true">
+            <circle
+              className="sh-arc-track"
+              cx="72"
+              cy="72"
+              r={gaugeR}
+              fill="none"
+              strokeWidth="7"
+              strokeLinecap="round"
+              strokeDasharray={`${gaugeArc} ${gaugeC}`}
+              transform="rotate(135 72 72)"
+            />
+            <circle
+              className="sh-arc-ticks"
+              cx="72"
+              cy="72"
+              r={49}
+              fill="none"
+              strokeWidth="1"
+              strokeDasharray="1.5 6"
+            />
+            <circle
+              className="sh-arc-fill"
+              cx="72"
+              cy="72"
+              r={gaugeR}
+              fill="none"
+              strokeWidth="7"
+              strokeLinecap="round"
+              strokeDasharray={`${gaugeArc} ${gaugeC}`}
+              strokeDashoffset={gaugeArc * (1 - scoreRatio)}
+              transform="rotate(135 72 72)"
+              style={{ opacity: total.score <= 0 ? 0 : 1 }}
+            />
+          </svg>
+          <div className="sh-score">
+            <strong className={"sh-number tone-" + result.tone}>
+              <AnimatedNumber value={total.score} />
+            </strong>
+            <span className="sh-max">/ {scoreMax}</span>
+          </div>
         </div>
         <div className="sh-summary">
-          <p className="sh-headline">{tr(HEADLINE[result.level], { n: Math.max(1, real) })}</p>
-          <p className="sh-lede">{tr(LEDE[result.level])}</p>
+          <p className="sh-headline">{headlineText}</p>
+          <p className="sh-lede">{ledeText}</p>
           {shown.length > 0 && (
             <ul className="sh-findings">
               {shown.map((item, index) => (
                 <li key={index} data-tone={item.tone}>
-                  {tr(item.text, item.vars)}
+                  {tr(item.text, translateFindingVars(item.vars, tr))}
                 </li>
               ))}
               {more > 0 && (
@@ -127,7 +218,7 @@ export default function ScoreHero({
               >
                 <span>{tr(item.label)}</span>
                 <b>{item.known ? item.contribution + "/" + item.coefficient : "—"}</b>
-                <i aria-hidden="true" />
+                <i className="is-pill" aria-hidden="true" />
               </li>
             );
           })}
@@ -137,7 +228,7 @@ export default function ScoreHero({
         <div className="sh-channel">
           <span className="sh-channel-label">{tr("Claude 渠道")}</span>
           {chips.map((chip) => (
-            <span className="sh-chip" key={chip.key} data-state={chip.state}>
+            <span className="sh-chip is-pill" key={chip.key} data-state={chip.state}>
               <i>{tr(chip.label)}</i>
               <b>{tr(chip.value)}</b>
             </span>

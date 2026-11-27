@@ -21,8 +21,12 @@ export type IconName =
   | "feedback"
   | "spinner"
   | "sun"
-  | "moon";
+  | "moon"
+  | "ban"
+  | "fileText";
 const paths: Record<IconName, string> = {
+  ban: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM4.93 4.93l14.14 14.14",
+  fileText: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm0 0v6h6M8 13h8M8 17h5",
   sun: "M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0",
   moon: "M21 13A9 9 0 0 1 11 3a7 7 0 1 0 10 10",
   eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0",

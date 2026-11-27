@@ -102,6 +102,7 @@ type Verdict struct {
 	Cache          any     `json:"cache"`
 	Knowledge      any     `json:"knowledge"`
 	Integrity      any     `json:"integrity"`
+	AntiCheat      any     `json:"anticheat,omitempty"`
 	Total          any     `json:"total,omitempty"`
 	IQ             any     `json:"iq"`
 }
@@ -335,7 +336,8 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		families = append(families, family)
 	}
 	sort.Strings(families)
-	reply(w, 200, map[string]any{"supported_models": ids, "fingerprint_count": len(ids), "numeric_count": len(bank.Numeric.Models), "behavioral_count": len(bank.Behavioral.Models), "families": []string{"GPT", "Claude", "Gemini", "DeepSeek", "Grok", "GLM"}, "numeric_families": families, "source": bank.Source})
+	w.Header().Set("Cache-Control", "public, max-age=60, s-maxage=120, stale-while-revalidate=300")
+	replyConditional(w, r, map[string]any{"supported_models": ids, "fingerprint_count": len(ids), "numeric_count": len(bank.Numeric.Models), "behavioral_count": len(bank.Behavioral.Models), "families": []string{"GPT", "Claude", "Gemini", "DeepSeek", "Grok", "GLM"}, "numeric_families": families, "source": bank.Source})
 }
 func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
@@ -365,7 +367,7 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	rng := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
 	t.questions = []iq.Question{iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge(), iq.GenChart(rng)}
 	t.Verdict.Protocol = q.Protocol
-	t.Verdict.ScoringVersion = "2026-11-26-v8-identity-weight"
+	t.Verdict.ScoringVersion = "2026-11-27-v9-anticheat"
 	t.Probes = []Probe{{ID: "fingerprint", Name: "模型指纹归因", Status: "queued"}, {ID: "injection", Name: "注入大小", Status: "queued"}, {ID: "tools", Name: "工具调用检测", Status: "queued"}, {ID: "web", Name: "联网检测", Status: "queued"}, {ID: "knowledge", Name: "知识截止日期", Status: "queued"}, {ID: "vision", Name: "识图能力", Status: "queued"}}
 	if q.Cache && !q.Conversation {
 		t.Probes = append(t.Probes[:2], append([]Probe{{ID: "cache", Name: "缓存读写验证", Status: "queued"}}, t.Probes[2:]...)...)
@@ -590,6 +592,8 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		}
 		state := integrity.FingerprintState(items[i].Model, items[i].Family, items[i].TopModel)
 		switch {
+		case items[i].AntiCheatFingerprint:
+			state = integrity.FingerprintFake
 		case !integrity.Confirmed(items[i].FingerprintBasis, items[i].FingerprintTopProb):
 			state = integrity.FingerprintMatch
 		case state != integrity.FingerprintMatch:

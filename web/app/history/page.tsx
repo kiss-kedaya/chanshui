@@ -12,7 +12,8 @@ import ConversationPanel from "@/components/ConversationPanel";
 import ErrorFold from "@/components/ErrorFold";
 import ReportShare from "@/components/ReportShare";
 import ReportStage from "@/components/ReportStage";
-import { useI18n } from "@/lib/i18n";
+import Icon from "@/components/Icon";
+import { formatLocaleDate, useI18n } from "@/lib/i18n";
 function ReportBoot() {
   const { t: tr } = useI18n();
   return (
@@ -38,47 +39,78 @@ function ReportBoot() {
 function ReportIndex() {
   const { t: tr, locale } = useI18n();
   const [items, setItems] = useState<HistorySummary[] | null>(null);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
   useEffect(() => {
-    let alive = true;
-    getHistory(12)
+    const controller = new AbortController();
+    setError("");
+    setItems(null);
+    getHistory(12, undefined, controller.signal)
       .then((rows) => {
-        if (alive) setItems(rows);
+        if (!controller.signal.aborted) setItems(rows);
       })
-      .catch(() => {
-        if (alive) setItems([]);
+      .catch((err) => {
+        if (controller.signal.aborted || (err as { name?: string })?.name === "AbortError") return;
+        setError((err as Error)?.message || "最近检测读取失败");
+        setItems([]);
       });
     return () => {
-      alive = false;
+      controller.abort();
     };
-  }, []);
-  const rows = (items || []).filter((row) => (row.total_score ?? row.iq_score) !== 0);
+  }, [reload]);
+  const rows = (items || []).filter((row) => (row.total_score ?? row.iq_score) !== 0 || row.anticheat_detected);
+  const loading = items === null && !error;
   return (
-    <section className="report-index" aria-label={tr("最近检测")}>
-      {items === null
-        ? [0, 1, 2].map((n) => <i className="report-index-wait" key={n} />)
-        : rows.map((row) => {
-            const score = row.total_score ?? row.iq_score;
-            return (
-              <Link key={row.report_id} href={reportPath(row.report_id)} prefetch={false}>
-                <b>{score == null ? "—" : score}</b>
-                <span>{row.model}</span>
-                <time dateTime={row.created_at}>
-                  {new Date(row.created_at).toLocaleString(locale, {
-                    month: "2-digit",
-                    day: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </time>
-              </Link>
-            );
-          })}
+    <section
+      className="report-index"
+      aria-label={tr("最近检测")}
+      aria-busy={loading ? "true" : undefined}
+    >
+      {loading ? (
+        [0, 1, 2].map((n) => <i className="report-index-wait" key={n} aria-hidden="true" />)
+      ) : error ? (
+        <div className="report-index-error">
+          <ErrorFold text={error} />
+          <button type="button" className="btn-secondary" onClick={() => setReload((n) => n + 1)}>
+            {tr("重新加载")}
+          </button>
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="report-index-empty">
+          <Icon name="fileText" width="20" height="20" />
+          <div>
+            <strong>{tr("还没有检测记录")}</strong>
+            <p className="muted">{tr("所有访客的检测报告都会出现在这里")}</p>
+          </div>
+          <Link href="/" className="btn-primary">
+            {tr("新建检测")}
+          </Link>
+        </div>
+      ) : (
+        rows.map((row) => {
+          const score = row.total_score ?? row.iq_score;
+          return (
+            <Link key={row.report_id} href={reportPath(row.report_id)} prefetch={false}>
+              <b>{score == null ? "—" : score}</b>
+              <span>{row.model}</span>
+              <time dateTime={row.created_at}>
+                {formatLocaleDate(row.created_at, locale, {
+                  month: "2-digit",
+                  day: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </time>
+            </Link>
+          );
+        })
+      )}
     </section>
   );
 }
 
 function HistoryDetailInner() {
-  const { t: tr } = useI18n();
+  const { t: tr, locale } = useI18n();
   const search = useSearchParams(),
     router = useRouter();
   const id = search.get("id") || "";
@@ -128,6 +160,7 @@ function HistoryDetailInner() {
       },
       isActive: (d) => ["queued", "running"].includes(d.status),
       onError: (e) => {
+        if ((e as { name?: string })?.name === "AbortError") return;
         setError(e.message);
         setLoading(false);
       },
@@ -179,7 +212,15 @@ function HistoryDetailInner() {
         ) : null}
         {data && (
           <p className="report-meta">
-            <time dateTime={data.created_at}>{new Date(data.created_at).toLocaleString("zh-CN")}</time>
+            <time dateTime={data.created_at}>
+              {formatLocaleDate(data.created_at, locale, {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </time>
           </p>
         )}
         {data && (
@@ -188,6 +229,34 @@ function HistoryDetailInner() {
             id={data.report_id}
             expiresAt={data.expires_at}
           />
+        )}
+        {data && (
+          <div className="report-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], {
+                  type: "application/json;charset=utf-8",
+                });
+                const url = URL.createObjectURL(blob);
+                let deferred = false;
+                try {
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `chanshui-${data.report_id}.json`;
+                  a.click();
+                  deferred = true;
+                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                } finally {
+                  if (!deferred) URL.revokeObjectURL(url);
+                }
+              }}
+            >
+              <Icon name="fileText" width="16" height="16" />
+              <span>{tr("导出报告")}</span>
+            </button>
+          </div>
         )}
         {!data && !error && !loading && <ReportIndex />}
         {error && (

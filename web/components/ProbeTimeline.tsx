@@ -23,6 +23,8 @@ export default function ProbeTimeline({
   ).length;
   const active = ["queued", "running"].includes(status);
   const ratio = probes.length ? finished / probes.length : 0;
+  const ringR = 19;
+  const ringC = 2 * Math.PI * ringR;
   const title =
     status === "queued"
       ? tr("任务已排队")
@@ -40,11 +42,34 @@ export default function ProbeTimeline({
       className={
         "timeline " + (active ? "timeline-active" : "timeline-settled")
       }
+      data-status={status}
       aria-label={tr("检测进度")}
     >
       <div className="section-heading">
         <div>
-          <span className={"timeline-symbol " + (active ? "is-working" : "")}>
+          <span className={"timeline-symbol is-round " + (active ? "is-working" : "")}>
+            <svg className="timeline-ring" viewBox="0 0 44 44" aria-hidden="true">
+              <circle
+                className="timeline-ring-track"
+                cx="22"
+                cy="22"
+                r={ringR}
+                fill="none"
+                strokeWidth="2.5"
+              />
+              <circle
+                className="timeline-ring-fill"
+                cx="22"
+                cy="22"
+                r={ringR}
+                fill="none"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={ringC}
+                strokeDashoffset={ringC * (1 - ratio)}
+                transform="rotate(-90 22 22)"
+              />
+            </svg>
             <Icon
               name={active ? "spinner" : status === "done" ? "check" : "chart"}
             />
@@ -62,7 +87,7 @@ export default function ProbeTimeline({
         </span>
       </div>
       <div
-        className="progress-track"
+        className="progress-track is-pill"
         role="progressbar"
         aria-label={tr("已完成探针")}
         aria-valuemin={0}
@@ -86,7 +111,7 @@ export default function ProbeTimeline({
               {tr(p.name)}
             </span>
             <small className="probe-state">
-              <span className="probe-dot" />
+              <span className="probe-dot is-round" />
               {p.status === "queued"
                 ? tr("等待中")
                 : p.status === "running"

@@ -272,10 +272,31 @@ const chToolBan = "本任务必须由当前语言模型直接完成：禁止调�
 const chDirect = "直接从第一个取值开始输出，不要在序列前重复数量、范围或任务说明。"
 
 func GenerateChallenges(n int, r *rand.Rand) []Challenge {
-	if n > 41 {
-		n = 41
+	const poolSize = 69 // 292..360 inclusive
+	if n > poolSize {
+		n = poolSize
 	}
-	lengths := r.Perm(41)
+	lengths := r.Perm(poolSize)
+	// Guarantee at least one challenge in the initial 3-sample batch requests
+	// > 330 numbers (335..360) to expose static 326..330 prefix-slice replay pools.
+	if n >= 3 {
+		hasHigh := false
+		for i := 0; i < 3; i++ {
+			if 292+lengths[i] >= 335 {
+				hasHigh = true
+				break
+			}
+		}
+		if !hasHigh {
+			for i := 3; i < len(lengths); i++ {
+				if 292+lengths[i] >= 335 {
+					swap := r.Intn(3)
+					lengths[swap], lengths[i] = lengths[i], lengths[swap]
+					break
+				}
+			}
+		}
+	}
 	out := make([]Challenge, n)
 	for i := range out {
 		count := 292 + lengths[i]

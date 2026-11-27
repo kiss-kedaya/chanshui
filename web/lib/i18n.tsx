@@ -1,5 +1,5 @@
 "use client";
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { rows } from "@/lib/i18n-rows";
 
 export const LANGS = [
@@ -13,6 +13,14 @@ export const LANGS = [
 export type Lang = (typeof LANGS)[number]["id"];
 type Dict = Record<string, string>;
 
+const INTL_LOCALES: Record<Lang, string> = {
+  zh: "zh-CN",
+  "zh-Hant": "zh-TW",
+  en: "en-US",
+  ja: "ja-JP",
+  ko: "ko-KR",
+};
+
 const tails = [
   " 本组发生重试，首次成功样本可能不是冷缓存；重试用量未计入样本命中率。",
   " 检测发生过重试，首次成功回包可能不再进缓存；缓存率未因重试被改写。",
@@ -20,7 +28,7 @@ const tails = [
 const heads = ["行为探针失败："];
 
 function build(index: number): Dict {
-  const out: Dict = {};
+  const out: Dict = Object.create(null);
   for (const row of rows) out[row[0]] = row[index];
   return out;
 }
@@ -51,16 +59,60 @@ export function htmlLang(lang: Lang) {
   return LANGS.find((item) => item.id === lang)?.html || "zh-CN";
 }
 
+export function intlLocale(value?: string | null): string {
+  if (!value) return "zh-CN";
+  if (value in INTL_LOCALES) return INTL_LOCALES[value as Lang];
+  const lower = value.toLowerCase();
+  if (lower === "zh-cn" || lower.startsWith("zh-hans")) return "zh-CN";
+  if (
+    lower === "zh-tw" ||
+    lower === "zh-hant" ||
+    lower.startsWith("zh-hk") ||
+    lower.startsWith("zh-mo")
+  ) {
+    return "zh-TW";
+  }
+  if (lower.startsWith("en")) return "en-US";
+  if (lower.startsWith("ja")) return "ja-JP";
+  if (lower.startsWith("ko")) return "ko-KR";
+  return "zh-CN";
+}
+
+export function formatLocaleNumber(
+  value: number,
+  localeOrLang?: string | null,
+  options?: Intl.NumberFormatOptions,
+): string {
+  const safe = Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat(intlLocale(localeOrLang), options).format(safe);
+}
+
+export function formatLocaleDate(
+  input: string | number | Date,
+  localeOrLang?: string | null,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return typeof input === "string" ? input : "";
+  return new Intl.DateTimeFormat(intlLocale(localeOrLang), options).format(date);
+}
+
 export function translate(lang: Lang, source: string, vars?: Record<string, string | number>) {
   let text = source || "";
   if (lang !== "zh" && text) {
     const table = dict[lang];
-    if (table[text]) text = table[text];
+    const direct = Object.hasOwn(table, text) ? table[text] : undefined;
+    if (typeof direct === "string" && direct) text = direct;
     else {
       const head = heads.find((item) => text.startsWith(item) && text !== item);
       const tail = tails.find((item) => text.endsWith(item) && text !== item);
-      if (head) text = (table[head] || head) + text.slice(head.length);
-      else if (tail) text = translate(lang, text.slice(0, -tail.length)) + (table[tail] || tail);
+      if (head) {
+        const headVal = Object.hasOwn(table, head) ? table[head] : undefined;
+        text = (typeof headVal === "string" && headVal ? headVal : head) + text.slice(head.length);
+      } else if (tail) {
+        const tailVal = Object.hasOwn(table, tail) ? table[tail] : undefined;
+        text = translate(lang, text.slice(0, -tail.length)) + (typeof tailVal === "string" && tailVal ? tailVal : tail);
+      }
     }
   }
   if (vars) {
@@ -96,21 +148,28 @@ const I18nContext = createContext<I18nValue>({
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>("zh");
   const [follow, setFollow] = useState(true);
+  const mounted = useRef(false);
   useEffect(() => {
     let saved: string | null = null;
     try { saved = localStorage.getItem("chanshui-lang"); } catch {}
-    const next = isLang(saved) ? saved : detectLang(navigator.languages?.length ? navigator.languages : [navigator.language || "zh"]);
+    const next = isLang(saved)
+      ? saved
+      : detectLang(navigator.languages?.length ? navigator.languages : [navigator.language || "zh"]);
+    mounted.current = true;
     setLangState(next);
     setFollow(!isLang(saved));
+    document.documentElement.lang = htmlLang(next);
+    document.documentElement.dataset.lang = next;
   }, []);
   useEffect(() => {
+    if (!mounted.current) return;
     document.documentElement.lang = htmlLang(lang);
     document.documentElement.dataset.lang = lang;
   }, [lang]);
   const value = useMemo<I18nValue>(() => ({
     lang,
     follow,
-    locale: htmlLang(lang),
+    locale: intlLocale(lang),
     t: (source, vars) => translate(lang, source, vars),
     setLang: (next) => {
       if (next === "auto") {

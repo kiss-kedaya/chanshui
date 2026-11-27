@@ -2,7 +2,16 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { useI18n } from "@/lib/i18n";
-type Theme = { accent: "orange" | "mint"; mode: "light" | "dark" };
+
+type Accent = "orange" | "mint" | "mono";
+type Mode = "light" | "dark";
+type Theme = { accent: Accent; mode: Mode };
+
+function parseAccent(raw?: string): Accent {
+  if (raw === "mint" || raw === "mono") return raw;
+  return "orange";
+}
+
 export default function ThemeMenu() {
   const { t: tr } = useI18n();
   const [theme, setTheme] = useState<Theme>({
@@ -15,19 +24,20 @@ export default function ThemeMenu() {
   useEffect(() => {
     const el = document.documentElement;
     setTheme({
-      accent: el.dataset.accent === "mint" ? "mint" : "orange",
+      accent: parseAccent(el.dataset.accent),
       mode: el.dataset.mode === "dark" ? "dark" : "light",
     });
-    const close = (e: MouseEvent) => {
+    const close = (e: PointerEvent) => {
       if (!root.current?.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
   }, []);
   function change(next: Theme) {
     setTheme(next);
     document.documentElement.dataset.accent = next.accent;
     document.documentElement.dataset.mode = next.mode;
+    document.documentElement.style.colorScheme = next.mode;
     try {
       localStorage.setItem("chanshui-theme", JSON.stringify(next));
     } catch {}
@@ -60,14 +70,14 @@ export default function ThemeMenu() {
       {open && (
         <div id="theme-options" className="theme-popover">
           <span className="theme-label">{tr("配色")}</span>
-          <div className="theme-choices">
+          <div className="theme-choices theme-choices-3">
             <button
               type="button"
               aria-pressed={theme.accent === "orange"}
               onClick={() => change({ ...theme, accent: "orange" })}
             >
               <i className="theme-dot theme-dot-orange" />
-              {tr("暖橙")}
+              <span>{tr("暖橙")}</span>
             </button>
             <button
               type="button"
@@ -75,7 +85,15 @@ export default function ThemeMenu() {
               onClick={() => change({ ...theme, accent: "mint" })}
             >
               <i className="theme-dot theme-dot-mint" />
-              {tr("薄荷绿")}
+              <span>{tr("薄荷绿")}</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={theme.accent === "mono"}
+              onClick={() => change({ ...theme, accent: "mono" })}
+            >
+              <i className="theme-dot theme-dot-mono" />
+              <span>{tr("黑白灰")}</span>
             </button>
           </div>
           <span className="theme-label">{tr("明暗")}</span>
@@ -85,16 +103,16 @@ export default function ThemeMenu() {
               aria-pressed={theme.mode === "light"}
               onClick={() => change({ ...theme, mode: "light" })}
             >
-              <Icon name="sun" width="16" height="16" />
-              {tr("日间")}
+              <Icon name="sun" width="15" height="15" />
+              <span>{tr("日间")}</span>
             </button>
             <button
               type="button"
               aria-pressed={theme.mode === "dark"}
               onClick={() => change({ ...theme, mode: "dark" })}
             >
-              <Icon name="moon" width="16" height="16" />
-              {tr("夜间")}
+              <Icon name="moon" width="15" height="15" />
+              <span>{tr("夜间")}</span>
             </button>
           </div>
         </div>

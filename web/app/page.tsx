@@ -28,6 +28,10 @@ export default function DetectPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [modelBusy, setModelBusy] = useState(false);
+  const [modelStatus, setModelStatus] = useState<{
+    tone: "loading" | "ok" | "warn" | "error";
+    text: string;
+  } | null>(null);
 
   const [concurrency, setConcurrency] = useState(0);
   const [timeout, setTimeoutValue] = useState(360);
@@ -45,16 +49,14 @@ export default function DetectPage() {
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
-    getBankStats()
+    const statsAbort = typeof AbortController === "function" ? new AbortController() : null;
+    getBankStats(statsAbort?.signal)
       .then((value) => {
         if (!alive.current) return;
         setStats(value);
       })
-      .catch((e) => {
-        if (alive.current) setError(e.message);
-      })
-      .finally(() => {
-
+      .catch(() => {
+        // 模型库统计只用于预填下拉候选；弱网短暂超时不阻断手动输入和发起检测。
       });
     try {
       const p = JSON.parse(localStorage.getItem("chanshui-settings") || "{}");
@@ -90,6 +92,7 @@ export default function DetectPage() {
       .catch(() => {});
     return () => {
       alive.current = false;
+      statsAbort?.abort();
     };
   }, []);
   const settings = () => ({
@@ -129,6 +132,7 @@ export default function DetectPage() {
   const loadModels = async () => {
     setModelBusy(true);
     setError("");
+    setModelStatus({ tone: "loading", text: tr("正在刷新…") });
     try {
       const d = await getModels({
         base_url: baseUrl.trim(),
@@ -137,10 +141,19 @@ export default function DetectPage() {
       });
       setModels(d.models);
       if (!model.trim()) setModel(d.models[0] || "");
-      if (!d.models.length)
-        setError(tr("上游未返回模型，可直接输入实际调用名称。"));
+      if (!d.models.length) {
+        setModelStatus({
+          tone: "warn",
+          text: tr("上游未返回模型，可直接输入实际调用名称。"),
+        });
+      } else {
+        setModelStatus({
+          tone: "ok",
+          text: tr("已获取 {n} 个模型", { n: d.models.length }),
+        });
+      }
     } catch (e) {
-      setError((e as Error).message);
+      setModelStatus({ tone: "error", text: (e as Error).message });
     } finally {
       setModelBusy(false);
     }
@@ -236,6 +249,7 @@ export default function DetectPage() {
               onChange={(e) => {
                 setProtocol(e.target.value as typeof protocol);
                 setModels(null);
+                setModelStatus(null);
               }}
             >
               <option value="auto">{tr("自适应")}</option>
@@ -257,6 +271,7 @@ export default function DetectPage() {
                 onChange={(e) => {
                   setBaseUrl(e.target.value);
                   setModels(null);
+                  setModelStatus(null);
                 }}
                 disabled={busy}
                 spellCheck={false}
@@ -274,12 +289,14 @@ export default function DetectPage() {
                   onChange={(e) => {
                     setKey(e.target.value);
                     setModels(null);
+                    setModelStatus(null);
                   }}
                   disabled={busy}
                   spellCheck={false}
                 />
                 <button
                   type="button"
+                  disabled={busy}
                   onClick={() => setShowKey(!showKey)}
                   aria-label={showKey ? tr("隐藏密钥") : tr("显示密钥")}
                 >
@@ -294,6 +311,7 @@ export default function DetectPage() {
                   onClick={() => {
                     setKey("");
                     setModels(null);
+                    setModelStatus(null);
                     void clearKey();
                   }}
                 >
@@ -315,12 +333,14 @@ export default function DetectPage() {
               onRefresh={loadModels}
               placeholder={tr("例如 claude-sonnet-5-5")}
               describedBy="model-help"
+              statusTone={modelStatus?.tone}
+              statusMessage={modelStatus?.text}
             />
             <small id="model-help">{tr("可选择或输入自定义名称，请求时原样发送；没有对应基线时不代表已验证型号。")}</small>
           </div>
           <details className="advanced">
             <summary>
-              高级设置 <span>{tr("并发 · 超时")}</span>
+              {tr("高级设置")} <span>{tr("并发 · 超时")}</span>
             </summary>
             <div className="advanced-grid">
               <div className="field">
@@ -330,6 +350,7 @@ export default function DetectPage() {
                   type="number"
                   min="0"
                   max="32"
+                  disabled={busy}
                   value={concurrency}
                   onChange={(e) => setConcurrency(Number(e.target.value))}
                 />
@@ -341,6 +362,7 @@ export default function DetectPage() {
                   type="number"
                   min="10"
                   max="600"
+                  disabled={busy}
                   value={timeout}
                   onChange={(e) => setTimeoutValue(Number(e.target.value))}
                 />
@@ -350,62 +372,90 @@ export default function DetectPage() {
           <div className="form-bottom">
             <div className="detect-extras">
               <span className="detect-extras-label">{tr("可选检测")}</span>
-              {!conversationOn && (
-                <label className={"opt-chip" + (cacheOn ? " is-on" : "")} title={tr("可选。按普通多轮对话测前缀缓存，默认不跑。")}>
+              <div
+                className={
+                  "opt-chip is-pill" +
+                  (conversationOn ? " is-locked" : cacheOn ? " is-on" : "")
+                }
+                title={
+                  conversationOn
+                    ? tr("已勾选多轮对话：直接复用多轮对话验证缓存衔接，不再单独跑 6 轮缓存探针。")
+                    : tr("可选。按普通多轮对话测前缀缓存，默认不跑。")
+                }
+              >
+                <label className="opt-chip-toggle">
                   <input
                     type="checkbox"
-                    checked={cacheOn}
-                    disabled={busy}
+                    checked={conversationOn ? false : cacheOn}
+                    disabled={busy || conversationOn}
                     onChange={(e) => setCacheOn(e.target.checked)}
                   />
-                  {tr("缓存读写")}
-                  <Hint
-                    label={tr("缓存读写说明")}
-                    text={tr("默认关闭。打开后用 6 轮普通对话串行检测：上一条读加写等于下一条读就是 100%。只对勾选的任务计分。")}
-                  />
+                  <span>{tr("缓存读写")}</span>
                 </label>
-              )}
-              {modelFamily(model) === "claude" && (
-                <label className={"opt-chip" + (claudeDeep ? " is-on" : "")} title={tr("可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。")}>
-                  <input
-                    type="checkbox"
-                    checked={claudeDeep}
-                    disabled={busy}
-                    onChange={(e) => setClaudeDeep(e.target.checked)}
-                  />
-                  {tr("Claude 深度体检")}
-                  <small className="opt-cost">{tr("≈5 万 token")}</small>
-                </label>
-              )}
-              {modelFamily(model) === "claude" && (
-                <label className={"opt-chip" + (forceCache ? " is-on" : "")} title={tr("可选。四步测上游会不会在没带 cache_control 时强制写缓存，约多花 5 万输入 token。")}>
-                  <input
-                    type="checkbox"
-                    checked={forceCache}
-                    disabled={busy}
-                    onChange={(e) => setForceCache(e.target.checked)}
-                  />
-                  {tr("强制缓存检测")}
-                  <small className="opt-cost">{tr("≈5 万 token")}</small>
-                </label>
-              )}
-              <label className={"opt-chip" + (conversationOn ? " is-on" : "")} title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}>
-                <input
-                  type="checkbox"
-                  checked={conversationOn}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setConversationOn(e.target.checked);
-                    if (e.target.checked) setCacheOn(false);
-                  }}
+                <Hint
+                  label={tr("缓存读写说明")}
+                  text={tr("默认关闭。打开后用 6 轮普通对话串行检测：上一条读加写等于下一条读就是 100%。只对勾选的任务计分。")}
                 />
-                {tr("多轮对话")}
+                {conversationOn && (
+                  <small className="opt-cost opt-locked-note">{tr("多轮已含")}</small>
+                )}
+              </div>
+              {modelFamily(model) === "claude" && (
+                <div
+                  className={"opt-chip is-pill" + (claudeDeep ? " is-on" : "")}
+                  title={tr("可选。跑 beta 专项：thinking block 绑定与上下文压缩，大约多花 5 万输入 token。")}
+                >
+                  <label className="opt-chip-toggle">
+                    <input
+                      type="checkbox"
+                      checked={claudeDeep}
+                      disabled={busy}
+                      onChange={(e) => setClaudeDeep(e.target.checked)}
+                    />
+                    <span>{tr("Claude 深度体检")}</span>
+                    <small className="opt-cost">{tr("≈5 万 token")}</small>
+                  </label>
+                </div>
+              )}
+              {modelFamily(model) === "claude" && (
+                <div
+                  className={"opt-chip is-pill" + (forceCache ? " is-on" : "")}
+                  title={tr("可选。四步测上游会不会在没带 cache_control 时强制写缓存，约多花 5 万输入 token。")}
+                >
+                  <label className="opt-chip-toggle">
+                    <input
+                      type="checkbox"
+                      checked={forceCache}
+                      disabled={busy}
+                      onChange={(e) => setForceCache(e.target.checked)}
+                    />
+                    <span>{tr("强制缓存检测")}</span>
+                    <small className="opt-cost">{tr("≈5 万 token")}</small>
+                  </label>
+                </div>
+              )}
+              <div
+                className={"opt-chip is-pill" + (conversationOn ? " is-on" : "")}
+                title={tr("可选。把 9 道推理题放进同一段对话串行提问，中间插入闲聊。")}
+              >
+                <label className="opt-chip-toggle">
+                  <input
+                    type="checkbox"
+                    checked={conversationOn}
+                    disabled={busy}
+                    onChange={(e) => {
+                      setConversationOn(e.target.checked);
+                      if (e.target.checked) setCacheOn(false);
+                    }}
+                  />
+                  <span>{tr("多轮对话")}</span>
+                </label>
                 <Hint
                   label={tr("多轮对话说明")}
                   text={tr("默认关闭。打开后开场先寒暄，再按 Q1 到 Q9 串行追问，中途插入几句闲聊。逐轮看读取有没有接上前一轮读加写，能抓到按请求分类后换池的中转。串行会明显变慢。")}
                 />
                 <small className="opt-cost">{tr("较慢")}</small>
-              </label>
+              </div>
             </div>
             <div className="form-bottom-row">
               <p>
@@ -454,6 +504,7 @@ export default function DetectPage() {
               <Select
                 id="thinking-mode"
                 value={mode}
+                disabled={busy || asking}
                 onChange={(e) => setMode(e.target.value)}
               >
                 <option value="summary">{tr("自适应 + 摘要")}</option>
@@ -474,6 +525,7 @@ export default function DetectPage() {
                 type="number"
                 min="1024"
                 max="8192"
+                disabled={busy || asking}
                 value={budget}
                 onChange={(e) => setBudget(Number(e.target.value))}
               />
@@ -484,6 +536,7 @@ export default function DetectPage() {
             <Select
               id="effort"
               value={effort}
+              disabled={busy || asking}
               onChange={(e) => setEffort(e.target.value)}
             >
               {[
@@ -505,6 +558,7 @@ export default function DetectPage() {
           <textarea
             id="question"
             value={prompt}
+            disabled={busy || asking}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={tr("输入问题，Ctrl + Enter 发送")}
             onKeyDown={(e) => {
@@ -520,8 +574,10 @@ export default function DetectPage() {
           />
         </div>
         <button
+          type="button"
           className="btn-primary"
           disabled={!canRun || !prompt.trim() || asking}
+          aria-busy={asking}
           onClick={askOnce}
         >
           {asking ? tr("正在回答…") : tr("发送问题")}

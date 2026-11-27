@@ -140,3 +140,34 @@ test("offline or initially hidden pages send no requests until visible and onlin
   assert.equal(requests, 2);
   stop();
 });
+
+test("transient Firefox NetworkError retries and recovers without surfacing an error", async () => {
+  const f = fixture();
+  const values = [];
+  const errors = [];
+  let attempts = 0;
+  const stop = f.watchResource({
+    load: async () => {
+      attempts++;
+      if (attempts <= 2) {
+        throw new TypeError("NetworkError when attempting to fetch resource.");
+      }
+      return { status: "done" };
+    },
+    onValue: (value) => values.push(value),
+    isActive: (value) => value.status === "running",
+    onError: (error) => errors.push(error),
+  });
+  await settle();
+  assert.equal(attempts, 1);
+  assert.equal(errors.length, 0);
+  assert.equal(await f.tick(), 1200);
+  assert.equal(attempts, 2);
+  assert.equal(errors.length, 0);
+  assert.equal(await f.tick(), 2400);
+  assert.equal(attempts, 3);
+  assert.equal(values.length, 1);
+  assert.equal(values[0].status, "done");
+  assert.equal(errors.length, 0);
+  stop();
+});

@@ -54,6 +54,9 @@ type Verdict struct {
 	TemperatureError    string            `json:"temperature_error,omitempty"`
 	AwSB                *bool             `json:"aws_b,omitempty"`
 	AwSBDetail          string            `json:"aws_b_detail,omitempty"`
+	SigForged           bool              `json:"sig_forged,omitempty"`
+	SigForgeReason      string            `json:"sig_forge_reason,omitempty"`
+	ReplayConfessed     bool              `json:"replay_confessed,omitempty"`
 }
 
 // Seed is an existing question response that already carries a thinking
@@ -117,9 +120,8 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 	}
 	if m.Signature != "" {
 		v.SignaturePresent = true
-		v.SignatureScore = 2
-		v.SignedModel = signatureModel(m.Signature)
-		if anatomy, class := signatureAnatomy(m.Signature, time.Now()); class != "" {
+		anatomy, class := signatureAnatomy(m.Signature, time.Now())
+		if class != "" {
 			v.SigClass = class
 			v.SigFieldCount = anatomy.Fields
 			v.SigInfra = anatomy.Infra
@@ -130,6 +132,14 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 				v.SigFresh = &fresh
 			}
 		}
+		if anatomy.Forged {
+			v.SigForged = true
+			v.SigForgeReason = anatomy.ForgeReason
+		}
+		if anatomy.Authentic {
+			v.SignatureScore = 2
+		}
+		v.SignedModel = signatureModel(m.Signature)
 		if v.SignedModel != "" {
 			match := signatureModelMatches(model, v.SignedModel)
 			v.SignedModelMatch = &match
@@ -141,9 +151,16 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 		})
 		if origErr == nil && original.Status == 200 && original.Err == "" {
 			v.OriginalReplay = true
-			v.ReplayScore = 1
 			v.SelfReport = clipText(original.Answer, 200)
-			v.FamilyConsistent = mentionsClaudeFamily(original.Answer)
+			if ConfessesLocalReplay(original.Answer) {
+				v.ReplayConfessed = true
+				v.FamilyConsistent = false
+			} else {
+				v.FamilyConsistent = mentionsClaudeFamily(original.Answer)
+				if anatomy.Authentic {
+					v.ReplayScore = 1
+				}
+			}
 		}
 		tampered, tamperErr := c.CallMessages(ctx, CallRequest{
 			Model: model, MaxTokens: 2048,
@@ -152,13 +169,20 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 		})
 		v.TamperStatus = tampered.Status
 		v.TamperError = clipText(tampered.Err, 300)
-		if tamperErr == nil && tampered.Status == 400 && strings.Contains(strings.ToLower(tampered.Err), "signature") {
+		localFakeTamper := IsLocalReplayTamperError(tampered.Err)
+		if localFakeTamper {
+			v.SigForged = true
+			if v.SigForgeReason == "" {
+				v.SigForgeReason = "篡改报错暴露本地签名模拟器"
+			}
+		}
+		if tamperErr == nil && tampered.Status == 400 && strings.Contains(strings.ToLower(tampered.Err), "signature") && !localFakeTamper {
 			v.TamperRejected = true
-			if v.OriginalReplay {
+			if v.OriginalReplay && anatomy.Authentic && !v.ReplayConfessed {
 				v.TamperScore = 2
 			}
 		}
-		if tampered.Status == 400 {
+		if tampered.Status == 400 && anatomy.Authentic && !v.SigForged {
 			awsB, detail := bedrockRejection(tampered.Err)
 			v.AwSB = &awsB
 			v.AwSBDetail = detail
@@ -175,7 +199,9 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 			strings.Contains(strings.ToLower(tr.Err), "temperature") &&
 			strings.Contains(strings.ToLower(tr.Err), "deprecated") {
 			v.TemperatureRejected = true
-			v.TemperatureScore = 2
+			if !v.SigForged && !v.ReplayConfessed {
+				v.TemperatureScore = 2
+			}
 		}
 	}
 	if p, ok := c.(StrictnessProber); ok {
@@ -183,14 +209,24 @@ func audit(ctx context.Context, c Caller, model, source, priorUser string, m Met
 			v.Strictness = checks
 		}
 	}
-	v.Score = v.SummaryScore + v.SignatureScore + v.ReplayScore + v.TamperScore + v.TemperatureScore
-	if v.SignedModelMatch != nil && !*v.SignedModelMatch {
-		v.Score -= 2
-		if v.Score < 0 {
-			v.Score = 0
+	if v.SigForged || v.ReplayConfessed {
+		v.SummaryScore = 0
+		v.SignatureScore = 0
+		v.ReplayScore = 0
+		v.TamperScore = 0
+		v.TemperatureScore = 0
+		v.Score = 0
+		v.Pass = false
+	} else {
+		v.Score = v.SummaryScore + v.SignatureScore + v.ReplayScore + v.TamperScore + v.TemperatureScore
+		if v.SignedModelMatch != nil && !*v.SignedModelMatch {
+			v.Score -= 2
+			if v.Score < 0 {
+				v.Score = 0
+			}
 		}
+		v.Pass = v.Score == v.MaxScore
 	}
-	v.Pass = v.Score == v.MaxScore
 	v.Reason = thinkingReason(v)
 	if extra := v.evidenceSuffix(); extra != "" {
 		v.Reason = strings.TrimRight(v.Reason, "。") + "；" + extra + "。"
@@ -246,6 +282,16 @@ func (v Verdict) evidenceSuffix() string {
 }
 
 func thinkingReason(v Verdict) string {
+	if v.ReplayConfessed {
+		return "自述暴露本地回放服务，思维链项记 0 分；自述：" + clipText(v.SelfReport, 80) + "。"
+	}
+	if v.SigForged {
+		reason := "检测到伪造思维链签名，思维链项记 0 分"
+		if v.SigForgeReason != "" {
+			reason += "（" + v.SigForgeReason + "）"
+		}
+		return reason + "。"
+	}
 	source := ""
 	if v.Source != "" && v.SignaturePresent {
 		source = "复用 " + v.Source + " 的签名；"
@@ -305,6 +351,38 @@ func bedrockRejection(errText string) (bool, string) {
 func mentionsClaudeFamily(s string) bool {
 	t := strings.ToLower(s)
 	return strings.Contains(t, "claude") || strings.Contains(t, "anthropic")
+}
+
+// ConfessesLocalReplay detects answers where a mock/replay harness explicitly
+// identifies itself as a local reference-answer replay service.
+func ConfessesLocalReplay(s string) bool {
+	t := strings.ToLower(strings.TrimSpace(s))
+	if t == "" {
+		return false
+	}
+	for _, kw := range []string{
+		"local reference-answer",
+		"replay service",
+		"reference answer replay",
+		"本地参考答案",
+		"本地回放服务",
+		"本地题库回放",
+	} {
+		if strings.Contains(t, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsLocalReplayTamperError detects fabricated bad-signature errors emitted by
+// local thinking replay shims rather than Anthropic / Bedrock.
+func IsLocalReplayTamperError(s string) bool {
+	t := strings.ToLower(strings.TrimSpace(s))
+	if t == "" {
+		return false
+	}
+	return strings.Contains(t, "local thinking") || strings.Contains(t, "replay service")
 }
 
 func tamperSignature(s string) string {

@@ -172,6 +172,20 @@ export interface ConversationVerdict {
   reason: string;
   turns: ConversationTurn[];
 }
+export interface AntiCheatSignal {
+  code: string;
+  section: string;
+  severity: string;
+  title: string;
+  detail: string;
+}
+export interface AntiCheatVerdict {
+  detected: boolean;
+  confirmed_count: number;
+  penalized_parts?: string[];
+  signals: AntiCheatSignal[];
+  summary?: string;
+}
 export interface DetectVerdict {
   timing?: { started_at: string; finished_at?: string; total_ms: number; last_run_ms: number; runs: number };
   protocol?: string;
@@ -181,6 +195,7 @@ export interface DetectVerdict {
   vision?: VisionVerdict | null;
   conversation?: ConversationVerdict | null;
   integrity?: IntegrityVerdict | null;
+  anticheat?: AntiCheatVerdict | null;
   total?: TotalVerdict | null;
   cache?: {
     samples?: CacheSample[];
@@ -354,6 +369,9 @@ export interface DetectVerdict {
     temperature_error?: string;
     aws_b?: boolean;
     aws_b_detail?: string;
+    sig_forged?: boolean;
+    sig_forge_reason?: string;
+    replay_confessed?: boolean;
     think_len: number;
     sig_len: number;
     reason: string;
@@ -411,8 +429,76 @@ export interface HistorySummary {
   status?: string;
   family: string | null;
   thinking_pass: boolean | null;
+  anticheat_detected?: boolean;
 }
 const readSnapshots = new Map<string, { etag: string; data: unknown }>();
+let pageUnloading = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    pageUnloading = true;
+  });
+  window.addEventListener("pageshow", () => {
+    pageUnloading = false;
+  });
+}
+
+export function isTransientNetworkError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { name?: string; message?: string; transient?: boolean };
+  if (err.transient) return true;
+  const msg = (err.message || "").toLowerCase();
+  return (
+    err.name === "TypeError" ||
+    msg.includes("networkerror") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("load failed") ||
+    msg.includes("网络连接中断或超时")
+  );
+}
+
+export function friendlyFetchError(error: unknown): Error {
+  if (isTransientNetworkError(error)) {
+    const out = new Error("网络连接中断或超时，请稍后重试") as Error & { transient?: boolean };
+    out.transient = true;
+    return out;
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+async function fetchOnce(url: string, init: RequestInit, callerSignal?: AbortSignal, timeoutMs = 15000): Promise<Response> {
+  if (typeof AbortController !== "function") {
+    return fetch(url, init);
+  }
+  const controller = new AbortController();
+  let timedOut = false;
+  const onCallerAbort = () => controller.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort();
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (callerSignal?.aborted) throw error;
+    if (timedOut) {
+      const err = new Error("网络连接中断或超时，请稍后重试") as Error & { transient?: boolean };
+      err.transient = true;
+      throw err;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    if (callerSignal) callerSignal.removeEventListener("abort", onCallerAbort);
+  }
+}
+
 async function request<T>(
   path: string,
   body?: unknown,
@@ -420,47 +506,71 @@ async function request<T>(
   signal?: AbortSignal,
   retried = false,
 ): Promise<T> {
-  const publicRead = body === undefined && /^\/api\/(detect\/|reports\/|history(?:\?|\/))/.test(path);
-  // Report and history reads carry validators and explicit cache headers.
-  // Polling endpoints stay uncached so progress never comes from a stale
-  // browser entry.
-  const httpCacheable = body === undefined && /^\/api\/(reports\/|history(?:\?|\/))/.test(path);
-  // A capability-bearing read is private. Keep its validator separate from
-  // the public snapshot so a 304 can never substitute an unmasked payload
-  // into an anonymous response (or vice versa).
+  const isGet = body === undefined;
+  const publicRead = isGet && /^\/api\/(detect\/|reports\/|history(?:\?|\/|$)|bank\/stats)/.test(path);
+  // Report, history and stats reads carry validators and explicit cache headers.
+  // Polling endpoints stay uncached so progress never comes from a stale browser entry.
+  const httpCacheable = isGet && /^\/api\/(reports\/|history(?:\?|\/|$)|bank\/stats)/.test(path);
   const cacheableRead = publicRead;
   const snapshotKey = token ? path + "::authorized" : path;
   const snapshot = cacheableRead ? readSnapshots.get(snapshotKey) : undefined;
-  // 访客标识随每次请求发送，服务端据此判断“这个任务是不是这台浏览器提交的”。
-  // 它不是凭据：不含密钥，只用来把任务绑定到浏览器。
   const visitor = visitorID();
   const readHeaders: Record<string, string> = {
     ...(token ? { "X-Job-Token": token } : {}),
     ...(visitor ? { "X-Visitor-ID": visitor } : {}),
     ...(snapshot ? { "If-None-Match": snapshot.etag } : {}),
   };
-  const res = await fetch(
-    API_BASE + path,
-    body === undefined
-      ? { cache: httpCacheable ? "default" : "no-store", signal, headers: readHeaders }
-      : {
-          method: "POST",
-          redirect: "error",
-          headers: {
-            "content-type": "application/json",
-            ...(token ? { "X-Job-Token": token } : {}),
-            ...(visitor ? { "X-Visitor-ID": visitor } : {}),
-          },
-          body: await sealJSON(API_BASE, body),
-          signal,
-        },
-  );
+  let init: RequestInit;
+  if (isGet) {
+    init = { cache: httpCacheable ? "default" : "no-store", headers: readHeaders };
+  } else {
+    let sealedBody: string;
+    try {
+      sealedBody = await sealJSON(API_BASE, body);
+    } catch (error) {
+      throw friendlyFetchError(error);
+    }
+    init = {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { "X-Job-Token": token } : {}),
+        ...(visitor ? { "X-Visitor-ID": visitor } : {}),
+      },
+      body: sealedBody,
+    };
+  }
+  const retryDelays = isGet ? [0, 350, 900] : [0];
+  let res: Response | null = null;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+    if (retryDelays[attempt] > 0) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    }
+    try {
+      res = await fetchOnce(API_BASE + path, init, signal, isGet ? 15000 : 30000);
+      break;
+    } catch (error) {
+      if (signal?.aborted || pageUnloading) {
+        const abortErr = new Error("Aborted");
+        abortErr.name = "AbortError";
+        throw abortErr;
+      }
+      lastError = error;
+      if (!isGet || !isTransientNetworkError(error) || attempt === retryDelays.length - 1) {
+        throw friendlyFetchError(error);
+      }
+    }
+  }
+  if (!res) throw friendlyFetchError(lastError);
   if (res.status === 304 && snapshot) return snapshot.data as T;
   let data;
   try {
     data = await res.json();
   } catch {
-    throw Error("服务返回了非 JSON 响应，请检查本地服务");
+    throw Error("服务返回了非 JSON 响应，请检查网络或稍后重试");
   }
   if (!res.ok) {
     if (cacheableRead) readSnapshots.delete(snapshotKey);
@@ -474,7 +584,7 @@ async function request<T>(
   if (cacheableRead && etag) {
     readSnapshots.delete(snapshotKey);
     readSnapshots.set(snapshotKey, { etag, data });
-    if (readSnapshots.size > 8) readSnapshots.delete(readSnapshots.keys().next().value!);
+    if (readSnapshots.size > 12) readSnapshots.delete(readSnapshots.keys().next().value!);
   }
   return data as T;
 }
@@ -487,10 +597,14 @@ export const startDetect = (q: DetectRequest) =>
   }>("/api/detect", q);
 export const getDetect = (id: string, signal?: AbortSignal, token?: string) =>
   request<DetectTask>("/api/detect/" + encodeURIComponent(id), undefined, token, signal);
-export const getBankStats = () => request<BankStats>("/api/bank/stats");
-export const getHistory = (limit = 10, before?: number) =>
+export const getBankStats = (signal?: AbortSignal) =>
+  request<BankStats>("/api/bank/stats", undefined, undefined, signal);
+export const getHistory = (limit = 10, before?: number, signal?: AbortSignal) =>
   request<HistorySummary[]>(
     "/api/history?limit=" + limit + (before ? "&before=" + before : ""),
+    undefined,
+    undefined,
+    signal,
   );
 export interface SavedReport {
   status: string;

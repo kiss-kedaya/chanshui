@@ -73,6 +73,8 @@ type Summary struct {
 	FingerprintTopProb      float64 `json:"-"`
 	FingerprintContribution int     `json:"-"`
 	FingerprintCoefficient  int     `json:"-"`
+	AntiCheatDetected       bool    `json:"anticheat_detected,omitempty"`
+	AntiCheatFingerprint    bool    `json:"-"`
 }
 
 // Open opens (or creates) the database at path and ensures the schema.
@@ -193,7 +195,12 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 			WHERE json_extract(j.value, '$.key') = 'fingerprint' LIMIT 1) AS INTEGER),
 		CAST((SELECT json_extract(j.value, '$.coefficient')
 			FROM json_each(json_extract(verdict_json, '$.total.parts')) AS j
-			WHERE json_extract(j.value, '$.key') = 'fingerprint' LIMIT 1) AS INTEGER)
+			WHERE json_extract(j.value, '$.key') = 'fingerprint' LIMIT 1) AS INTEGER),
+		COALESCE(CAST(json_extract(verdict_json, '$.anticheat.detected') AS INTEGER), 0),
+		CASE WHEN EXISTS(
+			SELECT 1 FROM json_each(json_extract(verdict_json, '$.anticheat.penalized_parts'))
+			WHERE value = 'fingerprint'
+		) THEN 1 ELSE 0 END
 		FROM detections WHERE expires_at > ?
 		AND COALESCE(total_score, iq_score, -1) != 0`
 	args := []any{time.Now().Unix()}
@@ -216,10 +223,13 @@ func (s *Store) ListBefore(limit int, before int64) ([]Summary, error) {
 		var prob sql.NullFloat64
 		var pass sql.NullBool
 		var score, total, contrib, coeff sql.NullInt64
+		var acDetected, acFP int
 		if err := rows.Scan(&sum.ID, &sum.ReportID, &sum.Status, &sum.ExpiresAt, &sum.CreatedAt, &sum.BaseURL, &sum.Model,
-			&family, &pass, &score, &total, &top, &basis, &prob, &contrib, &coeff); err != nil {
+			&family, &pass, &score, &total, &top, &basis, &prob, &contrib, &coeff, &acDetected, &acFP); err != nil {
 			return nil, fmt.Errorf("history: scan: %w", err)
 		}
+		sum.AntiCheatDetected = acDetected != 0
+		sum.AntiCheatFingerprint = acFP != 0
 		sum.Family = family.String
 		if pass.Valid {
 			v := pass.Bool

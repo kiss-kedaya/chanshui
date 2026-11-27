@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { formatLocaleNumber, useI18n } from "@/lib/i18n";
+
 export default function AnimatedNumber({
   value,
   decimals = 0,
@@ -7,6 +9,7 @@ export default function AnimatedNumber({
   value: number;
   decimals?: number;
 }) {
+  const { locale } = useI18n();
   const safe = Number.isFinite(value) ? value : 0;
   const [shown, setShown] = useState(safe);
   const previous = useRef(0);
@@ -38,7 +41,7 @@ export default function AnimatedNumber({
     };
   }, [safe]);
   const format = (n: number) =>
-    n.toLocaleString("zh-CN", {
+    formatLocaleNumber(n, locale, {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });

@@ -5,7 +5,31 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 )
+
+func validV4Signature(role string) string {
+	if role == "" {
+		role = "thinking"
+	}
+	header := append(pbInt(1, 20), pbInt(3, 2)...)
+	header = append(header, pbInt(7, 1)...)
+	header = append(header, pbBytes(8, []byte(role))...)
+	cipher := make([]byte, 320)
+	for i := range cipher {
+		cipher[i] = byte(0x80 + (i*31)%113)
+	}
+	payload := pbBytes(1, header)
+	payload = append(payload, pbBytes(2, make([]byte, 12))...)
+	payload = append(payload, pbBytes(3, make([]byte, 12))...)
+	payload = append(payload, pbBytes(4, make([]byte, 48))...)
+	payload = append(payload, pbBytes(5, cipher)...)
+	outer := append(pbInt(1, 4), pbBytes(2, payload)...)
+	outer = append(outer, pbInt(3, 1)...)
+	return base64.StdEncoding.EncodeToString(outer)
+}
+
+var testValidSig = validV4Signature("thinking")
 
 // fakeCaller returns one first-turn metric and lets the test decide how replay
 // and temperature requests behave.
@@ -32,7 +56,7 @@ func validReplay(req CallRequest) (Metrics, error) {
 		return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
 	}
 	if req.Replay != nil {
-		if req.Replay.Signature == "VALID" {
+		if req.Replay.Signature == testValidSig {
 			return Metrics{Status: 200, Answer: "I'm Claude, an AI assistant made by Anthropic."}, nil
 		}
 		return Metrics{Status: 400, Err: "messages.1.content.0: Invalid `signature` in `thinking` block"}, nil
@@ -41,7 +65,7 @@ func validReplay(req CallRequest) (Metrics, error) {
 }
 
 func TestCheckScoresSignatureAndTamper(t *testing.T) {
-	base := Metrics{Status: 200, ThinkLen: 812, SigLen: 5, ThinkingText: "最小正整数 is 221.", Signature: "VALID"}
+	base := Metrics{Status: 200, ThinkLen: 812, SigLen: len(testValidSig), ThinkingText: "最小正整数 is 221.", Signature: testValidSig}
 	cases := []struct {
 		name       string
 		model      string
@@ -59,7 +83,7 @@ func TestCheckScoresSignatureAndTamper(t *testing.T) {
 		},
 		{
 			name: "signature only", model: "claude-sonnet-4-5",
-			first:  Metrics{Status: 200, SigLen: 5, Signature: "VALID"},
+			first:  Metrics{Status: 200, SigLen: len(testValidSig), Signature: testValidSig},
 			replay: validReplay, wantPass: false, wantScore: 5, wantMax: 10, wantReason: "摘要 0/5", wantCalls: 3,
 		},
 		{
@@ -110,7 +134,7 @@ func TestCheckScoresSignatureAndTamper(t *testing.T) {
 
 func TestCheckReplayKeepsAdaptiveThinkingAndTamperFlag(t *testing.T) {
 	fc := &fakeCaller{
-		first:  Metrics{Status: 200, ThinkLen: 10, SigLen: 5, ThinkingText: "reasoning", Signature: "VALID"},
+		first:  Metrics{Status: 200, ThinkLen: 10, SigLen: len(testValidSig), ThinkingText: "reasoning", Signature: testValidSig},
 		replay: validReplay,
 	}
 	if _, err := Check(context.Background(), fc, "claude-sonnet-4-5"); err != nil {
@@ -251,7 +275,7 @@ func TestCheckWithSeedReusesQuestionSignature(t *testing.T) {
 	fc := &fakeCaller{replay: validReplay}
 	v, err := CheckWithSeed(context.Background(), fc, "claude-opus-5-5", Seed{
 		ID: "Q6", Prompt: "candy question",
-		Metrics: Metrics{Status: 200, ThinkingText: "summary", Signature: "VALID", Answer: "21"},
+		Metrics: Metrics{Status: 200, ThinkingText: "summary", Signature: testValidSig, Answer: "21"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -269,5 +293,113 @@ func TestCheckWithSeedReusesQuestionSignature(t *testing.T) {
 	}
 	if !strings.Contains(v.Reason, "复用 Q6 的签名") {
 		t.Fatalf("reason = %q", v.Reason)
+	}
+}
+
+func forgedRouterNerverSignature(ts int64) string {
+	ch := []byte{}
+	for _, f := range []int{1, 3, 5, 7, 8, 11, 14, 17, 19, 22, 24, 27} {
+		ch = append(ch, pbInt(f, uint64(f))...)
+	}
+	ch = append(ch, pbBytes(6, []byte("claude-opus-5-5"))...)
+	ch = append(ch, pbInt(21, uint64(ts))...)
+	container := pbBytes(1, ch)
+	container = append(container, pbBytes(2, make([]byte, 12))...)
+	container = append(container, pbBytes(3, make([]byte, 12))...)
+	container = append(container, pbBytes(4, make([]byte, 48))...)
+	container = append(container, pbBytes(5, make([]byte, 200))...)
+	// Omits outer field 1 (version=4), includes outer field 3 = 1.
+	outer := append(pbBytes(2, container), pbInt(3, 1)...)
+	return base64.StdEncoding.EncodeToString(outer)
+}
+
+func TestForgedProtobufSignatureScoresZero(t *testing.T) {
+	sig := forgedRouterNerverSignature(time.Now().Unix() - 14)
+	fc := &fakeCaller{
+		first: Metrics{Status: 200, ThinkLen: 400, SigLen: len(sig), ThinkingText: "fake summary", Signature: sig},
+		replay: func(req CallRequest) (Metrics, error) {
+			if req.Temperature != nil {
+				return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
+			}
+			if req.Replay != nil && req.Replay.Signature == sig {
+				return Metrics{Status: 200, Answer: "I'm Claude, made by Anthropic."}, nil
+			}
+			return Metrics{Status: 400, Err: "messages.1.content.0: Invalid `signature` in `thinking` block (request id: fake)"}, nil
+		},
+	}
+	v, err := Check(context.Background(), fc, "claude-opus-5-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.SigForged || v.Score != 0 || v.Pass || v.AwSB != nil {
+		t.Fatalf("forged protobuf must score 0 and never credit AWS-B: %+v", v)
+	}
+	if !strings.HasPrefix(v.SigClass, "伪造") {
+		t.Fatalf("SigClass = %q", v.SigClass)
+	}
+}
+
+func TestLocalReplayPrefixAndConfessionScoresZero(t *testing.T) {
+	sig := "thinking_local_v1_abcdef123456"
+	fc := &fakeCaller{
+		first: Metrics{Status: 200, ThinkLen: 300, SigLen: len(sig), ThinkingText: "replayed summary", Signature: sig},
+		replay: func(req CallRequest) (Metrics, error) {
+			if req.Temperature != nil {
+				return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
+			}
+			if req.Replay != nil && req.Replay.Signature == sig {
+				return Metrics{Status: 200, Answer: "I am a local reference-answer replay service."}, nil
+			}
+			return Metrics{Status: 400, Err: "Invalid local thinking signature"}, nil
+		},
+	}
+	v, err := Check(context.Background(), fc, "claude-opus-5-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.SigForged || !v.ReplayConfessed || v.Score != 0 || v.Pass || v.TamperRejected || v.AwSB != nil {
+		t.Fatalf("local replay must be caught and zeroed: %+v", v)
+	}
+}
+
+func TestUnrecognizedShortSignatureGetsNoSignatureCredit(t *testing.T) {
+	fc := &fakeCaller{
+		first: Metrics{Status: 200, ThinkLen: 100, SigLen: 5, ThinkingText: "ok", Signature: "VALID"},
+		replay: func(req CallRequest) (Metrics, error) {
+			if req.Replay != nil && req.Replay.Signature == "VALID" {
+				return Metrics{Status: 200, Answer: "I am Claude."}, nil
+			}
+			return Metrics{Status: 400, Err: "Invalid signature"}, nil
+		},
+	}
+	v, err := Check(context.Background(), fc, "claude-sonnet-4-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SignatureScore != 0 || v.ReplayScore != 0 || v.TamperScore != 0 || v.Pass {
+		t.Fatalf("non-envelope signature must not earn signature/replay/tamper credit: %+v", v)
+	}
+}
+
+func TestAuthenticNarrationV4SignatureAccepted(t *testing.T) {
+	sig := validV4Signature("narration")
+	fc := &fakeCaller{
+		first: Metrics{Status: 200, ThinkLen: 400, SigLen: len(sig), ThinkingText: "real reasoning", Signature: sig},
+		replay: func(req CallRequest) (Metrics, error) {
+			if req.Temperature != nil {
+				return Metrics{Status: 400, Err: "`temperature` is deprecated for this model."}, nil
+			}
+			if req.Replay != nil && req.Replay.Signature == sig {
+				return Metrics{Status: 200, Answer: "I am Claude."}, nil
+			}
+			return Metrics{Status: 400, Err: "Invalid signature"}, nil
+		},
+	}
+	v, err := Check(context.Background(), fc, "claude-opus-5-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SigForged || !v.Pass || v.Score != 12 {
+		t.Fatalf("genuine narration v4 signature must pass 12/12: %+v", v)
 	}
 }

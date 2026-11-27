@@ -251,3 +251,29 @@ test("chips follow the order of the channel spec", () => {
   });
   assert.deepEqual(all.map((c) => c.key), ["fresh", "zero", "ccmax", "awsb", "system", "force"]);
 });
+
+test("confirmed anti-cheat elevates verdict to fake and preserves penalized fingerprint score", () => {
+  const anticheat = {
+    detected: true,
+    confirmed_count: 2,
+    penalized_parts: ["fingerprint", "thinking"],
+    signals: [
+      { code: "fp_impossible_speed", section: "fingerprint", severity: "confirmed", title: "数字指纹返回耗时异常（查表/回放）", detail: "numeric-1(304个数/46ms)" },
+      { code: "thinking_forged_sig", section: "thinking", severity: "confirmed", title: "伪造思维链签名", detail: "仿 protobuf 假信封" },
+    ],
+  };
+  const r = reportVerdict(clean({ anticheat }), "match");
+  assert.equal(r.level, "fake");
+  assert.equal(r.tone, "bad");
+  assert.equal(r.findings[0].tone, "bad");
+  assert.equal(r.findings[0].vars.title, "数字指纹返回耗时异常（查表/回放）");
+
+  const penalized = plain(scope.exports.presentedTotal(
+    55,
+    [part("fingerprint", 0, 36), part("iq", 24, 24)],
+    "match",
+    anticheat,
+  ));
+  assert.equal(penalized.score, 55);
+  assert.equal(penalized.parts[0].contribution, 0);
+});

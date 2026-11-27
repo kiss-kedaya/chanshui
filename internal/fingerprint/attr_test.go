@@ -132,9 +132,13 @@ func TestGenerateChallenges(t *testing.T) {
 		t.Fatalf("challenges: %d", len(chs))
 	}
 	seen := map[string]bool{}
+	hasHigh := false
 	for _, c := range chs {
-		if c.ExpectedCount < 292 || c.ExpectedCount > 332 {
+		if c.ExpectedCount < 292 || c.ExpectedCount > 360 {
 			t.Fatalf("challenge expected count: %d", c.ExpectedCount)
+		}
+		if c.ExpectedCount >= 335 {
+			hasHigh = true
 		}
 		if strings.Contains(c.Prompt, strings.Repeat("。", 10)) {
 			t.Fatal("meaningless prompt padding")
@@ -149,6 +153,9 @@ func TestGenerateChallenges(t *testing.T) {
 			t.Fatal("challenge id empty")
 		}
 		seen[c.Prompt] = true
+	}
+	if !hasHigh {
+		t.Fatalf("initial 3 challenges did not include any count >= 335: %+v", chs)
 	}
 	if len(seen) < 2 {
 		t.Fatalf("challenges are all identical: %d distinct of 3", len(seen))

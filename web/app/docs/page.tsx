@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { useI18n } from "@/lib/i18n";
+import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { formatLocaleNumber, useI18n } from "@/lib/i18n";
 
 const sample = `{
   "base_url": "https://example.com/v1",
@@ -24,6 +24,11 @@ type Item = {
   example?: string;
   responses: Resp[];
 };
+
+type PublicCountState =
+  | { status: "loading" }
+  | { status: "ready"; value: number }
+  | { status: "error" };
 
 const items: Item[] = [
   {
@@ -208,6 +213,20 @@ const items: Item[] = [
   },
 ];
 
+function parsePublicAuditCount(body: unknown): PublicCountState {
+  if (!body || typeof body !== "object") return { status: "error" };
+  const value = (body as { public_audits?: unknown }).public_audits;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { status: "ready", value };
+  }
+  return { status: "error" };
+}
+
+function resolveDocsItemId(hash: string): string {
+  const id = hash.replace(/^#/, "");
+  return items.some((row) => row.id === id) ? id : "create";
+}
+
 function ClaudeIcon() {
   return (
     <svg viewBox="0 0 256 257" aria-hidden="true">
@@ -257,11 +276,12 @@ async function copyText(value: string) {
 }
 
 export default function DocsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [current, setCurrent] = useState("create");
   const [status, setStatus] = useState("202");
-  const [count, setCount] = useState<number | null>(null);
+  const [countState, setCountState] = useState<PublicCountState>({ status: "loading" });
   const [copied, setCopied] = useState("");
+  const flashTimerRef = useRef<number | null>(null);
   const item = items.find((row) => row.id === current) || items[3];
   const resp = item.responses.find((row) => row.code === status) || item.responses[0];
   const sections = useMemo(
@@ -280,35 +300,78 @@ export default function DocsPage() {
   );
 
   useEffect(() => {
-    const id = window.location.hash.replace("#", "");
-    if (items.some((row) => row.id === id)) setCurrent(id);
+    const syncFromHash = () => {
+      setCurrent(resolveDocsItemId(window.location.hash));
+    };
+    if (window.location.hash) {
+      syncFromHash();
+    }
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
   }, []);
+
   useEffect(() => {
     setStatus(item.responses[0]?.code || "");
   }, [item.id]);
+
   useEffect(() => {
     let alive = true;
     fetch("/api/v1")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((body) => {
-        if (alive && typeof body.public_audits === "number") setCount(body.public_audits);
+        if (alive) setCountState(parsePublicAuditCount(body));
       })
       .catch(() => {
-        if (alive) setCount(null);
+        if (alive) setCountState({ status: "error" });
       });
     return () => {
       alive = false;
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current !== null) {
+        window.clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
+    };
+  }, []);
+
   function flash(key: string) {
+    if (flashTimerRef.current !== null) {
+      window.clearTimeout(flashTimerRef.current);
+    }
     setCopied(key);
-    window.setTimeout(() => setCopied(""), 1400);
+    flashTimerRef.current = window.setTimeout(() => {
+      flashTimerRef.current = null;
+      setCopied("");
+    }, 1400);
   }
+
   function choose(id: string) {
     setCurrent(id);
     history.replaceState(null, "", "#" + id);
   }
+
+  function handleStatusTabKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!item.responses.length) return;
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+    event.preventDefault();
+    const activeCode = resp?.code || item.responses[0].code;
+    const idx = Math.max(0, item.responses.findIndex((row) => row.code === activeCode));
+    let nextIdx = idx;
+    if (event.key === "ArrowRight") nextIdx = (idx + 1) % item.responses.length;
+    else if (event.key === "ArrowLeft") nextIdx = (idx - 1 + item.responses.length) % item.responses.length;
+    else if (event.key === "Home") nextIdx = 0;
+    else if (event.key === "End") nextIdx = item.responses.length - 1;
+    const nextCode = item.responses[nextIdx].code;
+    setStatus(nextCode);
+    const btn = event.currentTarget.querySelector<HTMLButtonElement>(`#status-tab-${item.id}-${nextCode}`);
+    btn?.focus();
+  }
+
   async function copyAgent() {
     const origin = window.location.origin;
     const text = [
@@ -340,7 +403,7 @@ export default function DocsPage() {
           <p className="api-doc-kicker">{t("公共接口")}</p>
           <h1>{t("接口文档")}</h1>
         </div>
-        <button type="button" className="agent-onboard" data-on={copied === "agent" ? "1" : "0"} onClick={copyAgent} aria-describedby="agent-onboard-tip">
+        <button type="button" className="agent-onboard is-pill" data-on={copied === "agent" ? "1" : "0"} onClick={copyAgent} aria-describedby="agent-onboard-tip">
           <span className="agent-onboard-tip" id="agent-onboard-tip" role="tooltip">{t("复制一段给编程 Agent 的接入说明")}</span>
           <span key={copied === "agent" ? "on" : "off"} className="agent-onboard-label">{copied === "agent" ? t("已复制") : t("让 Agent 接入掺水？")}</span>
           <span className="agent-onboard-icons" aria-hidden="true">
@@ -351,8 +414,17 @@ export default function DocsPage() {
           </span>
           <span className="sr-only">{t("适用于 Claude、Codex、Cursor 和 OpenCode")}</span>
         </button>
-        <p className="api-doc-count" aria-live="polite">
-          {count == null ? t("次数暂不可用") : t("已公益提供检测 {n} 次", { n: count.toLocaleString("zh-CN") })}
+        <p className="api-doc-count" aria-live="polite" aria-busy={countState.status === "loading"}>
+          {countState.status === "loading" ? (
+            <>
+              <span className="api-doc-count-skeleton is-pill" aria-hidden="true" />
+              <span className="sr-only">{t("正在加载…")}</span>
+            </>
+          ) : countState.status === "ready" ? (
+            t("已公益提供检测 {n} 次", { n: formatLocaleNumber(countState.value, locale) })
+          ) : (
+            t("次数暂不可用")
+          )}
         </p>
       </header>
       <div className="api-doc-layout">
@@ -371,7 +443,7 @@ export default function DocsPage() {
             <div className="api-url">
               <b className={"verb-pill " + (item.method || "").toLowerCase()}>{item.method}</b>
               <code>{item.path}</code>
-              <button type="button" onClick={() => copyText(item.path || "").then((ok) => ok && flash("path"))}>
+              <button type="button" data-copied={copied === "path" ? "1" : "0"} onClick={() => copyText(item.path || "").then((ok) => ok && flash("path"))}>
                 {copied === "path" ? t("已复制") : t("复制路径")}
               </button>
             </div>
@@ -408,7 +480,7 @@ export default function DocsPage() {
                           {param.required ? <i aria-hidden="true">*</i> : null}
                         </td>
                         <td>{param.type}</td>
-                        <td>{param.required ? t("是") : t("否")}</td>
+                        <td data-label={t("必填")}>{param.required ? t("是") : t("否")}</td>
                         <td>{t(param.note)}</td>
                       </tr>
                     ))}
@@ -423,7 +495,7 @@ export default function DocsPage() {
             <section>
               <div className="api-block-head">
                 <h3>{t("请求示例")}</h3>
-                <button type="button" onClick={() => copyText(item.example || "").then((ok) => ok && flash("req"))}>
+                <button type="button" data-copied={copied === "req" ? "1" : "0"} onClick={() => copyText(item.example || "").then((ok) => ok && flash("req"))}>
                   {copied === "req" ? t("已复制") : t("复制")}
                 </button>
               </div>
@@ -433,16 +505,30 @@ export default function DocsPage() {
           {item.responses.length ? (
             <section>
               <h3>{t("返回响应")}</h3>
-              <div className="api-status-tabs" role="tablist">
+              <div className="api-status-tabs" role="tablist" aria-label={t("返回响应")} onKeyDown={handleStatusTabKeyDown}>
                 {item.responses.map((row) => (
-                  <button key={row.code} type="button" role="tab" aria-selected={resp?.code === row.code} onClick={() => setStatus(row.code)}>
+                  <button
+                    key={row.code}
+                    id={`status-tab-${item.id}-${row.code}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={resp?.code === row.code}
+                    aria-controls={`status-panel-${item.id}`}
+                    tabIndex={resp?.code === row.code ? 0 : -1}
+                    onClick={() => setStatus(row.code)}
+                  >
                     <b className={row.code.startsWith("2") ? "ok" : "bad"}>{row.code}</b>
                     <span>{t(row.title)}</span>
                   </button>
                 ))}
               </div>
               {resp ? (
-                <div className="api-response">
+                <div
+                  className="api-response"
+                  role="tabpanel"
+                  id={`status-panel-${item.id}`}
+                  aria-labelledby={`status-tab-${item.id}-${resp.code}`}
+                >
                   {resp.note ? <p className="api-note">{t(resp.note)}</p> : null}
                   <div className="api-table-wrap">
                     <table className="api-table">
@@ -466,7 +552,7 @@ export default function DocsPage() {
                   </div>
                   <div className="api-block-head">
                     <h3>{t("示例")}</h3>
-                    <button type="button" onClick={() => copyText(resp.example).then((ok) => ok && flash("res"))}>
+                    <button type="button" data-copied={copied === "res" ? "1" : "0"} onClick={() => copyText(resp.example).then((ok) => ok && flash("res"))}>
                       {copied === "res" ? t("已复制") : t("复制")}
                     </button>
                   </div>

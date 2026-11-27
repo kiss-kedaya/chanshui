@@ -1,0 +1,850 @@
+/* Public API docs & Admin console stylesheet (owned by M4)
+ * Loaded after web/app/globals.css in web/app/layout.tsx.
+ * Strictly uses M1 semantic tokens across all 6 [data-accent][data-mode] themes.
+ */
+
+/* ==========================================================================
+   Section 1: Public API Docs (/docs)
+   ========================================================================== */
+
+.api-doc .api-doc-head h1 {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3vw, 34px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.api-doc .agent-onboard {
+  min-height: 38px;
+  height: auto;
+  max-width: 100%;
+  padding: 7px 14px;
+}
+
+.api-doc .agent-onboard-tip {
+  top: calc(100% + 8px);
+  bottom: auto;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: break-word;
+  z-index: var(--z-tooltip);
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.api-doc .agent-onboard:hover .agent-onboard-tip,
+.api-doc .agent-onboard:focus-visible .agent-onboard-tip {
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (hover: none) {
+  .api-doc .agent-onboard:hover .agent-onboard-tip {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+}
+
+.api-doc .api-doc-count {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.api-doc .api-doc-count-skeleton {
+  position: relative;
+  display: inline-block;
+  width: 168px;
+  height: 14px;
+  border-radius: var(--r-chip);
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.api-doc .api-doc-count-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--surface-hover),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: api-doc-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes api-doc-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.api-doc .api-tree {
+  box-shadow: var(--shadow-sm);
+}
+
+.api-doc .api-tree button {
+  color: var(--ink);
+}
+
+.api-doc .api-tree button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.api-doc .api-tree button[aria-current="page"],
+.api-doc .api-tree button[aria-current="page"]:hover {
+  background: var(--accent-light);
+  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+  transform: none;
+}
+
+.api-doc .api-tree button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.api-doc .api-tree .verb {
+  width: 42px;
+  font-family: var(--font-mono);
+}
+
+.api-doc .api-detail {
+  padding: 26px 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.api-doc .api-url {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--r-ctrl);
+}
+
+.api-doc .api-url code {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.api-doc .verb-pill {
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.api-doc .verb-pill.get {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: var(--ok-border);
+}
+
+.api-doc .verb-pill.post {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
+.api-doc .api-url button,
+.api-doc .api-block-head button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.api-doc .api-url button:hover,
+.api-doc .api-block-head button:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.api-doc .api-url button[data-copied="1"],
+.api-doc .api-block-head button[data-copied="1"] {
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.api-doc .api-url button:focus-visible,
+.api-doc .api-block-head button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.api-doc .api-sections li {
+  background: var(--surface-subtle);
+  border-radius: var(--r-ctrl);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.api-doc .api-sections code {
+  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+  font-weight: 560;
+}
+
+.api-doc .api-table {
+  margin-top: 0;
+  font-family: var(--font-sans);
+}
+
+.api-doc .api-table th {
+  white-space: nowrap;
+}
+
+.api-doc .api-table td:nth-child(2) {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.api-doc .api-table code {
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--ink);
+}
+
+.api-doc .api-status-tabs button {
+  min-height: 36px;
+  padding: 6px 12px;
+  background: var(--surface-inset);
+  color: var(--ink-soft);
+}
+
+.api-doc .api-status-tabs button[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.api-doc .api-status-tabs button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.api-doc .api-detail pre {
+  background: var(--sidebar);
+  color: var(--sidebar-ink);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-ctrl);
+}
+
+html[data-mode="dark"] .api-doc .api-detail pre {
+  background: var(--surface-inset);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+@media (max-width: 760px) {
+  .api-doc .api-detail {
+    padding: 20px 16px;
+    border-radius: var(--r-sub);
+  }
+}
+
+@media (max-width: 640px) {
+  .api-doc .api-table thead {
+    display: none;
+  }
+  .api-doc .api-table,
+  .api-doc .api-table tbody {
+    display: block;
+    width: 100%;
+  }
+  .api-doc .api-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .api-doc .api-table tr:last-child {
+    border-bottom: 0;
+  }
+  .api-doc .api-table td {
+    padding: 0;
+    border: 0;
+    width: auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .api-doc .api-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .api-doc .api-table td:last-child {
+    flex: 1 0 100%;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+}
+
+@media (max-width: 480px) {
+  .api-doc .agent-onboard {
+    font-size: 13.5px;
+    padding: 6px 12px;
+  }
+}
+
+/* ==========================================================================
+   Section 2: Admin Console (/admin)
+   ========================================================================== */
+
+.admin-shell .admin-head {
+  flex-wrap: wrap;
+}
+
+.admin-shell .admin-head > div {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.admin-shell .admin-state-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.admin-shell .admin-state-card .admin-login-icon {
+  margin-bottom: 4px;
+}
+
+.admin-shell .admin-state-card .admin-login-icon.is-bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.admin-shell .admin-state-card h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 640;
+}
+
+.admin-shell .admin-state-card p {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.admin-shell .admin-state-card .error-box {
+  width: 100%;
+  text-align: left;
+}
+
+.admin-shell .admin-skeleton {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-shell .admin-skeleton-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-shell .admin-sk-title {
+  width: 160px;
+  height: 18px;
+}
+
+.admin-shell .admin-sk-actions {
+  width: 140px;
+  height: 32px;
+}
+
+.admin-shell .admin-sk-sub {
+  width: 240px;
+  max-width: 75%;
+  height: 12px;
+}
+
+.admin-shell .admin-skeleton-rows {
+  display: grid;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.admin-shell .admin-sk-row {
+  width: 100%;
+  height: 46px;
+}
+
+.admin-shell .admin-sk-row.short {
+  width: 82%;
+}
+
+.admin-shell .admin-sk-caption {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+.admin-shell .admin-button {
+  transition:
+    background var(--t-fast) ease,
+    border-color var(--t-fast) ease,
+    box-shadow var(--t-fast) ease,
+    transform var(--t-base) var(--ease-out);
+}
+
+.admin-shell .admin-button.ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+
+.admin-shell .admin-button:active:not(:disabled) {
+  transform: translateY(1px) scale(var(--press));
+  transition-duration: var(--t-press);
+}
+
+.admin-shell .admin-button.danger {
+  border-color: var(--bad-border);
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.admin-shell .admin-button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bad) 16%, var(--bad-bg));
+  border-color: var(--bad);
+}
+
+.admin-shell .admin-tabs {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.admin-shell .admin-tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.admin-shell .admin-tabs [role="tab"][aria-selected="true"] {
+  background: var(--accent-light);
+  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.admin-shell .admin-capture-form .field:has(.custom-select > button[aria-expanded="true"], .admin-model-combobox[data-open="true"]) {
+  position: relative;
+  z-index: var(--z-dropdown);
+}
+
+.admin-shell .admin-capture-form .custom-select > button {
+  min-height: 47px;
+  border-radius: var(--r-ctrl);
+}
+
+.admin-shell .admin-model-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-shell .admin-model-combobox {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  z-index: 4;
+}
+
+.admin-shell .admin-model-combobox[data-open="true"] {
+  z-index: var(--z-dropdown);
+}
+
+.admin-shell .admin-model-combobox > input {
+  width: 100%;
+  height: 47px;
+  min-height: 47px;
+  padding-right: 78px;
+  border-radius: var(--r-ctrl);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.admin-shell .admin-model-combobox > input:focus {
+  transform: none;
+}
+
+.admin-shell .admin-model-combobox[data-open="true"] > input {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.admin-shell .admin-model-actions {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  transform: translateY(-50%);
+}
+
+.admin-shell .admin-fetch-models {
+  height: 47px;
+  min-height: 47px;
+  flex-shrink: 0;
+  border-radius: var(--r-ctrl);
+}
+
+.admin-shell .admin-progress {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-shell .admin-progress-head {
+  align-items: center;
+}
+
+.admin-shell .admin-progress-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-shell .admin-progress-ring {
+  flex: none;
+  display: block;
+}
+
+.admin-shell .admin-progress-ring-track {
+  fill: none;
+  stroke: var(--surface-inset);
+  stroke-width: 3.5;
+}
+
+.admin-shell .admin-progress-ring-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 22px 22px;
+  transition: stroke-dashoffset 0.35s var(--ease-out), stroke var(--t-fast) ease;
+}
+
+.admin-shell .admin-progress-ring text {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-shell .admin-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  background: var(--card);
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.admin-shell .admin-status-pill b {
+  font-weight: 600;
+}
+
+.admin-shell .admin-progress-count {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-shell .admin-progress-bar {
+  height: 7px;
+  margin: 2px 0;
+}
+
+.admin-shell .admin-progress.running .admin-progress-ring-arc,
+.admin-shell .admin-progress.running .admin-progress-bar > i {
+  stroke: var(--accent);
+  background: var(--accent);
+}
+
+.admin-shell .admin-progress.running .admin-status-pill {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: var(--accent-light);
+  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+}
+
+.admin-shell .admin-progress.running .admin-status-pill b {
+  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+}
+
+.admin-shell .admin-progress.validating .admin-progress-ring-arc,
+.admin-shell .admin-progress.validating .admin-progress-bar > i {
+  stroke: var(--warn);
+  background: var(--warn);
+}
+
+.admin-shell .admin-progress.validating .admin-status-pill {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+
+.admin-shell .admin-progress.validating .admin-status-pill b {
+  color: var(--warn);
+}
+
+.admin-shell .admin-progress.validating .live-dot {
+  background: var(--warn);
+}
+
+.admin-shell .admin-progress.done .admin-progress-ring-arc,
+.admin-shell .admin-progress.done .admin-progress-bar > i {
+  stroke: var(--ok);
+  background: var(--ok);
+}
+
+.admin-shell .admin-progress.done .admin-status-pill {
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
+}
+
+.admin-shell .admin-progress.done .admin-status-pill b {
+  color: var(--ok);
+}
+
+.admin-shell .admin-progress.failed .admin-progress-ring-arc,
+.admin-shell .admin-progress.failed .admin-progress-bar > i {
+  stroke: var(--bad);
+  background: var(--bad);
+}
+
+.admin-shell .admin-progress.failed .admin-status-pill {
+  border-color: var(--bad-border);
+  background: var(--bad-bg);
+}
+
+.admin-shell .admin-progress.failed .admin-status-pill b {
+  color: var(--bad);
+}
+
+.admin-shell .admin-progress.cancelled .admin-progress-ring-arc,
+.admin-shell .admin-progress.cancelled .admin-progress-bar > i {
+  stroke: var(--muted);
+  background: var(--muted);
+}
+
+.admin-shell .admin-progress.cancelled .admin-status-pill {
+  border-color: var(--line);
+  background: var(--surface-inset);
+  color: var(--ink-soft);
+}
+
+.admin-shell .admin-progress.cancelled .admin-status-pill b {
+  color: var(--ink-soft);
+}
+
+.admin-shell .admin-capture-groups {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-shell .admin-capture-groups li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  font-size: 12.5px;
+}
+
+.admin-shell .admin-group-index {
+  padding: 2px 7px;
+  border-radius: var(--r-chip);
+  background: var(--surface-inset);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-shell .admin-capture-groups b {
+  padding: 2px 8px;
+  border-radius: var(--r-chip);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.admin-shell .admin-capture-groups .good {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.admin-shell .admin-capture-groups .bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.admin-shell .admin-group-model {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.admin-shell .admin-group-prob {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-shell .admin-ref-list article {
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.admin-shell .admin-ref-list article > div:first-child {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.admin-shell .admin-ref-list b,
+.admin-shell .admin-ref-list small {
+  overflow-wrap: anywhere;
+}
+
+.admin-shell .admin-ref-confirm {
+  flex: 0 1 auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admin-shell .admin-ref-confirm-note {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.admin-shell .admin-list header {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.admin-shell .admin-list time {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .admin-shell .admin-capture-form .custom-select > button {
+    min-height: 46px;
+  }
+  .admin-shell .admin-model-combobox > input,
+  .admin-shell .admin-fetch-models {
+    height: 46px;
+    min-height: 46px;
+  }
+  .admin-shell .admin-ref-confirm {
+    justify-content: flex-start;
+  }
+  .admin-shell .admin-capture-grid input {
+    font-size: 16px;
+  }
+  .admin-shell .admin-capture-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-shell .admin-model-field-row {
+    flex-wrap: wrap;
+  }
+  .admin-shell .admin-fetch-models {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .admin-shell .admin-capture-grid.four {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Section 3: Reduced Motion & Continuous-Curvature Squircle Registration
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .api-doc .api-doc-count-skeleton::after {
+    display: none;
+  }
+  .admin-shell .admin-progress-ring-arc {
+    transition: none;
+  }
+}
+
+@supports (corner-shape: squircle) {
+  .api-doc .api-detail,
+  .api-doc .api-url button,
+  .api-doc .api-block-head button,
+  .api-doc .api-table code,
+  .admin-shell .admin-state-card,
+  .admin-shell .admin-model-combobox > input,
+  .admin-shell .admin-capture-groups li {
+    corner-shape: squircle;
+  }
+
+  .api-doc .api-doc-count-skeleton,
+  .api-doc .agent-onboard,
+  .admin-shell .admin-status-pill,
+  .admin-shell .admin-progress-bar,
+  .admin-shell .admin-group-index,
+  .admin-shell .admin-capture-groups b,
+  .admin-shell .is-pill {
+    corner-shape: round;
+  }
+}

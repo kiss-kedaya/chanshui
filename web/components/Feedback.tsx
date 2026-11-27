@@ -98,7 +98,7 @@ export default function Feedback() {
             <p>{tr("感谢反馈，我们会根据你留下的方式联系。")}</p>
             <span className="muted">{tr("反馈编号")}</span>
             <code>{success}</code>
-            <button className="btn-primary" onClick={close}>
+            <button type="button" className="btn-primary" onClick={close}>
               {tr("完成")}
             </button>
           </div>

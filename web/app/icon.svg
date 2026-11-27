@@ -1,1 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1a56db"/><text x="16" y="22" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle" font-family="sans-serif">掺</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <path
+    d="M10 2H22A8 8 0 0 1 30 10V22A8 8 0 0 1 22 30H4.5A2.5 2.5 0 0 1 2 27.5V10A8 8 0 0 1 10 2Z"
+    fill="#c85832"
+  />
+  <path
+    d="M10 2.75H22A7.25 7.25 0 0 1 29.25 10V22A7.25 7.25 0 0 1 22 29.25H4.5A1.75 1.75 0 0 1 2.75 27.5V10A7.25 7.25 0 0 1 10 2.75Z"
+    stroke="#fff8ee"
+    strokeOpacity="0.18"
+    strokeWidth="1.5"
+  />
+  <path
+    d="M11.6 11.4C11.9 9.1 13.7 7.8 16.1 7.8C18.7 7.8 20.5 9.3 20.5 11.5C20.5 13.2 19.5 14.3 17.7 15.3C16.3 16.1 15.8 16.8 15.8 18.2V19"
+    stroke="#fff8ee"
+    strokeWidth="2.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />
+  <circle cx="15.8" cy="23.5" r="1.9" fill="#fff8ee" />
+</svg>

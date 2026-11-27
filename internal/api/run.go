@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/kiss-kedaya/chanshui/internal/blacklist"
 	"github.com/kiss-kedaya/chanshui/internal/cachecheck"
 	"github.com/kiss-kedaya/chanshui/internal/cacheforce"
 	"github.com/kiss-kedaya/chanshui/internal/capability"
@@ -282,6 +283,11 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	}
 	t.Verdict.Timing = &Timing{StartedAt: started.UTC().Format(time.RFC3339Nano), TotalMs: previousMs, Runs: runs + 1}
 	t.mu.Unlock()
+
+	if entry, blocked := blacklist.MatchHost(q.BaseURL); blocked {
+		s.shortCircuitBlocked(t, q, selected, entry, started, previousMs)
+		return
+	}
 
 	g, clientErr := s.client(q)
 	if clientErr == nil && selected == nil {
@@ -572,6 +578,9 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	if t.Source != "api" {
 		sections = nil
 	}
+	if ac := evaluateAntiCheat(t.Verdict, q.Model); ac != nil && ac.Detected {
+		t.Verdict.AntiCheat = sanitize(ac, q.Key)
+	}
 	t.Verdict.Integrity = buildIntegrity(t.Verdict, lines, q.Model, sections)
 	t.Verdict.Total = buildTotalFor(t.Verdict, q.Model, sections)
 	t.Status = "done"
@@ -587,6 +596,92 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	t.Verdict.Timing.FinishedAt = t.finished.UTC().Format(time.RFC3339Nano)
 	t.Verdict.Timing.LastRunMs = time.Since(started).Milliseconds()
 	t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
+	t.mu.Unlock()
+	s.persist(t)
+}
+
+// shortCircuitBlocked immediately scores a confirmed anti-detection domain
+// (and its subdomains) as 0 across all applicable sections without sending
+// a single upstream HTTP request.
+func (s *Server) shortCircuitBlocked(t *Task, q Request, selected map[string]bool, entry blacklist.Entry, started time.Time, previousMs int64) {
+	sections := selected
+	if t.Source != "api" {
+		sections = nil
+	}
+	want := func(id string) bool { return sections == nil || sections[id] }
+	note := fmt.Sprintf("目标域名命中已确认针对本站作假规则（%s），未发起上游请求，直接按 0 分处置。", entry.Domain)
+	ac := &AntiCheatVerdict{
+		Detected:       true,
+		ConfirmedCount: 1,
+		PenalizedParts: []string{"fingerprint", "iq", "vision", "injection", "tools", "web", "thinking", "cache"},
+		Signals: []AntiCheatSignal{
+			{
+				Code:     "domain_blocked_zero_score",
+				Section:  "domain",
+				Severity: "confirmed",
+				Title:    "已知针对性作假站点（直接判 0 分）",
+				Detail:   fmt.Sprintf("命中域名规则 %s：%s。本站已跳过全部上游请求，直接按 0 分计入。", entry.Domain, entry.Reason),
+			},
+		},
+		Summary: note,
+	}
+
+	t.mu.Lock()
+	for i := range t.Probes {
+		t.Probes[i].Status = "done"
+		t.Probes[i].Ms = 0
+		t.Probes[i].Error = ""
+	}
+	if want("fingerprint") {
+		t.Verdict.Fingerprint = map[string]any{
+			"basis": "numeric", "family": "unknown", "family_name": "命中作假站点规则", "family_prob": 0,
+			"top_model": "", "top_prob": 0, "results": []any{}, "used_outputs": 0,
+			"low_confidence": false, "evidence": []any{}, "note": note,
+		}
+	}
+	if want("iq") {
+		t.Verdict.IQ = map[string]any{
+			"score": 0, "max": 100, "paper_max": 0, "complete": true,
+			"per_question": []QuestionResult{}, "note": note,
+		}
+	}
+	if want("vision") {
+		t.Verdict.Vision = map[string]any{
+			"score": 0, "max": 100, "recognized": false, "recognized_score": 0, "recognized_max": 50,
+			"answer_score": 0, "answer_max": 50, "correct": false, "note": note,
+		}
+	}
+	if want("injection") {
+		t.Verdict.Injection = map[string]any{
+			"inj": 0.0, "slope": 0.0, "r2": nil, "max_residual": nil, "cache_header": "",
+			"score": 0, "max_score": 10, "reliable": false, "note": note, "points": []any{},
+		}
+	}
+	if want("tools") {
+		t.Verdict.Tools = map[string]any{"status": "blocked", "pass": false, "reason": note, "protocol": q.Protocol}
+	}
+	if want("web") {
+		t.Verdict.Web = map[string]any{"status": "blocked", "pass": false, "reason": note, "protocol": q.Protocol}
+	}
+	if (sections == nil && q.Cache && !q.Conversation) || (sections != nil && sections["cache"]) {
+		t.Verdict.Cache = map[string]any{"status": "blocked", "pass": false, "reason": note, "protocol": q.Protocol}
+	}
+	if gateway.IsClaude(q.Model) && want("thinking") {
+		t.Verdict.Thinking = map[string]any{
+			"pass": false, "score": 0, "max_score": 12, "signature_present": false,
+			"think_len": 0, "sig_len": 0, "reason": note,
+		}
+	}
+	t.Verdict.AntiCheat = ac
+	t.Verdict.Integrity = buildIntegrity(t.Verdict, nil, q.Model, sections)
+	t.Verdict.Total = buildTotalFor(t.Verdict, q.Model, sections)
+	t.Status = "done"
+	t.finished = time.Now()
+	if t.Verdict.Timing != nil {
+		t.Verdict.Timing.FinishedAt = t.finished.UTC().Format(time.RFC3339Nano)
+		t.Verdict.Timing.LastRunMs = time.Since(started).Milliseconds()
+		t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
+	}
 	t.mu.Unlock()
 	s.persist(t)
 }
@@ -1363,6 +1458,32 @@ func buildTotalFor(v Verdict, model string, selected map[string]bool) integrity.
 	}
 	if selected != nil {
 		cacheApply = selected["cache"]
+	}
+	if penalized := antiCheatPenalizedParts(v.AntiCheat); len(penalized) > 0 {
+		if penalized["fingerprint"] && want("fingerprint") {
+			fpKnown, fpPoints = true, 0
+		}
+		if penalized["iq"] && want("iq") {
+			iqKnown, iqPoints = true, 0
+		}
+		if penalized["vision"] && visionApply {
+			visionKnown, visionPoints = true, 0
+		}
+		if penalized["injection"] && want("injection") {
+			injApply, injKnown, injPoints = true, true, 0
+		}
+		if penalized["tools"] && want("tools") {
+			toolKnown, toolPoints = true, 0
+		}
+		if penalized["web"] && want("web") {
+			webApply, webKnown, webPoints = true, true, 0
+		}
+		if penalized["thinking"] && thinkApply {
+			thinkKnown, thinkPoints = true, 0
+		}
+		if penalized["cache"] && cacheApply {
+			cacheKnown, cachePoints = true, 0
+		}
 	}
 	parts := []integrity.Part{
 		{Key: "fingerprint", Label: "模型指纹归因", Applicable: want("fingerprint"), Known: fpKnown, Points: fpPoints, MaxPoints: 10},

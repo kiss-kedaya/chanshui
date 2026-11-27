@@ -17,10 +17,55 @@ export function resetSealKey() {
   publicKey = null;
 }
 
+function isNetworkFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { name?: string; message?: string };
+  const msg = (err.message || "").toLowerCase();
+  return (
+    err.name === "TypeError" ||
+    err.name === "AbortError" ||
+    msg.includes("networkerror") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("load failed")
+  );
+}
+
+async function fetchSealWithRetry(url: string): Promise<Response> {
+  const delays = [0, 350, 900];
+  let lastError: unknown;
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 12000) : undefined;
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (timer !== undefined) clearTimeout(timer);
+      return response;
+    } catch (error) {
+      if (timer !== undefined) clearTimeout(timer);
+      lastError = error;
+      if (!isNetworkFailure(error) || attempt === delays.length - 1) {
+        throw Error("网络连接中断或超时，请稍后重试");
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : Error("网络连接中断或超时，请稍后重试");
+}
+
 async function loadKey(base: string) {
   if (publicKey) return publicKey;
-  const response = await fetch(base + "/api/seal", { cache: "no-store" });
-  const data = await response.json();
+  const response = await fetchSealWithRetry(base + "/api/seal");
+  let data: { spki?: string; error?: string };
+  try {
+    data = await response.json();
+  } catch {
+    throw Error("加密通道未就绪，请稍后重试");
+  }
   if (!response.ok || !data.spki) throw Error(data.error || "加密通道未就绪");
   publicKey = await crypto.subtle.importKey(
     "spki",

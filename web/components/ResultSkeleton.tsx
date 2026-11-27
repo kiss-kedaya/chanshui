@@ -3,7 +3,7 @@ import { useI18n } from "@/lib/i18n";
 export default function ResultSkeleton({ label }: { label: string }) {
   const { t } = useI18n();
   return (
-    <div className="result-skeleton">
+    <div className="result-skeleton" aria-busy="true">
       <span className="skeleton-line skeleton-value" aria-hidden="true" />
       <span className="skeleton-line" aria-hidden="true" />
       <span className="skeleton-line skeleton-short" aria-hidden="true" />

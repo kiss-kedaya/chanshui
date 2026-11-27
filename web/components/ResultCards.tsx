@@ -2,13 +2,204 @@
 import { ReactNode } from "react";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import ResultSkeleton from "@/components/ResultSkeleton";
-import ConversationPanel from "@/components/ConversationPanel";
+import ConversationPanel, { trConvReason } from "@/components/ConversationPanel";
 import ErrorFold from "@/components/ErrorFold";
 import Hint from "@/components/Hint";
 import ScoreHero from "@/components/ScoreHero";
 import { fingerprintState, presentedTotal, probabilityVisible } from "@/lib/report-view";
 import { DetectVerdict } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+
+type Translator = (source: string, vars?: Record<string, string | number>) => string;
+
+function trTag(tag: string, tr: Translator): string {
+  const m = tag.match(/^(库存|实例|种子)[:：](.+)$/);
+  if (m) return tr(m[1]) + ":" + m[2];
+  return tr(tag);
+}
+
+function trAntiCheatSummary(summary: string, tr: Translator): string {
+  const m1 = summary.match(/^检测到 (\d+) 项针对性作假证据（(.+)），对应板块已按 0 分计入。$/);
+  if (m1) {
+    const titles = m1[2]
+      .split("、")
+      .map((item) => tr(item.trim()))
+      .join(", ");
+    return tr("检测到 {n} 项针对性作假证据（{titles}），对应板块已按 0 分计入。", { n: m1[1], titles });
+  }
+  const m2 = summary.match(/^目标域名命中已确认针对本站作假规则（(.+)），未发起上游请求，直接按 0 分处置。$/);
+  if (m2) return tr("目标域名命中已确认针对本站作假规则（{host}），未发起上游请求，直接按 0 分处置。", { host: m2[1] });
+  return tr(summary);
+}
+
+function trForceCacheConclusion(conclusion: string, tr: Translator): string {
+  if (!conclusion) return "";
+  const http = conclusion.match(/^(.+) 返回 HTTP (\d+)，样本不定$/);
+  if (http) return tr("{label} 返回 HTTP {status}，样本不定", { label: tr(http[1]), status: http[2] });
+  const mixed = conclusion.match(/^样本介于两者之间：input=(\d+) write5m=(\d+) write1h=(\d+) read=(\d+)$/);
+  if (mixed) {
+    return tr("样本介于两者之间：input={input} write5m={write5m} write1h={write1h} read={read}", {
+      input: mixed[1],
+      write5m: mixed[2],
+      write1h: mixed[3],
+      read: mixed[4],
+    });
+  }
+  const segs = conclusion.split("；");
+  if (segs.length > 1) {
+    const mapped = segs.map((seg) => trForceCacheConclusion(seg, tr));
+    return mapped.every((m, idx) => m === segs[idx]) ? conclusion : mapped.join("; ");
+  }
+  return tr(conclusion);
+}
+
+function trNote(note: string | undefined, tr: Translator): string | undefined {
+  if (!note) return note;
+  const thresh = note.match(/^Claude 按缓存首写阈值反推：首写 (\d+) token，名义门槛 (\d+)，隐藏 (\d+)。$/);
+  if (thresh) {
+    return tr("Claude 按缓存首写阈值反推：首写 {threshold} token，名义门槛 {nominal}，隐藏 {hidden}。", {
+      threshold: thresh[1],
+      nominal: thresh[2],
+      hidden: thresh[3],
+    });
+  }
+  const zeroSamples = note.match(/^(\d+) 次里没有拿到有效数字样本，这项记 0 分。$/);
+  if (zeroSamples) return tr("{n} 次里没有拿到有效数字样本，这项记 0 分。", { n: zeroSamples[1] });
+  const iqNote = note.match(
+    /^当前卷面 (\d+)；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，但已答题目照常计分，不伪装为模型答错。$/,
+  );
+  if (iqNote) {
+    return tr(
+      "当前卷面 {n}；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，但已答题目照常计分，不伪装为模型答错。",
+      { n: iqNote[1] },
+    );
+  }
+  if (note.startsWith("行为探针失败：")) {
+    return tr("行为探针失败：") + note.slice("行为探针失败：".length);
+  }
+  if (note.startsWith("目标域名命中已确认针对本站作假规则")) {
+    return trAntiCheatSummary(note, tr);
+  }
+  const parts = note
+    .split(/(?<=。)\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length > 1) {
+    const mapped = parts.map((p) => trNote(p, tr) || p);
+    return mapped.every((m, idx) => m === parts[idx]) ? note : mapped.join(" ");
+  }
+  return tr(note);
+}
+
+function trKnowledgeGap(text: string, tr: Translator): string {
+  const m = text.match(/^有 (\d+) 题结果对不上，未用它们移动边界$/);
+  if (m) return tr("有 {n} 题结果对不上，未用它们移动边界", { n: m[1] });
+  return tr(text);
+}
+
+function trKnowledgeSuspect(text: string, tr: Translator): string {
+  const m = text.match(/^答对了 (\d+) 天前的事件（(.+)），疑似联网$/);
+  if (m) return tr("答对了 {days} 天前的事件（{event}），疑似联网", { days: m[1], event: m[2] });
+  return tr(text);
+}
+
+function trKnowledgeReason(reason: string, tr: Translator): string {
+  if (!reason) return "";
+  const segs = reason
+    .split(/(?<=。)\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (segs.length <= 1) {
+    const clean = reason.replace(/。$/, "");
+    if (/^有 (\d+) 题结果对不上，未用它们移动边界$/.test(clean)) return trKnowledgeGap(clean, tr);
+    if (/^答对了 (\d+) 天前的事件（(.+)），疑似联网$/.test(clean)) return trKnowledgeSuspect(clean, tr);
+    return tr(reason);
+  }
+  const endSentence = (s: string) =>
+    /[.。!?]$/.test(s) ? s : /[\u4e00-\u9fff\u3040-\u30ff]/.test(s) ? s + "。" : s + ".";
+  const mapped = segs.map((seg) => {
+    const clean = seg.replace(/。$/, "");
+    if (/^有 (\d+) 题结果对不上，未用它们移动边界$/.test(clean)) return endSentence(trKnowledgeGap(clean, tr));
+    if (/^答对了 (\d+) 天前的事件（(.+)），疑似联网$/.test(clean)) return endSentence(trKnowledgeSuspect(clean, tr));
+    return tr(seg);
+  });
+  return mapped.every((m, idx) => m === segs[idx]) ? reason : mapped.join(" ");
+}
+
+function trThinkingReason(reason: string, tr: Translator): string {
+  if (!reason) return "";
+  if (reason.startsWith("目标域名命中已确认针对本站作假规则")) {
+    return trAntiCheatSummary(reason, tr);
+  }
+  const exact = tr(reason);
+  if (exact !== reason) return exact;
+  const body = reason.replace(/。$/, "");
+  const segs = body
+    .split("；")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (segs.length === 0) return reason;
+  const mapped = segs.map((seg) => {
+    const forged = seg.match(/^检测到伪造思维链签名，思维链项记 0 分(?:（([\s\S]+)）)?$/);
+    if (forged) {
+      const head = tr("检测到伪造思维链签名，思维链项记 0 分");
+      return forged[1] ? `${head} (${tr(forged[1])})` : head;
+    }
+    const reused = seg.match(/^复用 (.+) 的签名$/);
+    if (reused) return tr("复用 {source} 的签名", { source: reused[1] });
+    const mismatch = seg.match(/^签名型号 (.+) 与请求不符（-2）$/);
+    if (mismatch) return tr("签名型号 {model} 与请求不符（-2）", { model: mismatch[1] });
+    const summary = seg.match(/^摘要 (\d+)\/(\d+)$/);
+    if (summary) return tr("摘要 {a}/{b}", { a: summary[1], b: summary[2] });
+    const sig = seg.match(/^签名 (\d+)\/(\d+)$/);
+    if (sig) return tr("签名 {a}/{b}", { a: sig[1], b: sig[2] });
+    const replay = seg.match(/^原始续轮 (\d+)\/(\d+)$/);
+    if (replay) return tr("原始续轮 {a}/{b}", { a: replay[1], b: replay[2] });
+    const tamper = seg.match(/^篡改拒绝 (\d+)\/(\d+)$/);
+    if (tamper) return tr("篡改拒绝 {a}/{b}", { a: tamper[1], b: tamper[2] });
+    const selfReport = seg.match(/^自述：([\s\S]+)$/);
+    if (selfReport) return tr("自述：{text}", { text: selfReport[1] });
+    const struct = seg.match(/^签名结构 (.+?)(?:（(\d+) 字段(?:，([^）]+))?）)?$/);
+    if (struct) {
+      const cls = tr(sigShort(struct[1]));
+      if (struct[2] && struct[3]) {
+        return tr("签名结构 {cls}（{n} 字段，{infra}）", { cls, n: struct[2], infra: struct[3] });
+      }
+      if (struct[2]) {
+        return tr("签名结构 {cls}（{n} 字段）", { cls, n: struct[2] });
+      }
+      return tr("签名结构 {cls}", { cls });
+    }
+    const strict = seg.match(/^协议严格性 (\d+)\/(\d+)(?:（未拒绝：(.+)）)?$/);
+    if (strict) {
+      if (strict[3]) {
+        const items = strict[3]
+          .replace(/ 等 (\d+) 项$/, (_, n) => tr(" 等 {n} 项", { n }))
+          .replace(/、/g, ", ");
+        return tr("协议严格性 {a}/{b}（未拒绝：{items}）", { a: strict[1], b: strict[2], items });
+      }
+      return tr("协议严格性 {a}/{b}", { a: strict[1], b: strict[2] });
+    }
+    return tr(seg);
+  });
+  return mapped.every((m, idx) => m === segs[idx]) ? reason : mapped.join("; ");
+}
+
+function trCapabilityReason(reason: string, tr: Translator): string {
+  if (!reason) return "";
+  if (reason.startsWith("目标域名命中已确认针对本站作假规则")) {
+    return trAntiCheatSummary(reason, tr);
+  }
+  const auth = reason.match(/^Search 接口鉴权失败（HTTP (\d+)）。$/);
+  if (auth) return tr("Search 接口鉴权失败（HTTP {status}）。", { status: auth[1] });
+  const unavail = reason.match(/^Search 接口暂时不可用（HTTP (\d+)）。$/);
+  if (unavail) return tr("Search 接口暂时不可用（HTTP {status}）。", { status: unavail[1] });
+  const http = reason.match(/^Search 接口返回 HTTP (\d+)。$/);
+  if (http) return tr("Search 接口返回 HTTP {status}。", { status: http[1] });
+  const ok = reason.match(/^DeepSeek Search API 返回 (\d+) 条有效结果，含标题、摘要和来源链接。$/);
+  if (ok) return tr("DeepSeek Search API 返回 {n} 条有效结果，含标题、摘要和来源链接。", { n: ok[1] });
+  return tr(reason);
+}
 // One heading per kind of evidence, so a long report reads as chapters
 // instead of a flat pile of cards.
 function Group({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -57,6 +248,7 @@ function Details({ label, value }: { label: string; value: unknown }) {
 
 
 function sigShort(cls: string): string {
+  if (cls.startsWith("伪造")) return "伪造签名";
   if (cls.startsWith("真签")) return "真签";
   if (cls.startsWith("历史")) return "历史缓存";
   if (cls.startsWith("标准信封")) return "标准信封";
@@ -66,6 +258,15 @@ function sigShort(cls: string): string {
   if (cls.startsWith("无签")) return "无签";
   return cls;
 }
+
+const ANTICHEAT_SECTION_LABEL: Record<string, string> = {
+  domain: "站点规则",
+  fingerprint: "模型指纹",
+  thinking: "思维链",
+  iq: "推理表现",
+  vision: "识图能力",
+  tools: "工具调用",
+};
 
 function sigBytes(cls: string): string {
   const m = cls.match(/密文\s*(\d+)\s*字节/);
@@ -93,7 +294,15 @@ function knowledgeMark(row: { kind?: string; ok: boolean; unsure: boolean; error
 }
 
 function knowledgeLabel(k: { label?: string; cutoff?: string; correct?: number; total?: number }, tr: (source: string, vars?: Record<string, string | number>) => string) {
-  if (k.label) return tr(k.label);
+  if (k.label) {
+    const range = k.label.match(/^知识≈(\S+) 至 (\S+)（(\d+) 问）$/);
+    if (range) return tr("知识≈{lo} 至 {hi}（{n} 问）", { lo: range[1], hi: range[2], n: range[3] });
+    const ge = k.label.match(/^知识≥(\S+)$/);
+    if (ge) return tr("知识≥{lo}", { lo: ge[1] });
+    const lt = k.label.match(/^知识＜(\S+)$/);
+    if (lt) return tr("知识＜{hi}", { hi: lt[1] });
+    return tr(k.label);
+  }
   if (k.cutoff && /^\d{4}-\d{2}$/.test(k.cutoff)) return tr("旧报告自报 {cutoff}", { cutoff: k.cutoff });
   if (k.cutoff && k.total) return tr("知识≈{cutoff}（{a}/{b}）", { cutoff: k.cutoff, a: k.correct ?? 0, b: k.total });
   if (k.cutoff) return tr("知识≈{cutoff}", { cutoff: k.cutoff });
@@ -175,28 +384,46 @@ export default function ResultCards({
         ...v,
         total: {
           ...v.total,
-          ...presentedTotal(v.total.score, v.total.parts, fpState),
+          ...presentedTotal(v.total.score, v.total.parts, fpState, v.anticheat),
         },
       }
     : v;
+  const anticheat = v.anticheat;
   return (
     <div
       className={"results " + (loading ? "results-loading" : "results-settled")}
     >
       <ScoreHero verdict={scored} fp={fpState} claude={claude} loading={loading} progress={progress} />
+      {anticheat?.detected && (anticheat.signals?.length ?? 0) > 0 && (
+        <section className="result-card anticheat-card" aria-labelledby="anticheat-title">
+          <div className="rc-head">
+            <div className="rc-title">
+              <h3 id="anticheat-title">{tr("反作弊实锤证据")}</h3>
+              <span className="ac-badge">{tr("{n} 项命中", { n: anticheat.signals.length })}</span>
+            </div>
+          </div>
+          {anticheat.summary && <p className="muted">{trAntiCheatSummary(anticheat.summary, tr)}</p>}
+          <ul className="ac-signals">
+            {anticheat.signals.map((sig) => (
+              <li key={sig.code}>
+                <div className="ac-signal-head">
+                  <span className="ac-section">{tr(ANTICHEAT_SECTION_LABEL[sig.section] || sig.section)}</span>
+                  <strong>{tr(sig.title)}</strong>
+                </div>
+                <p>{tr(sig.detail)}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <Group id="group-identity" title="身份与渠道">
       <section className={"result-card" + (diluted ? " fingerprint-bad" : "")}>
         <div className="rc-head">
-          <CardTitle title={tr("模型指纹归因")} label={tr("指纹归因说明")} text={f?.note} />
+          <CardTitle title="模型指纹归因" label="指纹归因说明" text={trNote(f?.note, tr)} />
           <span className="rc-score">
             <ScoreShare verdict={scored} part="fingerprint" />
           </span>
         </div>
-        {(diluted || suspicious) && (
-          <div className={"fake-seal" + (suspicious ? " suspicious" : "")} aria-hidden="true">
-            <span>{tr(diluted ? "假" : "可疑")}</span>
-          </div>
-        )}
         {!f ? (
           <ResultSkeleton label={loading ? tr("指纹检测中…") : tr("暂无结果")} />
         ) : (
@@ -205,17 +432,24 @@ export default function ResultCards({
               <ErrorFold text={f.error} />
             ) : (
               <>
-                <div className="model-claim">
-                  <p>
-                    <span>{tr("声称")}</span>
-                    <b>{model || tr("未填写")}</b>
-                  </p>
-                  <p>
-                    <span>{tr("实际")}</span>
-                    <b className={diluted ? "bad" : suspicious ? "warn" : ""}>
-                      {f.top_display || f.top_model || f.family_name || tr("未归因")}
-                    </b>
-                  </p>
+                <div className={"fp-claim-band" + (diluted || suspicious ? " has-seal" : "")}>
+                  <div className="model-claim">
+                    <p>
+                      <span>{tr("声称")}</span>
+                      <b>{model || tr("未填写")}</b>
+                    </p>
+                    <p>
+                      <span>{tr("实际")}</span>
+                      <b className={diluted ? "bad" : suspicious ? "warn" : ""}>
+                        {f.top_display || f.top_model || f.family_name || tr("未归因")}
+                      </b>
+                    </p>
+                  </div>
+                  {(diluted || suspicious) && (
+                    <div className={"fake-seal is-round" + (suspicious ? " suspicious" : "")} aria-hidden="true">
+                      <span>{tr(diluted ? "假" : "可疑")}</span>
+                    </div>
+                  )}
                 </div>
                 <p className="basis-line">
                   <span className={"basis-chip" + (behavioral ? " behavioral" : "")}>
@@ -232,7 +466,7 @@ export default function ResultCards({
                 </p>
                 <div className="metric-line">
                   <strong className={diluted ? "bad family-title" : suspicious ? "warn family-title" : "family-title"}>
-                    {f.family_name || f.family}
+                    {tr(f.family_name || f.family)}
                   </strong>
                   <span>
                     {behavioral
@@ -294,7 +528,7 @@ export default function ResultCards({
                     label={tr("行为相似候选（探索性参考）")}
                     value={{
                       candidates: f.behavioral_top3,
-                      note: f.behavior_note,
+                      note: trNote(f.behavior_note, tr),
                     }}
                   />
                 )}
@@ -308,7 +542,7 @@ export default function ResultCards({
       </section>
       <section className="result-card">
         <div className="rc-head">
-          <CardTitle title={tr("注入大小")} label={tr("注入估计说明")} text={a?.note} />
+          <CardTitle title="注入大小" label="注入估计说明" text={trNote(a?.note, tr)} />
           <span className="rc-score">
             <ScoreShare verdict={scored} part="injection" />
           </span>
@@ -344,15 +578,15 @@ export default function ResultCards({
               )}
             </div>
             <div className="mini-stats">
-              {a.mode !== "cache_threshold" && (
+              {a.mode !== "cache_threshold" && typeof a.slope === "number" && (
                 <span>
                   {tr("斜率")} <b>{a.slope.toFixed(3)}</b>
                 </span>
               )}
               <span>
-                {a.mode === "cache_threshold" ? tr("扫描样本") : tr("复用采样")} <b>{tr("{n} 次", { n: a.points.length })}</b>
+                {a.mode === "cache_threshold" ? tr("扫描样本") : tr("复用采样")} <b>{tr("{n} 次", { n: (a.points ?? []).length })}</b>
               </span>
-              {a.points.length > 2 && a.max_residual != null && (
+              {(a.points ?? []).length > 2 && a.max_residual != null && (
                 <span>
                   {tr("最大残差")} <b>{a.max_residual.toFixed(1)}</b>
                 </span>
@@ -426,7 +660,7 @@ export default function ResultCards({
       {!v.total && integrity && (
         <section className="result-card integrity-card">
           <div className="rc-head">
-            <CardTitle title={tr("接口完整性")} label={tr("接口完整性说明")} text={tr("只评价协议和证据链，不代表模型智力。未支持或缺字段会降低覆盖率，不会伪判为失败。")} />
+            <CardTitle title="接口完整性" label="接口完整性说明" text="只评价协议和证据链，不代表模型智力。未支持或缺字段会降低覆盖率，不会伪判为失败。" />
           </div>
           <div className="metric-line">
             <strong className={integrity.score == null ? "warn" : "good"}>
@@ -486,8 +720,8 @@ export default function ResultCards({
                 {t.sig_class && (
                   <span className="check-item" title={t.sig_class}>
                     <i>{tr("签名结构")}</i>
-                    <b className={t.sig_class.startsWith("真签") ? "ok" : "warn"}>
-                      {sigShort(t.sig_class)}
+                    <b className={t.sig_forged || t.sig_class.startsWith("伪造") ? "no" : t.sig_class.startsWith("真签") || t.sig_class.startsWith("标准信封") ? "ok" : "warn"}>
+                      {tr(sigShort(t.sig_class))}
                       {sigBytes(t.sig_class) ? " · " + sigBytes(t.sig_class) : ""}
                     </b>
                   </span>
@@ -513,7 +747,7 @@ export default function ResultCards({
                   </span>
                 )}
               </div>
-              <p className="muted">{t.reason}</p>
+              {t.reason ? <p className="muted">{trThinkingReason(t.reason, tr)}</p> : null}
               <Details
                 label={tr("签名校验回显")}
                 value={{
@@ -541,9 +775,9 @@ export default function ResultCards({
         <section className="result-card">
           <div className="rc-head">
             <CardTitle
-              title={tr("协议校验")}
-              label={tr("协议校验说明")}
-              text={tr("向渠道发 10 个官方 API 必定拒绝的请求：缺 max_tokens、未知字段、system role 等。被拒绝才算通过；上游不可用、限流或超时算不定，不计分。")}
+              title="协议校验"
+              label="协议校验说明"
+              text="向渠道发 10 个官方 API 必定拒绝的请求：缺 max_tokens、未知字段、system role 等。被拒绝才算通过；上游不可用、限流或超时算不定，不计分。"
             />
             <span className="rc-score">
               <ScoreShare verdict={scored} part="strictness" />
@@ -554,7 +788,7 @@ export default function ResultCards({
               {strictPassed} / {strictAnswered}
             </strong>
           </div>
-          <div className="check-rows">
+          <div className="check-rows strict-check-rows">
             {strictChecks.map((c) => (
               <span key={c.name} className="check-row" title={c.detail || ""}>
                 <i>{tr(c.title || c.name)}</i>
@@ -584,7 +818,7 @@ export default function ResultCards({
               </span>
             ))}
           </div>
-          <p className="muted">{v.claude_deep.note}</p>
+          {v.claude_deep.note ? <p className="muted">{tr(v.claude_deep.note)}</p> : null}
           {v.claude_deep.error ? <ErrorFold text={v.claude_deep.error} /> : null}
         </section>
       )}
@@ -592,7 +826,7 @@ export default function ResultCards({
       <Group id="group-ability" title="能力表现">
       <section className={"result-card" + (v.conversation ? " conversation-wide" : "")}>
         <div className="rc-head">
-          <CardTitle title={tr("推理表现")} label={tr("评分说明")} text={q?.note} />
+          <CardTitle title="推理表现" label="评分说明" text={trNote(q?.note, tr)} />
           <span className="rc-score">
             <ScoreShare verdict={scored} part="iq" />
           </span>
@@ -636,7 +870,7 @@ export default function ResultCards({
                           : x.earned + " / " + x.max + (x.half ? tr("（半分）") : "")}
                     </b>
                   </summary>
-                  {x.skipped && <p>{x.error}</p>}
+                  {x.skipped && <p>{x.error ? tr(x.error) : null}</p>}
                   {x.error && !x.skipped && <ErrorFold text={x.error} />}
                   <h4>{tr("题目")}</h4>
                   <pre>{x.prompt}</pre>
@@ -667,7 +901,15 @@ export default function ResultCards({
                       [tr("耗时")]: x.ms,
                     }}
                   />
-                  {x.tags?.length > 0 && <p>{x.tags.join(" · ")}</p>}
+                  {x.tags?.length > 0 && (
+                    <div className="question-tags">
+                      {x.tags.map((tag) => (
+                        <span className="question-tag is-pill" key={tag}>
+                          {trTag(tag, tr)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </details>
               ))}
             </div>
@@ -678,9 +920,9 @@ export default function ResultCards({
         <section className="result-card vision-card">
           <div className="rc-head">
             <CardTitle
-              title={tr("识图能力")}
-              label={tr("评分说明")}
-              text={vision?.note}
+              title="识图能力"
+              label="评分说明"
+              text={trNote(vision?.note, tr)}
             />
             <span className="rc-score">
               <ScoreShare verdict={scored} part="vision" />
@@ -695,7 +937,7 @@ export default function ResultCards({
                   {vision.recognized ? tr("识图成功") : tr("识图失败")}
                 </strong>
                 <span>{tr("识图")}</span>
-                <b className="score-chip">
+                <b className={"score-chip" + (vision.recognized_score === 0 ? " is-zero" : "")}>
                   {vision.recognized_score} / {vision.recognized_max}
                 </b>
               </div>
@@ -712,7 +954,7 @@ export default function ResultCards({
                       : tr("答错")}
                 </strong>
                 <span>{tr("答对")}</span>
-                <b className="score-chip">
+                <b className={"score-chip" + (vision.answer_score === 0 ? " is-zero" : "")}>
                   {vision.answer_score} / {vision.answer_max}
                 </b>
               </div>
@@ -780,7 +1022,7 @@ export default function ResultCards({
                       : tr("未经验证")}
                 </strong>
               </div>
-              <p className="muted">{tr(result.reason || "")}</p>
+              <p className="muted">{trCapabilityReason(result.reason || "", tr)}</p>
               {result.evidence != null && (
                 <Details label={tr("检测证据")} value={result.evidence} />
               )}
@@ -804,9 +1046,9 @@ export default function ResultCards({
               </strong>
               <span>{tr("客观事件")}</span>
             </div>
-            <p className="muted">{tr(knowledge.reason || "")}</p>
-            {knowledge.web_suspect && <p className="knowledge-note">{tr(knowledge.web_suspect)}</p>}
-            {knowledge.gap_note && <p className="knowledge-note">{tr(knowledge.gap_note)}</p>}
+            <p className="muted">{trKnowledgeReason(knowledge.reason || "", tr)}</p>
+            {knowledge.web_suspect && <p className="knowledge-note">{trKnowledgeSuspect(knowledge.web_suspect, tr)}</p>}
+            {knowledge.gap_note && <p className="knowledge-note">{trKnowledgeGap(knowledge.gap_note, tr)}</p>}
             {!!knowledge.rows?.length && (
               <ul className="knowledge-ladder">
                 {knowledge.rows.map((row) => (
@@ -846,7 +1088,7 @@ export default function ResultCards({
                     : tr("无法验证")}
               </strong>
             </div>
-            <p className="muted">{v.cache.reason}</p>
+            {v.cache.reason ? <p className="muted">{trConvReason(v.cache.reason, tr)}</p> : null}
             {v.cache.samples ? (
               <>
                 <div className="cache-rates">
@@ -874,11 +1116,11 @@ export default function ResultCards({
                     ? `${cacheToken(thirdCache?.read, thirdCache?.read_reported)} ÷ ${cacheToken(previousCacheTotal)} × 100%`
                     : "—"}
                   <Hint
-                    label={tr("末轮缓存率说明")}
+                    label="末轮缓存率说明"
                     text={
                       readOnlyCache
-                        ? tr("上游没有缓存写入时，末轮缓存率 = 末轮读取 ÷ 末轮总输入。上一轮读取作为读取链参考，缺写不当成 0。")
-                        : tr("上一条缓存读 + 写 = 下一条缓存读，就是 100%。末轮缓存率 = 末轮读取 ÷ 上一轮读加写。缺字段或请求失败时不计算。")
+                        ? "上游没有缓存写入时，末轮缓存率 = 末轮读取 ÷ 末轮总输入。上一轮读取作为读取链参考，缺写不当成 0。"
+                        : "上一条缓存读 + 写 = 下一条缓存读，就是 100%。末轮缓存率 = 末轮读取 ÷ 上一轮读加写。缺字段或请求失败时不计算。"
                     }
                   />
                 </p>
@@ -975,8 +1217,8 @@ export default function ResultCards({
               )}
             </div>
           )}
-          <p className="muted">{v.force_cache.conclusion}</p>
-          <div className="check-rows">
+          {v.force_cache.conclusion ? <p className="muted">{trForceCacheConclusion(v.force_cache.conclusion, tr)}</p> : null}
+          <div className="check-rows force-cache-rows">
             {v.force_cache.steps.map((s, index) => (
               <span key={s.key + "-" + index} className="check-row">
                 <i>{tr(s.label) + " · " + (index % 2 === 0 ? tr("首写") : tr("重放"))}</i>
@@ -986,7 +1228,7 @@ export default function ResultCards({
               </span>
             ))}
           </div>
-          <p className="muted">{v.force_cache.note}</p>
+          {v.force_cache.note ? <p className="muted">{tr(v.force_cache.note)}</p> : null}
           {v.force_cache.error ? <ErrorFold text={v.force_cache.error} /> : null}
         </section>
       )}

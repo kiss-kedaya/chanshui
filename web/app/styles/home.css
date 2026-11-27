@@ -1,0 +1,410 @@
+/* ==========================================================================
+   Home Audit Form & Controls Stylesheet (owned by M2)
+   Loaded strictly after globals.css via web/app/layout.tsx
+   ========================================================================== */
+
+/* ---- 1. Stacking Context & Popover Clearance ---- */
+@keyframes card-appear {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.opening,
+.opening:has(.custom-select > button[aria-expanded="true"], .model-picker[data-open="true"]) {
+  z-index: auto;
+  overflow: visible;
+}
+.opening > .connection-card {
+  position: relative;
+  z-index: auto;
+  animation-name: card-appear;
+}
+.opening > .connection-card:has(
+    .custom-select > button[aria-expanded="true"],
+    .model-picker[data-open="true"]
+  ) {
+  z-index: auto;
+}
+.ask-panel:has(.custom-select > button[aria-expanded="true"]) {
+  z-index: auto;
+  content-visibility: visible;
+  overflow: visible;
+}
+.model-picker[data-open="true"] {
+  position: relative;
+  z-index: var(--z-dropdown);
+}
+.field:has(.custom-select > button[aria-expanded="true"]) {
+  position: relative;
+  z-index: var(--z-dropdown);
+}
+
+/* ---- 2. Label Row, Input Action & Wrapping ---- */
+.field .label-row {
+  margin-bottom: 8px;
+  gap: 6px;
+}
+.field .label-row label {
+  margin-bottom: 0;
+}
+.field .label-row .hint {
+  margin-top: 0;
+}
+.input-action > button {
+  top: 50%;
+  right: 6px;
+  width: 36px;
+  height: 36px;
+  transform: translateY(-50%);
+}
+.form-bottom-row > p {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.5;
+}
+.bank-strip {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.model-field small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* ---- 3. OptChip & Zero-Jump Locked State ---- */
+.opt-chip {
+  min-height: 36px;
+  padding: 4px 10px 4px 12px;
+  gap: 6px;
+  cursor: default;
+}
+.opt-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+.opt-chip-toggle > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.opt-chip:has(input:disabled) .opt-chip-toggle {
+  cursor: not-allowed;
+}
+.opt-chip.is-locked {
+  opacity: 1;
+  border-style: dashed;
+  border-color: var(--line);
+  background: var(--surface-subtle);
+  color: var(--muted);
+}
+.opt-chip.is-locked:hover {
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+.opt-chip.is-locked .opt-chip-toggle {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.opt-chip .opt-locked-note {
+  padding-left: 4px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+/* ---- 4. ModelPicker Polish ---- */
+.model-picker:not(.has-clear) > input {
+  padding-right: 88px;
+}
+.model-picker.has-clear > input {
+  padding-right: 128px;
+}
+.model-clear {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+}
+.model-clear svg {
+  width: 14px;
+  height: 14px;
+}
+.model-popover {
+  display: flex;
+  flex-direction: column;
+  border-color: var(--dialog-border);
+}
+.model-options {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.model-empty,
+.model-loading {
+  min-height: 0;
+}
+.model-popover-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.model-popover-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.model-family {
+  flex: 0 0 auto;
+  min-width: 66px;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.model-option {
+  border: 1px solid transparent;
+  transition:
+    background var(--t-fast) ease,
+    border-color var(--t-fast) ease,
+    color var(--t-fast) ease;
+}
+.model-option[data-active="true"] {
+  background: var(--surface-hover);
+  border-color: var(--border-subtle);
+}
+.model-option[aria-selected="true"] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--accent);
+}
+.model-option[aria-selected="true"][data-active="true"] {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-hover));
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  color: var(--accent);
+}
+.model-status {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.model-status svg {
+  flex: none;
+  margin-top: 2px;
+}
+.model-status > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.model-status.is-ok {
+  color: var(--ok);
+}
+.model-status.is-warn {
+  color: var(--warn);
+}
+.model-status.is-error {
+  color: var(--bad);
+}
+
+/* ---- 5. Select Polish (Home, Feedback Dialog & Admin) ---- */
+.custom-select > button:disabled {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-popover {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.select-popover > input {
+  flex: none;
+}
+.select-popover[data-placement="top"] {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom center;
+  animation-name: popover-in-top;
+}
+@keyframes popover-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.select-options {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(260px, var(--select-max-h, 260px));
+}
+.feedback-dialog .select-options {
+  max-height: min(180px, var(--select-max-h, 180px));
+}
+.select-options > button {
+  border: 1px solid transparent;
+}
+.select-options > button:focus {
+  outline: none;
+}
+.select-options > button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.select-options > button:focus-visible {
+  background: var(--surface-hover);
+  color: var(--ink);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.select-options > button[aria-selected="true"] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.select-options > button[aria-selected="true"]:hover,
+.select-options > button[aria-selected="true"]:focus-visible {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-hover));
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  color: var(--accent);
+}
+.select-check {
+  flex: none;
+  color: var(--accent);
+}
+
+/* ---- 6. AuditHero Editorial & 6-Theme Polish ---- */
+.audit-hero {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--hero-ink) 7%, transparent),
+    var(--hero-shadow);
+}
+.opening .hero-content h1 {
+  letter-spacing: -0.025em;
+}
+.hero-kicker svg,
+.hero-kicker i {
+  flex-shrink: 0;
+}
+.hero-points {
+  gap: 9px;
+}
+.hero-points li {
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  transition:
+    border-color var(--t-fast) ease,
+    background var(--t-fast) ease;
+}
+.hero-points li small {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.hero-points li span {
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.hero-foot-meta {
+  padding: 14px 32px 18px;
+}
+
+/* ---- 7. Calm ErrorFold ---- */
+.error-mark,
+.error-mark .error-ring {
+  animation: none;
+}
+.error-toggle {
+  border-radius: inherit;
+  transition: background var(--t-fast) ease;
+}
+.error-toggle:hover {
+  background: color-mix(in srgb, var(--bad) 6%, transparent);
+}
+.error-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.error-detail {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.error-compact .error-detail {
+  margin: 0 10px 10px 36px;
+}
+
+/* ---- 8. Responsive Overrides ---- */
+@media (max-width: 1100px) {
+  .hero-foot-meta {
+    padding: 14px 26px 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hero-foot-meta {
+    padding: 12px 19px 14px;
+  }
+  .error-detail,
+  .error-compact .error-detail {
+    margin: 0 12px 12px 14px;
+  }
+}
+
+@media (max-width: 560px) {
+  .detect-extras {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 360px) {
+  .hero-points {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- 9. Squircle Opt-Out for Pill OptChips ---- */
+@supports (corner-shape: squircle) {
+  .opt-chip {
+    corner-shape: round;
+  }
+}

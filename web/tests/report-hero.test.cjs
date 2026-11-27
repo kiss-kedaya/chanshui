@@ -175,3 +175,52 @@ test("deep audit and forced cache show their share of the total and the measured
   assert.match(forced, /<i>无参数写缓存<\/i><b class="no">会（强制）<\/b>/);
   assert.ok(!forced.includes("5 分钟档"));
 });
+
+test("anti-cheat verdict switches hero headline and renders dedicated evidence card", () => {
+  const v = verdict({
+    anticheat: {
+      detected: true,
+      confirmed_count: 1,
+      penalized_parts: ["fingerprint"],
+      summary: "检测到 1 项针对性作假证据",
+      signals: [
+        { code: "fp_static_replay", section: "fingerprint", severity: "confirmed", title: "数字指纹跨样本静态数组回放", detail: "numeric-1 与 numeric-2 出现连续 300 个相同数字" },
+      ],
+    },
+  });
+  v.total.parts[0] = part("fingerprint", 0, 21);
+  v.total.score = 75;
+  const html = render(v);
+  assert.match(html, /data-level="fake"/);
+  assert.match(html, /<p class="sh-headline">检测到针对性作假<\/p>/);
+  assert.match(html, /class="result-card anticheat-card"/);
+  assert.ok(!html.includes("/blacklist"));
+  assert.match(html, /<span>fingerprint<\/span><b>0\/21<\/b>/);
+});
+
+test("blocked-domain zero-request verdict renders cleanly without throwing", () => {
+  const blocked = {
+    total: {
+      score: 0, max: 100, reason: "",
+      parts: [part("fingerprint", 0, 36), part("iq", 0, 24), part("vision", 0, 15), part("injection", 0, 13), part("tools", 0, 12)],
+    },
+    anticheat: {
+      detected: true,
+      confirmed_count: 1,
+      penalized_parts: ["fingerprint", "iq", "vision", "injection", "tools", "web", "thinking", "cache"],
+      summary: "目标域名命中已确认针对本站作假规则（jaaak.cc），未发起上游请求，直接按 0 分处置。",
+      signals: [{ code: "domain_blocked_zero_score", section: "domain", severity: "confirmed", title: "已知针对性作假站点（直接判 0 分）", detail: "命中域名规则 jaaak.cc" }],
+    },
+    fingerprint: { basis: "numeric", family: "unknown", family_name: "命中作假站点规则", family_prob: 0, top_model: "", top_prob: 0, results: [], used_outputs: 0, low_confidence: false, evidence: [], note: "已跳过" },
+    injection: { inj: 0, slope: 0, r2: null, max_residual: null, cache_header: "", score: 0, max_score: 10, reliable: false, note: "已跳过", points: [] },
+    iq: { score: 0, max: 100, paper_max: 0, complete: true, per_question: [], note: "已跳过" },
+    vision: { score: 0, max: 100, recognized: false, recognized_score: 0, recognized_max: 50, answer_score: 0, answer_max: 50, correct: false, note: "已跳过" },
+    tools: { status: "blocked", pass: false, reason: "已跳过", protocol: "anthropic" },
+    thinking: { pass: false, score: 0, max_score: 12, signature_present: false, think_len: 0, sig_len: 0, reason: "已跳过", thinking_text: "", signature: "", answer: "" },
+  };
+  const html = render(blocked);
+  assert.match(html, /data-level="fake"/);
+  assert.match(html, /站点规则/);
+  assert.match(html, /已知针对性作假站点（直接判 0 分）/);
+  assert.ok(!html.includes("/blacklist"));
+});
