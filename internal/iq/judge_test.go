@@ -7,17 +7,13 @@ import (
 	"testing"
 )
 
-func mdWrap(s string) string {
-	return "```text\n思考过程……\n```\n**分析**：先看遗传……\n" + s
-}
-
 func TestExtractAnswerSlot(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string
 	}{
-		{"推理若干……\n最终答案: 非亲生", "非亲生"},
-		{"推理若干……\n最终答案：非亲生", "非亲生"},
+		{"推理若干……\n最终答案: 1/6", "1/6"},
+		{"推理若干……\n最终答案：20", "20"},
 		{"some reasoning\nFinal Answer: at least 21", "at least 21"},
 		{"The answer is 29", "29"},
 		{"前文答案: 被覆盖\n后文\n本题答案: 覆盖后", "覆盖后"},
@@ -32,15 +28,15 @@ func TestExtractAnswerSlot(t *testing.T) {
 }
 
 func TestExtractAnswerStripsMarkdown(t *testing.T) {
-	in := "```text\n草稿 38\n```\n## 小结\n**最终答案**: **非亲生**"
+	in := "```text\n草稿 38\n```\n## 小结\n**最终答案**: **1/10**"
 	slot, _ := ExtractAnswer(in)
-	if strings.TrimSpace(slot) != "非亲生" {
+	if strings.TrimSpace(slot) != "1/10" {
 		t.Fatalf("markdown not stripped: %q", slot)
 	}
 }
 
 func TestExtractAnswerChainTailFallback(t *testing.T) {
-	long := strings.Repeat("推理链条。", 500) // ~2000+ chars
+	long := strings.Repeat("推理链条。", 500)
 	_, tail := ExtractAnswer(long + "末尾结论：至少 21 颗")
 	if !strings.Contains(tail, "至少 21 颗") {
 		t.Fatalf("chain tail should contain the ending: %q", tail[len(tail)-40:])
@@ -50,85 +46,130 @@ func TestExtractAnswerChainTailFallback(t *testing.T) {
 	}
 }
 
-func TestJudgePill(t *testing.T) {
-	q := GenPill()
-	cases := []struct {
-		ans  string
-		want int
-		half bool
-	}{
-		{"不叫醒，暂缓给药，持药观察", 6, false},
-		{"不喂药，继续观察，他已经睡着", 6, false},
-		{"无需服药，等他自然醒", 6, false},
-		{"暂不给药，先观察呼吸", 6, false},
-		{"应该叫醒他再喂一粒", 0, false},
-		{"把老人唤醒补服一片", 0, false},
-		{"可以叫醒，但先喂水", 0, false},
-		{"", 0, false},
+func TestJudgeTruthLiar(t *testing.T) {
+	q := GenTruthLiar(newRand(42), EncodingURL)
+	earned, half, _ := Judge(q, "逐个假设验证……\n最终答案: "+q.Answer)
+	if earned != 10 || half {
+		t.Fatalf("Q1 exact answer %q -> (%d,%v), want (10,false)", q.Answer, earned, half)
 	}
-	for _, c := range cases {
-		earned, half, _ := Judge(q, "推理……\n最终答案: "+c.ans)
-		if earned != c.want || half != c.half {
-			t.Fatalf("pill %q → (%d,%v), want (%d,%v)", c.ans, earned, half, c.want, c.half)
-		}
+	wrong := "1"
+	if q.Answer == "1" {
+		wrong = "2"
 	}
-	// “不叫醒” must NOT be treated as a wake action
-	earned, _, _ := Judge(q, "推理……\n最终答案: 不叫醒")
-	if earned != 6 {
-		t.Fatalf("不叫醒 must pass, got %d", earned)
+	// Earlier reasoning mentions the right number, but final slot is wrong -> must score 0!
+	earned, _, _ = Judge(q, "排除 "+q.Answer+" 号后认为是 "+wrong+"\n最终答案: "+wrong)
+	if earned != 0 {
+		t.Fatalf("Q1 wrong slot scored %d", earned)
 	}
 }
 
-func TestJudgeColorBlind(t *testing.T) {
-	q := GenColorBlind(newRand(42))
-	cases := []struct {
-		ans  string
-		want int
-		half bool
-		tag  string
-	}{
-		{"非亲生", 14, false, ""},
-		{"女儿不是亲生的", 14, false, ""},
-		{"不可能是亲生，伴X隐性遗传女儿发病父亲必病", 14, false, ""},
-		{"排除亲生关系", 14, false, ""},
-		{"亲生的可能性极低", 0, false, ""},
-		{"并非常见的亲生判断，应属非亲生", 14, false, ""},
-		{"红绿色盲是伴X隐性遗传，父亲正常则女儿不该发病", 7, true, "仅遗传链"},
-		{"这是隔代遗传，外公传给女儿", 7, true, "仅遗传链"},
-		{"色盲基因来自外祖父", 7, true, "仅遗传链"},
-		{"亲生，可能是基因突变", 0, false, ""},
-		{"父亲色觉正常，女儿也正常", 0, false, ""},
-		{"", 0, false, ""},
+func TestJudgeScheduleTraps(t *testing.T) {
+	q := GenSchedule(newRand(42), EncodingHex)
+	jobs, ok := scheduleParamsOf(q)
+	if !ok {
+		t.Fatal("missing schedule params")
 	}
-	for _, c := range cases {
-		earned, half, tags := Judge(q, "推理……\n最终答案: "+c.ans)
-		if earned != c.want || half != c.half {
-			t.Fatalf("Q4 %q → (%d,%v), want (%d,%v)", c.ans, earned, half, c.want, c.half)
+	total := 0
+	for _, d := range jobs {
+		total += d
+	}
+	lb := (total + 1) / 2
+	lpt := lptSchedule(jobs)
+
+	earned, half, _ := Judge(q, "最终答案: "+q.Answer)
+	if earned != 10 || half {
+		t.Fatalf("Q2 exact -> (%d,%v)", earned, half)
+	}
+	earned, half, tags := Judge(q, fmt.Sprintf("最终答案: %d", lb))
+	if earned != 0 || half || len(tags) == 0 || tags[0] != "忽略不可拆分" {
+		t.Fatalf("Q2 lb trap -> (%d,%v,%v)", earned, half, tags)
+	}
+	earned, half, tags = Judge(q, fmt.Sprintf("最终答案: %d", lpt))
+	if earned != 5 || !half || len(tags) == 0 || tags[0] != "贪心次优" {
+		t.Fatalf("Q2 LPT trap -> (%d,%v,%v)", earned, half, tags)
+	}
+}
+
+func TestJudgeCRTAndLowerBoundTrap(t *testing.T) {
+	q := GenCRT(newRand(42), EncodingBase64)
+	base, ok := crtBaseOf(q)
+	if !ok {
+		t.Fatal("missing CRT base")
+	}
+	earned, half, _ := Judge(q, "最终答案: "+q.Answer)
+	if earned != 10 || half {
+		t.Fatalf("Q3 exact -> (%d,%v)", earned, half)
+	}
+	earned, half, tags := Judge(q, fmt.Sprintf("最终答案: %d", base))
+	if earned != 0 || half || len(tags) == 0 || tags[0] != "忽略下界" {
+		t.Fatalf("Q3 base trap -> (%d,%v,%v)", earned, half, tags)
+	}
+}
+
+func TestJudgeGeneticsFractionsDecimalsAndTraps(t *testing.T) {
+	for _, gc := range geneticsPool {
+		q := Question{
+			ID:       "Q4",
+			Title:    "伴X遗传",
+			MaxScore: 12,
+			Answer:   gc.answer,
+			Tags:     []string{"贝叶斯遗传", "实例:" + gc.instance},
 		}
-		if c.tag != "" && len(tags) == 0 {
-			t.Fatalf("Q4 %q missing tag %q", c.ans, c.tag)
+		earned, half, _ := Judge(q, "推算……\n最终答案: "+gc.answer)
+		if earned != 12 || half {
+			t.Fatalf("%s exact %s -> (%d,%v)", gc.instance, gc.answer, earned, half)
 		}
-		if c.tag != "" && tags[0] != c.tag {
-			t.Fatalf("Q4 %q tag=%q want %q", c.ans, tags[0], c.tag)
+		earned, half, tags := Judge(q, "推算……\n最终答案: "+gc.trap)
+		if earned != 0 || half || len(tags) == 0 || tags[0] != gc.trapTag {
+			t.Fatalf("%s trap %s -> (%d,%v,%v), want tag %q", gc.instance, gc.trap, earned, half, tags, gc.trapTag)
 		}
+	}
+	// Equivalent forms: LaTeX \frac, decimal, percentage, unreduced fraction
+	q := Question{ID: "Q4", MaxScore: 12, Answer: "1/10", Tags: []string{"实例:bayes-son-k2"}}
+	for _, form := range []string{`$\frac{1}{10}$`, "2/20", "0.1", "10%", "10.0%"} {
+		earned, _, _ := Judge(q, "最终答案: "+form)
+		if earned != 12 {
+			t.Fatalf("equivalent probability %q -> %d, want 12", form, earned)
+		}
+	}
+	// Slotless reasoning tail picks LAST probability, not first prior 1/2
+	earned, _, _ := Judge(q, "先验概率为 1/2，经过 2 个正常儿子贝叶斯更新后，下一个儿子患病概率为 1/10。")
+	if earned != 12 {
+		t.Fatalf("slotless tail last probability -> %d, want 12", earned)
+	}
+}
+
+func TestJudgeForbidStepsAndTrap(t *testing.T) {
+	q := GenForbidSteps(newRand(42), EncodingHex)
+	base, ok := forbidBaseDistOf(q)
+	if !ok {
+		t.Fatal("missing forbid base")
+	}
+	earned, half, _ := Judge(q, "最终答案: "+q.Answer)
+	if earned != 10 || half {
+		t.Fatalf("Q5 exact -> (%d,%v)", earned, half)
+	}
+	earned, half, tags := Judge(q, fmt.Sprintf("最终答案: %d", base))
+	if earned != 0 || half || len(tags) == 0 || tags[0] != "忽略禁区" {
+		t.Fatalf("Q5 forbid trap -> (%d,%v,%v)", earned, half, tags)
 	}
 }
 
 func TestJudgeCandyClassic(t *testing.T) {
-	q := GenCandyClassic(newRand(42))
+	q := GenCandyClassic(newRand(42), EncodingURL)
 	cases := []struct {
 		ans  string
 		want int
 		half bool
 	}{
-		{"21", 16, false},
-		{"21 颗", 16, false},
-		{"至少 21.0", 16, false},
-		{"二十一", 16, false},
+		{"21", 12, false},
+		{"21 颗", 12, false},
+		{"至少 21.0", 12, false},
+		{"二十一", 12, false},
 		{"0.10 颗", 0, false},
-		{"29", 8, true},
-		{"29 颗", 8, true},
-		{"二十九", 8, true},
+		{"29", 6, true},
+		{"29 颗", 6, true},
+		{"二十九", 6, true},
 		{"30", 0, false},
 		{"8", 0, false},
 	}
@@ -144,17 +185,15 @@ func TestJudgeCandyClassic(t *testing.T) {
 }
 
 func TestJudgeCandyChainTailFallback(t *testing.T) {
-	q := GenCandyClassic(newRand(42))
-	// no slot at all; the chain tail ends with the number
+	q := GenCandyClassic(newRand(42), EncodingURL)
 	in := "思考：先算苹果侧……再算桃子侧……综合两种情况，最少需要取 21 颗糖。"
 	earned, half, _ := Judge(q, in)
-	if earned != 16 || half {
-		t.Fatalf("chain-tail fallback for 21 → (%d,%v), want (16,false)", earned, half)
+	if earned != 12 || half {
+		t.Fatalf("chain-tail fallback for 21 → (%d,%v), want (12,false)", earned, half)
 	}
-	// markdown-fenced slot still found after stripping
 	earned, _, _ = Judge(q, "```\n算出来是 29\n```\n最终答案: 29")
-	if earned != 8 {
-		t.Fatalf("fenced 29 → %d, want 8", earned)
+	if earned != 6 {
+		t.Fatalf("fenced 29 → %d, want 6", earned)
 	}
 }
 
@@ -167,35 +206,23 @@ func TestJudgeCandyVariant(t *testing.T) {
 		}
 		solver := int(solverF)
 		blind := blindCandyAnswer(variantStockOf(q))
-		formula := strconvI(blind)
 		cases := []struct {
 			ans  string
 			earn int
 			half bool
 			tag  string
 		}{
-			{q.Answer, 16, false, ""},
-			{strconvI(21), 0, false, "疑似套用经典答案"},
-			{formula, 8, true, "替代建模"},
+			{q.Answer, 12, false, ""},
+			{"21", 0, false, "疑似套用经典答案"},
+			{strconvI(blind), 6, true, "替代建模"},
 		}
-		// solver+1 must be rejected; skip when it collides with 21/25/blind
-		if solver+1 != 21 && solver+1 != blind && solver+1 != 25 {
+		if solver+1 != 21 && solver+1 != blind {
 			cases = append(cases, struct {
 				ans  string
 				earn int
 				half bool
 				tag  string
 			}{strconvI(solver + 1), 0, false, ""})
-		}
-		// 25 is judged as the classic blind answer only when it collides with
-		// none of the stock's own meaningful values (solver, solver+1, blind)
-		if blind != 25 && solver != 25 && solver+1 != 25 {
-			cases = append(cases, struct {
-				ans  string
-				earn int
-				half bool
-				tag  string
-			}{strconvI(25), 0, false, ""})
 		}
 		for _, c := range cases {
 			earned, half, tags := Judge(q, "推理……\n最终答案: "+c.ans)
@@ -218,22 +245,19 @@ func TestJudgeSocks(t *testing.T) {
 		}
 		formula := 2*p + len(counts) - 1
 		if formula == worst {
-			continue // generator fell back on this seed; formula answer == correct
+			continue
 		}
 		wrong := worst + 1
 		if wrong == formula {
 			wrong = worst - 1
-		}
-		if wrong < 0 {
-			continue
 		}
 		cases := []struct {
 			ans  string
 			earn int
 			half bool
 		}{
-			{q.Answer, 16, false},
-			{strconvI(formula), 8, true},
+			{q.Answer, 12, false},
+			{strconvI(formula), 6, true},
 			{strconvI(wrong), 0, false},
 		}
 		for _, c := range cases {
@@ -259,71 +283,22 @@ func TestJudgeNumericEquivalence(t *testing.T) {
 	for _, pair := range equivs {
 		a, e1 := parseNum(pair[0])
 		b, e2 := parseNum(pair[1])
-		if e1 != nil || e2 != nil || numEq(a, b) != true {
+		if e1 != nil || e2 != nil || !numEq(a, b) {
 			t.Fatalf("equivalence %q vs %q failed (%v %v)", pair[0], pair[1], e1, e2)
 		}
-	}
-	if _, e := parseNum("二十一"); e != nil || !numEq(mustNum("二十一"), 21) {
-		t.Fatalf("CN numeral parse failed")
-	}
-	if _, e := parseNum("一百"); e != nil {
-		// 一百 = 100 is beyond the ≤99 map; must not parse as 21-like garbage
-		t.Logf("一百 intentionally unsupported: %v", e)
-	}
-}
-
-func TestJudgeAnchorLevelDrop(t *testing.T) {
-	q := GenAnchor()
-	full := []string{
-		"最终答案: 水位下降",
-		"最终答案: 水位会下降",
-		"推理里写了水位下降。\n最终答案: 下降",
-		"最终答案: 下降，因为铁锚在船上时排水体积更大",
-	}
-	for _, text := range full {
-		score, half, _ := Judge(q, text)
-		if score != 10 || half {
-			t.Fatalf("full %q => %d half=%v", text, score, half)
-		}
-	}
-	score, half, tags := Judge(q, "最终答案: 下降")
-	if score != 5 || !half || len(tags) == 0 {
-		t.Fatalf("direction only => %d half=%v tags=%v", score, half, tags)
-	}
-	score, _, _ = Judge(q, "最终答案: 上升")
-	if score != 0 {
-		t.Fatalf("rise => %d", score)
-	}
-	score, _, _ = Judge(q, "正文误写水位下降。\n最终答案: 上升")
-	if score != 0 {
-		t.Fatalf("contradiction => %d", score)
-	}
-}
-
-func TestJudgeTagsPropagate(t *testing.T) {
-	q := GenCandyClassic(newRand(42))
-	_, _, tags := Judge(q, "推理……\n最终答案: 29")
-	if len(tags) == 0 || tags[0] != "替代建模" {
-		t.Fatalf("tags must propagate: %v", tags)
 	}
 }
 
 func ExampleJudge_slotPriority() {
-	q := GenCandyClassic(newRand(42))
+	q := GenCandyClassic(newRand(42), EncodingURL)
 	e, _, _ := Judge(q, "中间过程提到 29。最终答案: 21")
 	fmt.Println(e)
-	// Output: 16
-}
-
-func mustNum(s string) float64 {
-	v, _ := parseNum(s)
-	return v
+	// Output: 12
 }
 
 func strconvI(v int) string { return fmt.Sprintf("%d", v) }
 func strconvAtoi(s string) (int, error) {
-	v, err := strconv.Atoi(strings.TrimSpace(s))
-	return v, err
+	return strconv.Atoi(strings.TrimSpace(s))
 }
 
 func TestSocksAnswerSixWithoutSlot(t *testing.T) {
@@ -331,10 +306,10 @@ func TestSocksAnswerSixWithoutSlot(t *testing.T) {
 	q.Answer = "6"
 	q.Tags = []string{"plain"}
 	earned, half, _ := Judge(q, "count the socks\nso the number is 6")
-	if earned != 16 || half {
+	if earned != 12 || half {
 		t.Fatalf("essay 6 -> %d half=%v", earned, half)
 	}
-	earned, _, _ = Judge(q, "mentions 6\n"+"\u6700\u7ec8\u7b54\u6848: 11")
+	earned, _, _ = Judge(q, "mentions 6\n最终答案: 11")
 	if earned != 0 {
 		t.Fatalf("wrong slot rescued to %d", earned)
 	}

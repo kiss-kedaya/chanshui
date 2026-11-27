@@ -117,28 +117,22 @@ func TestScoreEmpty(t *testing.T) {
 }
 
 func TestScoreFromRealJudges(t *testing.T) {
-	// integration: generate the five real questions, judge ideal answers,
-	// score → must be 100; then make Q7 half → expect 76.
+	// integration: generate real questions from the new battery, judge ideal
+	// answers -> 100; then make Q7 half -> excludes half credit from numerator.
 	var items []QItem
-	for _, q := range []Question{
-		GenPill(),
-		GenColorBlind(newRand(42)),
-		GenCandyClassic(newRand(42)),
-		GenCandyVariant(newRand(42)),
-		GenSocks(newRand(42)),
-	} {
+	for _, q := range GenerateBattery(newRand(42)) {
 		full := "推理……\n最终答案: " + q.Answer
 		earned, half, tags := Judge(q, full)
 		items = append(items, QItem{ID: q.ID, Title: q.Title, Max: q.MaxScore, Earned: earned, Half: half, Tags: tags, LimitSec: q.LimitSec})
 	}
 	res := Score(items)
-	if res.Score != 100 {
-		t.Fatalf("ideal answers Score = %d, want 100 (%+v)", res.Score, res.PerQuestion)
+	if res.Score != 100 || res.Max != 100 {
+		t.Fatalf("ideal answers Score = %d/%d, want 100/100 (%+v)", res.Score, res.Max, res.PerQuestion)
 	}
-	items[4].Earned = 7
-	items[4].Half = true
-	items[4].Tags = []string{"替代建模"}
-	if got := Score(items).Score; got != 76 {
-		t.Fatalf("Q7-half Score = %d, want 76", got)
+	items[6].Earned = 6
+	items[6].Half = true
+	items[6].Tags = []string{"替代建模"}
+	if got := Score(items).Score; got != 88 {
+		t.Fatalf("Q7-half Score = %d, want 88", got)
 	}
 }

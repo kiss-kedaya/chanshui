@@ -111,6 +111,7 @@ test("ThemeMenu renders trigger and popover controls cleanly", () => {
   const html = renderToStaticMarkup(React.createElement(ThemeMenu));
   assert.match(html, /class="theme-menu"/);
   assert.match(html, /class="theme-trigger"/);
+  assert.match(html, /theme-dot-mono/);
   assert.match(html, /外观/);
   const source = fs.readFileSync(path.join(__dirname, "../components/ThemeMenu.tsx"), "utf8");
   assert.match(source, /pointerdown/);

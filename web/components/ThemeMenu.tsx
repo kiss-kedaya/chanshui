@@ -8,14 +8,14 @@ type Mode = "light" | "dark";
 type Theme = { accent: Accent; mode: Mode };
 
 function parseAccent(raw?: string): Accent {
-  if (raw === "mint" || raw === "mono") return raw;
-  return "orange";
+  if (raw === "orange" || raw === "mint") return raw;
+  return "mono";
 }
 
 export default function ThemeMenu() {
   const { t: tr } = useI18n();
   const [theme, setTheme] = useState<Theme>({
-      accent: "orange",
+      accent: "mono",
       mode: "light",
     }),
     [open, setOpen] = useState(false);
@@ -73,6 +73,14 @@ export default function ThemeMenu() {
           <div className="theme-choices theme-choices-3">
             <button
               type="button"
+              aria-pressed={theme.accent === "mono"}
+              onClick={() => change({ ...theme, accent: "mono" })}
+            >
+              <i className="theme-dot theme-dot-mono" />
+              <span>{tr("黑白灰")}</span>
+            </button>
+            <button
+              type="button"
               aria-pressed={theme.accent === "orange"}
               onClick={() => change({ ...theme, accent: "orange" })}
             >
@@ -86,14 +94,6 @@ export default function ThemeMenu() {
             >
               <i className="theme-dot theme-dot-mint" />
               <span>{tr("薄荷绿")}</span>
-            </button>
-            <button
-              type="button"
-              aria-pressed={theme.accent === "mono"}
-              onClick={() => change({ ...theme, accent: "mono" })}
-            >
-              <i className="theme-dot theme-dot-mono" />
-              <span>{tr("黑白灰")}</span>
             </button>
           </div>
           <span className="theme-label">{tr("明暗")}</span>

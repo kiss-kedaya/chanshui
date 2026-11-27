@@ -38,7 +38,8 @@ func testSetup(t *testing.T) (*Server, *httptest.Server, *atomic.Bool, *atomic.I
 		if len(q.Messages) > 0 {
 			prompt = q.Messages[0].Content
 		}
-		if fail.Load() && strings.Contains(prompt, "医嘱") {
+		decoded, _ := iq.DecodePrompt(prompt)
+		if fail.Load() && strings.Contains(decoded, "suspects") {
 			w.WriteHeader(503)
 			fmt.Fprint(w, `{"error":{"type":"busy","message":"busy"}}`)
 			return
@@ -48,15 +49,17 @@ func testSetup(t *testing.T) (*Server, *httptest.Server, *atomic.Bool, *atomic.I
 		if q.Thinking != nil {
 			answer = "7417"
 			switch {
-			case strings.Contains(prompt, "医嘱"):
-				answer = "最终答案: 不叫醒，暂缓给药"
-			case strings.Contains(prompt, "亲生"):
-				answer = "最终答案: 非亲生"
-			case strings.Contains(prompt, "糖果"):
+			case strings.Contains(decoded, "suspects"):
+				answer = fmt.Sprintf("最终答案: %d", solveMockTruthLiar(decoded))
+			case strings.Contains(decoded, "X-linked"):
+				answer = "最终答案: 1/6"
+			case strings.Contains(decoded, "Circle:"):
 				var ca, ct, cm, sa, st, sm int
-				fmt.Sscanf(prompt, "一盒糖果中，圆形的有苹果味 %d 颗、桃子味 %d 颗、西瓜味 %d 颗；星形的有苹果味 %d 颗、桃子味 %d 颗、西瓜味 %d 颗。", &ca, &ct, &cm, &sa, &st, &sm)
-				answer = fmt.Sprintf("最终答案: %d", iq.SolveCandy([3]int{ca, ct, cm}, [3]int{sa, st, sm}))
-			case strings.Contains(prompt, "袜子"):
+				if i := strings.Index(decoded, "Circle:"); i >= 0 {
+					fmt.Sscanf(decoded[i:], "Circle: %d apple, %d peach, %d melon.\nStar: %d apple, %d peach, %d melon.", &ca, &ct, &cm, &sa, &st, &sm)
+					answer = fmt.Sprintf("最终答案: %d", iq.SolveCandy([3]int{ca, ct, cm}, [3]int{sa, st, sm}))
+				}
+			case strings.Contains(decoded, "same-color pairs"):
 				answer = "最终答案: 6"
 			}
 		}
@@ -226,4 +229,77 @@ func postToken(t *testing.T, s *Server, path string, v any, token string) *httpt
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	return w
+}
+
+// solveMockTruthLiar solves a decoded Q1 prompt by evaluating all 5 candidate
+// thieves so retry-isolation tests get exact full marks in a single call.
+func solveMockTruthLiar(decoded string) int {
+	flat := strings.Join(strings.Fields(decoded), " ")
+	var wantK int
+	if i := strings.Index(flat, "exactly "); i >= 0 {
+		fmt.Sscanf(flat[i:], "exactly %d tell", &wantK)
+	}
+	stmts := map[int]string{}
+	// Statements are formatted as "1: ... 2: ... 3: ... 4: ... 5: ... Who is the thief?"
+	for sp := 1; sp <= 5; sp++ {
+		marker := fmt.Sprintf("%d: ", sp)
+		idx := strings.Index(flat, marker)
+		if idx < 0 {
+			continue
+		}
+		rest := flat[idx+len(marker):]
+		end := strings.IndexByte(rest, '.')
+		if end >= 0 {
+			stmts[sp] = strings.TrimSpace(rest[:end])
+		}
+	}
+	for thief := 1; thief <= 5; thief++ {
+		known := [6]bool{}
+		val := [6]bool{}
+		for pass := 0; pass < 6; pass++ {
+			for sp := 1; sp <= 5; sp++ {
+				if known[sp] {
+					continue
+				}
+				s := stmts[sp]
+				var a, b int
+				switch {
+				case strings.Contains(s, " or "):
+					fmt.Sscanf(s, "%d or %d is the thief", &a, &b)
+					val[sp], known[sp] = (thief == a || thief == b), true
+				case strings.Contains(s, "is not the thief"):
+					fmt.Sscanf(s, "%d is not the thief", &a)
+					val[sp], known[sp] = (thief != a), true
+				case strings.Contains(s, "is the thief"):
+					fmt.Sscanf(s, "%d is the thief", &a)
+					val[sp], known[sp] = (thief == a), true
+				case strings.HasPrefix(s, "Both "):
+					fmt.Sscanf(s, "Both %d and %d lie", &a, &b)
+					if known[a] && known[b] {
+						val[sp], known[sp] = (!val[a] && !val[b]), true
+					}
+				case strings.HasSuffix(s, " lies"):
+					fmt.Sscanf(s, "%d lies", &a)
+					if known[a] {
+						val[sp], known[sp] = !val[a], true
+					}
+				case strings.HasSuffix(s, " tells truth"):
+					fmt.Sscanf(s, "%d tells truth", &a)
+					if known[a] {
+						val[sp], known[sp] = val[a], true
+					}
+				}
+			}
+		}
+		tc := 0
+		for sp := 1; sp <= 5; sp++ {
+			if val[sp] {
+				tc++
+			}
+		}
+		if tc == wantK {
+			return thief
+		}
+	}
+	return 1
 }

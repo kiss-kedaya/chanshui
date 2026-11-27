@@ -813,7 +813,7 @@ type conversationReport struct {
 
 // convSystem stays byte-identical for every turn; together with the first user
 // line it is the cache prefix the whole thread reuses.
-const convSystem = "禁止使用任何工具。回答问题直接给结论，不要展开推导过程；做推理题时在最后单独一行以「最终答案: 」开头给出短结论。"
+const convSystem = "禁止使用任何工具。如遇简单编码题面（URL、十六进制 ASCII 或 Base64），请直接心算解码后再作答；可简要推导，并在最后单独一行以「最终答案: 」开头给出短结论。"
 
 // The 0.8/5m route first writes cache at 512 tokens; the 1.2/1h route shows
 // the first write near 368 because about 144 hidden system tokens are deducted
@@ -1096,7 +1096,7 @@ func (s *Server) askQuestion(ctx context.Context, g gateway.Client, q Request, i
 		return m.StopReason == "max_tokens" || m.StopReason == "length"
 	}
 	ask := func(plain bool) (gateway.Metrics, error) {
-		req := gateway.CallRequest{Model: q.Model, Prompt: prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。直接给出结论，不要展开推导过程；回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
+		req := gateway.CallRequest{Model: q.Model, Prompt: prompt, Images: questionImages(item), System: []gateway.SystemBlock{{Text: "禁止使用任何工具。如题面包含简单编码（URL、十六进制 ASCII 或 Base64），请直接心算解码理解后再作答；可简要写出解码与推导，回答最后单独一行：最终答案: <短结论>。"}}, Thinking: iqThinking(q.Model), MaxTokens: 8192, Stream: true, TimeoutSeconds: q.Timeout, Validate: func(m gateway.Metrics) error {
 			if !truncated(m) && strings.TrimSpace(m.Answer) == "" && (!gateway.IsClaude(q.Model) || strings.TrimSpace(m.ThinkingText) == "") {
 				return fmt.Errorf("empty response")
 			}

@@ -41,8 +41,13 @@ func TestQuestionBatteryIncludesBridgeItem(t *testing.T) {
 		sum += q.MaxScore
 		if q.ID == "Q9" {
 			seenBridge = true
-			if q.Title != "夜间过桥" || q.Answer != "10" || q.MaxScore != 11 {
+			if q.Title != "夜间过桥" || q.MaxScore != 12 {
 				t.Fatalf("Q9 = %+v", q)
+			}
+			switch q.Answer {
+			case "10", "11", "12", "13":
+			default:
+				t.Fatalf("Q9 unexpected answer = %+v", q)
 			}
 		}
 	}

@@ -1,34 +1,19 @@
 package iq
 
-import (
-	"encoding/json"
-	"os"
-	"testing"
-)
+import "testing"
 
-func TestCapturedLivePillAnswer(t *testing.T) {
-	b, e := os.ReadFile("../../.artifacts/live-first-report.json")
-	if e != nil {
-		t.Skip("local captured evidence unavailable")
-	}
-	var r struct {
-		Verdict struct {
-			IQ struct {
-				Questions []struct{ ID, Answer string } `json:"per_question"`
-			}
+func TestFullBatteryIdealAnswersScore100(t *testing.T) {
+	battery := GenerateBattery(newRand(2026))
+	var items []QItem
+	for _, q := range battery {
+		earned, half, tags := Judge(q, "心算解码并推理完毕。\n最终答案: "+q.Answer)
+		if earned != q.MaxScore || half {
+			t.Fatalf("%s (%s) ideal answer %q -> earned=%d/%d half=%v tags=%v", q.ID, q.Title, q.Answer, earned, q.MaxScore, half, tags)
 		}
+		items = append(items, QItem{ID: q.ID, Title: q.Title, Max: q.MaxScore, Earned: earned, Half: half, Tags: tags, LimitSec: q.LimitSec})
 	}
-	if e = json.Unmarshal(b, &r); e != nil {
-		t.Fatal(e)
+	res := Score(items)
+	if res.Score != 100 || res.Max != 100 {
+		t.Fatalf("full battery ideal score = %d/%d, want 100/100", res.Score, res.Max)
 	}
-	for _, q := range r.Verdict.IQ.Questions {
-		if q.ID == "Q1" {
-			score, _, _ := Judge(GenPill(), q.Answer)
-			if score != 5 {
-				t.Fatalf("captured natural answer scored %d", score)
-			}
-			return
-		}
-	}
-	t.Fatal("missing Q1")
 }

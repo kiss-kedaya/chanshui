@@ -67,13 +67,15 @@ func indexRune(s string, r rune) int {
 }
 
 // ---------------------------------------------------------------------------
-// 数值等价
+// 数值与分数等价
 
 var numRe = regexp.MustCompile(`-?\d+(?:\.\d+)?`)
+var fracRe = regexp.MustCompile(`(\d+)\s*/\s*(\d+)`)
+var pctRe = regexp.MustCompile(`(-?\d+(?:\.\d+)?)\s*%`)
 
-// parseNum extracts the leading answer number before explanatory breakdowns in s and parses it to float64.
-// Chinese numerals (零..九十九, incl. 两=2, 二十一) are accepted when no
-// arabic number is present.
+// parseNum extracts the leading answer number before explanatory breakdowns in
+// s and parses it to float64. Chinese numerals (零..九十九, incl. 两=2, 二十一)
+// are accepted when no arabic number is present.
 func parseNum(s string) (float64, error) {
 	s = regexp.MustCompile(`(?:不是|并非|不等于|不应为|而非)\s*-?\d+(?:\.\d+)?`).ReplaceAllString(s, "")
 	cleaned := strings.NewReplacer(",", "", "，", "", " ", "", "\t", "").Replace(stripMarkdown(s))
@@ -82,6 +84,49 @@ func parseNum(s string) (float64, error) {
 	}
 	if v, ok := parseCNNum(cleaned); ok {
 		return v, nil
+	}
+	return 0, errNoNumber
+}
+
+// parseProb parses a probability expressed as a fraction (p/q), percentage
+// (x%), or decimal (0.xxx) into float64 in [0, 1]. When last is true, takes
+// the final probability in s (used for slotless chain-tail fallback).
+func parseProb(s string, last bool) (float64, error) {
+	s = regexp.MustCompile(`(?:不是|并非|不等于|不应为|而非)\s*(?:\d+\s*/\s*\d+|\d+(?:\.\d+)?%?)`).ReplaceAllString(s, "")
+	cleaned := strings.NewReplacer(",", "", "，", "", "$", "", "\\frac{", "", "}{", "/", "}", "").Replace(stripMarkdown(s))
+	if ms := fracRe.FindAllStringSubmatch(cleaned, -1); len(ms) > 0 {
+		m := ms[0]
+		if last {
+			m = ms[len(ms)-1]
+		}
+		num, e1 := strconv.ParseFloat(m[1], 64)
+		den, e2 := strconv.ParseFloat(m[2], 64)
+		if e1 == nil && e2 == nil && den > 0 {
+			return num / den, nil
+		}
+	}
+	if ms := pctRe.FindAllStringSubmatch(cleaned, -1); len(ms) > 0 {
+		m := ms[0]
+		if last {
+			m = ms[len(ms)-1]
+		}
+		v, err := strconv.ParseFloat(m[1], 64)
+		if err == nil {
+			return v / 100.0, nil
+		}
+	}
+	if ms := numRe.FindAllString(strings.ReplaceAll(cleaned, " ", ""), -1); len(ms) > 0 {
+		if last {
+			for i := len(ms) - 1; i >= 0; i-- {
+				if v, err := strconv.ParseFloat(ms[i], 64); err == nil && v >= 0 && v <= 1 {
+					return v, nil
+				}
+			}
+		} else {
+			if v, err := strconv.ParseFloat(ms[0], 64); err == nil && v >= 0 && v <= 1 {
+				return v, nil
+			}
+		}
 	}
 	return 0, errNoNumber
 }
@@ -97,11 +142,9 @@ var cnDigits = map[rune]int{
 	'六': 6, '七': 7, '八': 8, '九': 9,
 }
 
-// parseCNNum reads the FIRST Chinese numeral phrase worth ≤99 in s.
 func parseCNNum(s string) (float64, bool) {
 	runes := []rune(s)
 	for i := 0; i < len(runes); i++ {
-		// phrase window: consecutive chars in {零一二两三四五六七八九十}
 		j := i
 		for j < len(runes) && isCNNumRune(runes[j]) {
 			j++
@@ -121,14 +164,10 @@ func isCNNumRune(r rune) bool {
 	return digit || r == '十'
 }
 
-// cnPhraseValue parses 零..九十九: handles 十(10), 十X(11..19), X十(20,30..90),
-// X十Y(21..99).
 func cnPhraseValue(rs []rune) (int, bool) {
-	// reject all-zero / empty
 	if len(rs) == 0 {
 		return 0, false
 	}
-	// simple single digit
 	if len(rs) == 1 {
 		if v, ok := cnDigits[rs[0]]; ok && !(v == 0 && string(rs) != "零") {
 			return v, true
@@ -138,7 +177,6 @@ func cnPhraseValue(rs []rune) (int, bool) {
 		}
 		return 0, false
 	}
-	// long phrases: only 十-containing structures supported
 	tenIdx := -1
 	for i, r := range rs {
 		if r == '十' {
@@ -147,7 +185,6 @@ func cnPhraseValue(rs []rune) (int, bool) {
 		}
 	}
 	if tenIdx < 0 {
-		// e.g. 九九 (unusual); not supported
 		return 0, false
 	}
 	tens := 1
@@ -167,7 +204,6 @@ func cnPhraseValue(rs []rune) (int, bool) {
 		units = v
 	}
 	if tenIdx+2 < len(rs) {
-		// trailing junk inside the window (e.g. 十二十五) — unsupported
 		return 0, false
 	}
 	return tens*10 + units, true
@@ -177,41 +213,41 @@ func numEq(a, b float64) bool {
 	return math.Abs(a-b) < 1e-9
 }
 
+func probEq(a, b float64) bool {
+	return math.Abs(a-b) < 5e-4
+}
+
 // ---------------------------------------------------------------------------
 // 判分
 
 // Judge scores a full model response against its question. earned follows the
 // per-question rule; half marks half-credit (counted as a flag, NOT into the
-// 0-100 numerator); tags carry diagnostic labels like 替代建模.
+// 0-100 numerator); tags carry diagnostic labels like 替代建模 or 忽略禁区.
 func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 	slot, tail := ExtractAnswer(fullText)
-	text := slot
-	if text == "" {
-		text = tail
-	}
 	switch q.ID {
 	case "Q1":
-		earned, half, tags = judgePill(text)
+		earned, half, tags = judgeTruthLiar(q, slot, tail)
 	case "Q2":
-		earned, half, tags = judgeCarWash(text)
+		earned, half, tags = judgeSchedule(q, slot, tail)
 	case "Q3":
-		earned, half, tags = judgeBatBall(text)
+		earned, half, tags = judgeCRT(q, slot, tail)
 	case "Q4":
-		earned, half, tags = judgeColorBlind(text)
+		earned, half, tags = judgeGenetics(q, slot, tail)
 	case "Q5":
-		earned, half, tags = judgeAnchor(text, tail)
+		earned, half, tags = judgeForbidSteps(q, slot, tail)
 	case "Q6", "Q8":
-		earned, half, tags = judgeCandy(q, text, tail)
+		earned, half, tags = judgeCandy(q, slot, tail)
 	case "Q7":
-		earned, half, tags = judgeSocks(q, text, tail)
+		earned, half, tags = judgeSocks(q, slot, tail)
 	case "Q9":
-		earned, half, tags = judgeBridge(text, tail)
+		earned, half, tags = judgeBridge(q, slot, tail)
 	case "vision":
-		earned, half, tags = judgeChart(q, text, tail)
+		earned, half, tags = judgeChart(q, slot, tail)
 	default:
 		return 0, false, nil
 	}
-	if earned == 0 {
+	if earned == 0 && len(tags) == 0 {
 		if n, ok := fullForExpectedNumber(q, fullText, slot, tail); ok {
 			return n, false, nil
 		}
@@ -221,7 +257,7 @@ func Judge(q Question, fullText string) (earned int, half bool, tags []string) {
 
 // fullForExpectedNumber gives full marks when the published standard answer is
 // a number and the model ended on that number. Earlier reasoning numbers do
-// not count, and a wrong final slot is left at zero for the self-score round.
+// not count, and a wrong final slot is left at zero.
 func fullForExpectedNumber(q Question, full, slot, tail string) (int, bool) {
 	want, err := strconv.ParseFloat(strings.TrimSpace(q.Answer), 64)
 	if err != nil || q.MaxScore <= 0 {
@@ -262,87 +298,133 @@ func lastNum(s string) (float64, error) {
 	return 0, errNoNumber
 }
 
-var carWashPassRe = regexp.MustCompile(`开车|驾车|驾驶|自驾|开过去`)
-var carWashFailRe = regexp.MustCompile(`走路|步行|打车|出租|骑车|骑行|坐车`)
+func maxOr(q Question, def int) int {
+	if q.MaxScore > 0 {
+		return q.MaxScore
+	}
+	return def
+}
 
-func judgeCarWash(text string) (int, bool, []string) {
-	if carWashPassRe.MatchString(text) && !carWashFailRe.MatchString(text) {
-		return 5, false, nil
+func parseSlotOrTail(slot, tail string) (float64, bool) {
+	if slot != "" {
+		if v, err := parseNum(slot); err == nil {
+			return v, true
+		}
+	}
+	if v, err := lastNum(tail); err == nil {
+		return v, true
+	}
+	return 0, false
+}
+
+func judgeTruthLiar(q Question, text, tail string) (int, bool, []string) {
+	want, err := strconv.Atoi(strings.TrimSpace(q.Answer))
+	if err != nil {
+		return 0, false, nil
+	}
+	v, ok := parseSlotOrTail(text, tail)
+	if !ok {
+		return 0, false, nil
+	}
+	if numEq(v, float64(want)) {
+		return maxOr(q, 10), false, nil
 	}
 	return 0, false, nil
 }
 
-func judgeBatBall(text string) (int, bool, []string) {
-	v, err := parseNum(text)
-	if err == nil && numEq(v, 0.05) {
-		return 6, false, nil
+func judgeSchedule(q Question, text, tail string) (int, bool, []string) {
+	want, err := strconv.Atoi(strings.TrimSpace(q.Answer))
+	if err != nil {
+		return 0, false, nil
+	}
+	v, ok := parseSlotOrTail(text, tail)
+	if !ok {
+		return 0, false, nil
+	}
+	full := maxOr(q, 10)
+	if numEq(v, float64(want)) {
+		return full, false, nil
+	}
+	if jobs, has := scheduleParamsOf(q); has {
+		total := 0
+		for _, d := range jobs {
+			total += d
+		}
+		lb := (total + 1) / 2
+		lpt := lptSchedule(jobs)
+		if numEq(v, float64(lb)) {
+			return 0, false, []string{"忽略不可拆分"}
+		}
+		if lpt != want && numEq(v, float64(lpt)) {
+			return full / 2, true, []string{"贪心次优"}
+		}
 	}
 	return 0, false, nil
 }
 
-var anchorDownRe = regexp.MustCompile(`下降|降低|下沉`)
-var anchorReasonRe = regexp.MustCompile(`排水|浮力|体积|密度|重量`)
-var anchorLevelDownRe = regexp.MustCompile(`水位(?:会|将会|将|应该|应|已经|已|明显|略)?(?:下降|降低|下沉)`)
-var anchorUpRe = regexp.MustCompile(`上升|不变|不会下降|没有下降|未下降`)
-
-func judgeAnchor(text, tail string) (int, bool, []string) {
-	if anchorLevelDownRe.MatchString(text) || (anchorLevelDownRe.MatchString(tail) && !anchorUpRe.MatchString(text)) {
-		return 10, false, nil
-	}
-	if !anchorDownRe.MatchString(text) {
+func judgeCRT(q Question, text, tail string) (int, bool, []string) {
+	want, err := strconv.Atoi(strings.TrimSpace(q.Answer))
+	if err != nil {
 		return 0, false, nil
 	}
-	if anchorReasonRe.MatchString(text) {
-		return 10, false, nil
-	}
-	return 5, true, []string{"只答方向"}
-}
-
-var pillPassRe = regexp.MustCompile(`不叫醒|不喂|暂缓(?:给药|发放|发药|用药)|持药观察|无需服药|不给药|不发药|不發药|不必吃药|已经睡着就不用|暂不给药|无必要叫醒|没必要叫醒`)
-var pillWakeRe = regexp.MustCompile(`叫醒|唤醒`)
-var pillNegWakeRe = regexp.MustCompile(`(?:不|别|勿|未|莫|无法|不用|无需|不能|不可|不要|暂不|千万别|切莫)(?:叫醒|唤醒)`)
-
-func judgePill(text string) (int, bool, []string) {
-	text = regexp.MustCompile(`(?:无必要|没必要|无需|不必|不要|不能|不应|不可|不用|不|别|勿)(?:把|将)?[^，。；;：:
-]{0,8}(?:叫醒|唤醒)[^，。；;：:
-]*`).ReplaceAllString(text, "不叫醒")
-	if regexp.MustCompile(`仍应喂药|应该喂药|强行喂药|必须喂药`).MatchString(text) {
+	v, ok := parseSlotOrTail(text, tail)
+	if !ok {
 		return 0, false, nil
 	}
-	if pillPassRe.MatchString(text) && !pillWakeRe.MatchString(pillNegWakeRe.ReplaceAllString(text, "")) {
-		return 6, false, nil
+	if numEq(v, float64(want)) {
+		return maxOr(q, 10), false, nil
+	}
+	if base, has := crtBaseOf(q); has && base != want && numEq(v, float64(base)) {
+		return 0, false, []string{"忽略下界"}
 	}
 	return 0, false, nil
 }
 
-var (
-	cbFullRe    = regexp.MustCompile(`非亲生|不是亲生|并非亲生|不可能是亲生|排除亲生`)
-	cbChainRe   = regexp.MustCompile(`伴X|隔代|外公|外祖父|遗传|色盲基因`)
-	cbAffirmRe  = regexp.MustCompile(`亲生|正常`)
-	cbNegPrefix = regexp.MustCompile(`(?:不|非|并|未|无法|不可)(?:可能)?(亲生|正常)`)
-)
-
-func judgeColorBlind(text string) (int, bool, []string) {
-	if regexp.MustCompile(`不能排除|无法排除|不一定|不能断定|无法断定`).MatchString(text) {
+func judgeGenetics(q Question, slot, tail string) (int, bool, []string) {
+	want, err := parseProb(q.Answer, false)
+	if err != nil {
 		return 0, false, nil
 	}
-	if cbFullRe.MatchString(text) {
-		return 14, false, nil
+	var v float64
+	var perr error
+	if slot != "" {
+		v, perr = parseProb(slot, false)
 	}
-	if cbChainRe.MatchString(text) {
-		return 7, true, []string{"仅遗传链"}
+	if slot == "" || perr != nil {
+		v, perr = parseProb(tail, true)
+		if perr != nil {
+			return 0, false, nil
+		}
 	}
-	// (亲生|正常) without negation → 0 (affirmation is wrong)
-	stripped := cbNegPrefix.ReplaceAllString(text, "")
-	if cbAffirmRe.MatchString(stripped) {
-		return 0, false, nil
+	if probEq(v, want) {
+		return maxOr(q, 12), false, nil
+	}
+	if gc, ok := geneticsCaseOf(q); ok && gc.trap != "" {
+		if trapV, err := parseProb(gc.trap, false); err == nil && probEq(v, trapV) {
+			return 0, false, []string{gc.trapTag}
+		}
 	}
 	return 0, false, nil
 }
 
-// judgeCandy handles Q6 (classic, solver answer 21, blind answer 29) and Q8
-// (variant, solver answer from the generated stock, blind answer from
-// blindCandyAnswer).
+func judgeForbidSteps(q Question, text, tail string) (int, bool, []string) {
+	want, err := strconv.Atoi(strings.TrimSpace(q.Answer))
+	if err != nil {
+		return 0, false, nil
+	}
+	v, ok := parseSlotOrTail(text, tail)
+	if !ok {
+		return 0, false, nil
+	}
+	if numEq(v, float64(want)) {
+		return maxOr(q, 10), false, nil
+	}
+	if base, has := forbidBaseDistOf(q); has && base != want && numEq(v, float64(base)) {
+		return 0, false, []string{"忽略禁区"}
+	}
+	return 0, false, nil
+}
+
 func judgeCandy(q Question, text, tail string) (int, bool, []string) {
 	var solver, blind int
 	switch q.ID {
@@ -356,47 +438,38 @@ func judgeCandy(q Question, text, tail string) (int, bool, []string) {
 		solver = SolveCandy(circ, star)
 		blind = blindCandyAnswer(circ, star)
 	}
-	usedTail := false
-	v, err := parseNum(text)
-	if err != nil {
-		// slot empty or non-numeric → 思维链兜底: scan the last 2000 chars
-		tv, terr := parseNum(tail)
-		if terr != nil {
-			return 0, false, nil
-		}
-		v, usedTail = tv, true
-		_ = usedTail
+	v, ok := parseSlotOrTail(text, tail)
+	if !ok {
+		return 0, false, nil
 	}
+	full := maxOr(q, 12)
 	if numEq(v, float64(solver)) {
-		return 16, false, nil
+		return full, false, nil
 	}
 	if q.ID == "Q8" && numEq(v, 21) {
-		// 21 is the classic's (often non-optimal here) guarantee — parroting
-		// the textbook answer earns nothing
 		return 0, false, []string{"疑似套用经典答案"}
 	}
 	if numEq(v, float64(blind)) {
-		return 8, true, []string{"替代建模"}
+		return full / 2, true, []string{"替代建模"}
 	}
 	return 0, false, nil
 }
 
-// judgeBridge scores the night bridge item. 10 is the answer when the torch
-// stays on its stand and lights the whole span; 17 is the textbook answer that
-// silently assumes someone must carry the torch back every round.
-func judgeBridge(text, tail string) (int, bool, []string) {
-	v, err := parseNum(text)
+func judgeBridge(q Question, text, tail string) (int, bool, []string) {
+	want, err := strconv.Atoi(strings.TrimSpace(q.Answer))
 	if err != nil {
-		tv, terr := parseNum(tail)
-		if terr != nil {
-			return 0, false, nil
-		}
-		v = tv
+		want = 10
 	}
-	if numEq(v, 10) {
-		return 11, false, nil
+	times, _ := bridgeTimesOf(q)
+	trap := bridgeCarryBackAnswer(times)
+	v, ok := parseSlotOrTail(text, tail)
+	if !ok {
+		return 0, false, nil
 	}
-	if numEq(v, 17) {
+	if numEq(v, float64(want)) {
+		return maxOr(q, 12), false, nil
+	}
+	if numEq(v, float64(trap)) {
 		return 0, false, []string{"忽略定向支架"}
 	}
 	return 0, false, nil
@@ -408,25 +481,21 @@ func judgeSocks(q Question, text, tail string) (int, bool, []string) {
 		return 0, false, nil
 	}
 	formula := 2*p + len(counts) - 1
-	v, err := parseNum(text)
-	if err != nil {
-		tv, terr := parseNum(tail)
-		if terr != nil {
-			return 0, false, nil
-		}
-		v = tv
+	v, vok := parseSlotOrTail(text, tail)
+	if !vok {
+		return 0, false, nil
 	}
+	full := maxOr(q, 12)
 	if numEq(v, float64(worst)) {
-		return 16, false, nil
+		return full, false, nil
 	}
 	if numEq(v, float64(formula)) {
-		return 8, true, []string{"替代建模"}
+		return full / 2, true, []string{"替代建模"}
 	}
 	return 0, false, nil
 }
 
 func variantStockOf(q Question) (circ, star [3]int) {
-	// stored in q.Tags as "库存:ca,ct,cm:sa,st,sm"
 	for _, tg := range q.Tags {
 		if !strings.HasPrefix(tg, "库存:") {
 			continue
@@ -457,21 +526,14 @@ func variantStockOf(q Question) (circ, star [3]int) {
 	return [3]int{}, [3]int{}
 }
 
-// judgeChart scores the vision item. The answer is the sum of the closing prices' units
-// digits, which only exists inside the generated image. A one-or-two unit
-// miss is a reading slip worth the half flag; anything else is a miss.
 func judgeChart(q Question, text, tail string) (int, bool, []string) {
 	want, err := strconv.Atoi(q.Answer)
 	if err != nil {
 		return 0, false, nil
 	}
-	v, perr := parseNum(text)
-	if perr != nil {
-		tv, terr := parseNum(tail)
-		if terr != nil {
-			return 0, false, nil
-		}
-		v = tv
+	v, ok := parseSlotOrTail(text, tail)
+	if !ok {
+		return 0, false, nil
 	}
 	if numEq(v, float64(want)) {
 		return q.MaxScore, false, nil

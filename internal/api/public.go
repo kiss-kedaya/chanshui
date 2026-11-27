@@ -215,7 +215,7 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 		answers:   map[string]QuestionResult{},
 	}
 	t.Verdict.Protocol = q.Protocol
-	t.Verdict.ScoringVersion = "2026-11-27-v9-anticheat"
+	t.Verdict.ScoringVersion = "2026-11-28-v10-encoded-iq"
 	names := map[string]string{
 		"fingerprint": "模型指纹归因", "injection": "注入大小", "cache": "缓存读写验证",
 		"tools": "工具调用检测", "web": "联网检测", "knowledge": "知识截止日期", "thinking": "思维链回传",
@@ -232,7 +232,7 @@ func (s *Server) publicCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	rng := mathrand.New(mathrand.NewSource(now.UnixNano()))
 	if selected["iq"] {
-		t.questions = append(t.questions, iq.GenPill(), iq.GenCarWash(), iq.GenBatBall(), iq.GenColorBlind(rng), iq.GenAnchor(), iq.GenCandyClassic(rng), iq.GenCandyVariant(rng), iq.GenSocks(rng), iq.GenBridge())
+		t.questions = append(t.questions, iq.GenerateBattery(rng)...)
 		for _, item := range t.questions {
 			t.Probes = append(t.Probes, Probe{ID: item.ID, Name: item.Title, Status: "queued"})
 			// 题库按题号报告结果，但选择器只有 iq 这个板块；不展开的话

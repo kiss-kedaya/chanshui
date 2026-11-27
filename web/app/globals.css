@@ -42,8 +42,7 @@
   --press: 0.97;
 }
 
-/* ---- 1. Warm Orange + Light (Default) ---- */
-:root,
+/* ---- 1. Warm Orange + Light ---- */
 html[data-accent="orange"][data-mode="light"] {
   color-scheme: light;
   --bg: #f8f7f4;
@@ -372,7 +371,8 @@ html[data-accent="mint"][data-mode="dark"] {
   --hero-shadow: var(--shadow-card);
 }
 
-/* ---- 5. Classic Monochrome + Light ---- */
+/* ---- 5. Classic Monochrome + Light (Default) ---- */
+:root,
 html[data-accent="mono"][data-mode="light"] {
   color-scheme: light;
   --bg: #f4f4f5;
