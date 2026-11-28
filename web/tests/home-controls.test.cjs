@@ -173,15 +173,15 @@ test("home.css establishes non-trapping stacking clearance, wrapped ModelPicker 
   assert.match(css, /@supports \(corner-shape: squircle\)\s*\{\s*\.opt-chip\s*\{\s*corner-shape:\s*round;/);
 });
 
-test("M2 i18n keys resolve across all 5 locales with zero duplicates", () => {
+test("M2 i18n keys resolve across all 6 locales with zero duplicates", () => {
   const { rows } = appRequire("@/lib/i18n-rows");
   const { homeRows } = appRequire("@/lib/i18n-rows-home");
 
   assert.ok(Array.isArray(homeRows) && homeRows.length >= 16);
   const seen = new Map();
   for (const row of rows) {
-    assert.equal(row.length, 5);
-    for (let i = 0; i < 5; i++) {
+    assert.equal(row.length, 6);
+    for (let i = 0; i < 6; i++) {
       assert.ok(typeof row[i] === "string" && row[i].length > 0, `Empty col ${i} for "${row[0]}"`);
     }
     if (!seen.has(row[0])) seen.set(row[0], row);

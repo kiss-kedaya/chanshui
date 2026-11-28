@@ -8,6 +8,7 @@ export const LANGS = [
   { id: "en", label: "English", short: "EN", html: "en" },
   { id: "ja", label: "日本語", short: "日本語", html: "ja" },
   { id: "ko", label: "한국어", short: "한국어", html: "ko" },
+  { id: "ru", label: "Русский", short: "RU", html: "ru" },
 ] as const;
 
 export type Lang = (typeof LANGS)[number]["id"];
@@ -19,6 +20,7 @@ const INTL_LOCALES: Record<Lang, string> = {
   en: "en-US",
   ja: "ja-JP",
   ko: "ko-KR",
+  ru: "ru-RU",
 };
 
 const tails = [
@@ -38,6 +40,7 @@ const dict: Record<Exclude<Lang, "zh">, Dict> = {
   "zh-Hant": build(2),
   ja: build(3),
   ko: build(4),
+  ru: build(5),
 };
 
 export function isLang(value: string | null): value is Lang {
@@ -51,6 +54,7 @@ export function detectLang(list: readonly string[]): Lang {
     if (n.startsWith("en")) return "en";
     if (n.startsWith("ja")) return "ja";
     if (n.startsWith("ko")) return "ko";
+    if (n.startsWith("ru")) return "ru";
   }
   return "zh";
 }
@@ -75,6 +79,7 @@ export function intlLocale(value?: string | null): string {
   if (lower.startsWith("en")) return "en-US";
   if (lower.startsWith("ja")) return "ja-JP";
   if (lower.startsWith("ko")) return "ko-KR";
+  if (lower.startsWith("ru")) return "ru-RU";
   return "zh-CN";
 }
 

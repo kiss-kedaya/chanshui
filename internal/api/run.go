@@ -370,6 +370,9 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 					}
 				}
 			}
+			if strings.HasPrefix(id, "Q") {
+				t.buildIQVerdict(false)
+			}
 			t.mu.Unlock()
 			s.persist(t)
 		}()
@@ -542,38 +545,7 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 		t.mu.Unlock()
 	}
 	t.mu.Lock()
-	items := []iq.QItem{}
-	lines := []QuestionResult{}
-	complete := true
-	answered := 0
-	for _, item := range t.questions {
-		if item.ID == "vision" {
-			continue
-		}
-		v := t.answers[item.ID]
-		if v.ID == "" {
-			v = QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Error: "请求未完成", Tags: []string{}}
-		}
-		if v.Error != "" && !v.Skipped {
-			complete = false
-		}
-		if v.Error == "" && !v.Skipped {
-			answered++
-		}
-		lines = append(lines, v)
-		if v.Skipped {
-			continue
-		}
-		items = append(items, iq.QItem{ID: v.ID, Title: v.Title, Max: v.Max, Earned: v.Earned, Half: v.Half, Tags: v.Tags})
-	}
-	if len(lines) > 0 {
-		score := iq.Score(items)
-		var validScore any
-		if answered > 0 {
-			validScore = score.Score
-		}
-		t.Verdict.IQ = map[string]any{"score": validScore, "max": 100, "paper_max": score.Max, "complete": complete, "per_question": lines, "note": fmt.Sprintf("当前卷面 %d；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，但已答题目照常计分，不伪装为模型答错。", score.Max)}
-	}
+	lines := t.buildIQVerdict(true)
 	sections := selected
 	if t.Source != "api" {
 		sections = nil
@@ -598,6 +570,79 @@ func (s *Server) run(ctx context.Context, t *Task, q Request, selected map[strin
 	t.Verdict.Timing.TotalMs = previousMs + t.Verdict.Timing.LastRunMs
 	t.mu.Unlock()
 	s.persist(t)
+}
+
+// buildIQVerdict assembles t.Verdict.IQ from t.answers (caller holds t.mu).
+// When final is false, only already-finished questions are emitted so the UI
+// can render each question the moment it finishes without polluting persisted
+// answers with unfinished placeholders.
+func (t *Task) buildIQVerdict(final bool) []QuestionResult {
+	items := []iq.QItem{}
+	lines := []QuestionResult{}
+	complete := true
+	answered := 0
+	totalQuestions := 0
+	paperMax := 0
+	for _, item := range t.questions {
+		if item.ID == "vision" {
+			continue
+		}
+		totalQuestions++
+		paperMax += item.MaxScore
+		v, ok := t.answers[item.ID]
+		if !ok || v.ID == "" {
+			complete = false
+			if !final {
+				continue
+			}
+			v = QuestionResult{ID: item.ID, Title: item.Title, Max: item.MaxScore, Error: "请求未完成", Tags: []string{}}
+		}
+		if v.Error != "" && !v.Skipped {
+			complete = false
+		}
+		if v.Error == "" && !v.Skipped {
+			answered++
+		}
+		lines = append(lines, v)
+		if v.Skipped {
+			continue
+		}
+		items = append(items, iq.QItem{ID: v.ID, Title: v.Title, Max: v.Max, Earned: v.Earned, Half: v.Half, Tags: v.Tags})
+	}
+	if len(lines) == 0 {
+		return lines
+	}
+	var validScore any
+	if final || len(lines) == totalQuestions {
+		score := iq.Score(items)
+		paperMax = score.Max
+		if answered > 0 {
+			validScore = score.Score
+		}
+	} else if answered > 0 {
+		earnedFull := 0
+		for _, it := range items {
+			if !it.Half {
+				earnedFull += it.Earned
+			}
+		}
+		if paperMax > 0 {
+			validScore = int(math.Round(float64(earnedFull) / float64(paperMax) * 100))
+		} else {
+			validScore = 0
+		}
+	}
+	t.Verdict.IQ = map[string]any{
+		"score":           validScore,
+		"max":             100,
+		"paper_max":       paperMax,
+		"complete":        complete,
+		"done_count":      len(lines),
+		"total_questions": totalQuestions,
+		"per_question":    lines,
+		"note":            fmt.Sprintf("当前卷面 %d；半分仅在卷面展示，不进入百分制通过分。失败请求标记未完成，但已答题目照常计分，不伪装为模型答错。", paperMax),
+	}
+	return lines
 }
 
 // shortCircuitBlocked immediately scores a confirmed anti-detection domain
@@ -976,14 +1021,23 @@ func (s *Server) converse(ctx context.Context, t *Task, q Request, g gateway.Cli
 			e = fmt.Errorf("%s", m.Err)
 		}
 		v, _ := s.finishQuestion(ctx, g, q, item, m, e, text)
-		t.mu.Lock()
-		t.answers[item.ID] = v
-		t.mu.Unlock()
 		status := "done"
 		if v.Error != "" && !v.Skipped {
 			status = "error"
 		}
-		setProbe(item.ID, status, time.Since(start).Milliseconds(), redact(v.Error, q.Key))
+		elapsed := time.Since(start).Milliseconds()
+		errText := redact(v.Error, q.Key)
+		t.mu.Lock()
+		t.answers[item.ID] = v
+		for j := range t.Probes {
+			if t.Probes[j].ID == item.ID {
+				t.Probes[j].Status = status
+				t.Probes[j].Ms = elapsed
+				t.Probes[j].Error = errText
+			}
+		}
+		t.buildIQVerdict(false)
+		t.mu.Unlock()
 		s.persist(t)
 		for _, extra := range convSmallTalk[i] {
 			if ctx.Err() != nil {

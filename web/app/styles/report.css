@@ -377,7 +377,7 @@ html[data-mode="dark"] .results-loading .skeleton-line::after {
   min-width: 2.4em;
   white-space: nowrap;
 }
-:is(html[data-lang="en"], html[lang="en"]) .model-claim span {
+:is(html[data-lang="en"], html[lang="en"], html[data-lang="ru"], html[lang="ru"]) .model-claim span {
   min-width: 4.5em;
   letter-spacing: 0.04em;
 }
@@ -402,10 +402,10 @@ html[data-mode="dark"] .results-loading .skeleton-line::after {
 .fp-claim-band .fake-seal.suspicious span {
   font-size: 28px;
 }
-:is(html[data-lang="en"], html[lang="en"]) .fp-claim-band .fake-seal span {
+:is(html[data-lang="en"], html[lang="en"], html[data-lang="ru"], html[lang="ru"]) .fp-claim-band .fake-seal span {
   font-size: 22px;
 }
-:is(html[data-lang="en"], html[lang="en"]) .fp-claim-band .fake-seal.suspicious span {
+:is(html[data-lang="en"], html[lang="en"], html[data-lang="ru"], html[lang="ru"]) .fp-claim-band .fake-seal.suspicious span {
   font-size: 11.5px;
   letter-spacing: 0.01em;
   text-transform: none;
@@ -672,10 +672,10 @@ html[data-mode="dark"] .results-loading .skeleton-line::after {
   .fp-claim-band .fake-seal.suspicious span {
     font-size: 20px;
   }
-  :is(html[data-lang="en"], html[lang="en"]) .fp-claim-band .fake-seal span {
+  :is(html[data-lang="en"], html[lang="en"], html[data-lang="ru"], html[lang="ru"]) .fp-claim-band .fake-seal span {
     font-size: 17px;
   }
-  :is(html[data-lang="en"], html[lang="en"]) .fp-claim-band .fake-seal.suspicious span {
+  :is(html[data-lang="en"], html[lang="en"], html[data-lang="ru"], html[lang="ru"]) .fp-claim-band .fake-seal.suspicious span {
     font-size: 9px;
     letter-spacing: 0;
     text-transform: none;
@@ -725,7 +725,8 @@ html[data-mode="dark"] .results-loading .skeleton-line::after {
     animation: none !important;
     transition: none !important;
   }
-  .probe-running .probe-dot {
+  .probe-running .probe-dot,
+  .question-pending-row .q-live-dot {
     animation: none !important;
     background: var(--accent);
     border-color: var(--accent);
@@ -734,6 +735,60 @@ html[data-mode="dark"] .results-loading .skeleton-line::after {
   .results-loading .skeleton-line::after {
     display: none;
   }
+}
+
+/* ---- Incremental IQ Progress Rows ---- */
+.score-chip.is-live {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.question-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  min-height: 44px;
+  border-bottom: 1px dashed var(--line);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.question-pending-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.question-pending-row > b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+.question-pending-row > b.is-running {
+  color: var(--accent);
+}
+.q-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  flex: none;
+  animation: q-live-pulse 1.4s ease-in-out infinite;
+}
+.question-pending-row > b.is-queued .q-live-dot {
+  background: var(--ink-muted);
+  opacity: 0.45;
+  animation: none;
+}
+@keyframes q-live-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 
 /* ---- Continuous-Curvature Squircle & Round Exclusions ---- */
@@ -757,6 +812,7 @@ html[data-mode="dark"] .results-loading .skeleton-line::after {
   .progress-track,
   .timeline-symbol,
   .probe-dot,
+  .q-live-dot,
   .fake-seal,
   .question-tag,
   .inject-bar,

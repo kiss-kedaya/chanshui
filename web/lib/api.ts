@@ -386,6 +386,8 @@ export interface DetectVerdict {
     max: number;
     paper_max: number;
     complete: boolean;
+    done_count?: number;
+    total_questions?: number;
     per_question: Question[];
     note: string;
     error?: string;

@@ -5,7 +5,7 @@ const path = require("node:path");
 const appRequire = require("./app-require.cjs");
 
 test("intlLocale maps supported languages and locale tags", () => {
-  const { intlLocale } = appRequire("@/lib/i18n");
+  const { intlLocale, detectLang } = appRequire("@/lib/i18n");
   assert.equal(intlLocale("zh"), "zh-CN");
   assert.equal(intlLocale("zh-CN"), "zh-CN");
   assert.equal(intlLocale("zh-Hant"), "zh-TW");
@@ -14,7 +14,10 @@ test("intlLocale maps supported languages and locale tags", () => {
   assert.equal(intlLocale("en-GB"), "en-US");
   assert.equal(intlLocale("ja"), "ja-JP");
   assert.equal(intlLocale("ko"), "ko-KR");
+  assert.equal(intlLocale("ru"), "ru-RU");
+  assert.equal(intlLocale("ru-RU"), "ru-RU");
   assert.equal(intlLocale(null), "zh-CN");
+  assert.equal(detectLang(["ru-RU", "en-US"]), "ru");
 });
 
 test("formatLocaleNumber and formatLocaleDate format safely across locales", () => {
@@ -32,14 +35,16 @@ test("formatLocaleNumber and formatLocaleDate format safely across locales", () 
   assert.equal(formatLocaleDate("not-a-date", "en"), "not-a-date");
 });
 
-test("translate supports Reload key across all 5 locales and interpolation", () => {
+test("translate supports Reload key across all 6 locales and interpolation", () => {
   const { translate } = appRequire("@/lib/i18n");
   assert.equal(translate("zh", "重新加载"), "重新加载");
   assert.equal(translate("en", "重新加载"), "Reload");
   assert.equal(translate("zh-Hant", "重新加载"), "重新載入");
   assert.equal(translate("ja", "重新加载"), "再読み込み");
   assert.equal(translate("ko", "重新加载"), "다시 불러오기");
+  assert.equal(translate("ru", "重新加载"), "Обновить");
   assert.equal(translate("en", "{n} 分", { n: 92 }), "92 pts");
+  assert.equal(translate("ru", "{n} 分", { n: 92 }), "92 б.");
 });
 
 test("translate ignores Object.prototype keys and returns source safely", () => {
@@ -65,7 +70,7 @@ test("modular i18n-rows slices load cleanly and cover all M1 chrome/overlay stri
 
   const map = new Map();
   for (const row of rows) {
-    assert.equal(row.length, 5);
+    assert.equal(row.length, 6);
     map.set(row[0], row);
   }
 
@@ -84,7 +89,7 @@ test("modular i18n-rows slices load cleanly and cover all M1 chrome/overlay stri
       const key = match[1];
       const row = map.get(key);
       assert.ok(row, `Missing i18n row for "${key}" in ${rel}`);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 6; i++) {
         assert.ok(typeof row[i] === "string" && row[i].length > 0, `Empty column ${i} for "${key}"`);
       }
     }

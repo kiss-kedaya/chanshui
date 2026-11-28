@@ -7,7 +7,8 @@ import ErrorFold from "@/components/ErrorFold";
 import Hint from "@/components/Hint";
 import ScoreHero from "@/components/ScoreHero";
 import { fingerprintState, presentedTotal, probabilityVisible } from "@/lib/report-view";
-import { DetectVerdict } from "@/lib/api";
+import { DetectVerdict, Probe } from "@/lib/api";
+import { translateError } from "@/lib/error-i18n";
 import { useI18n } from "@/lib/i18n";
 
 type Translator = (source: string, vars?: Record<string, string | number>) => string;
@@ -75,7 +76,7 @@ function trNote(note: string | undefined, tr: Translator): string | undefined {
     );
   }
   if (note.startsWith("行为探针失败：")) {
-    return tr("行为探针失败：") + note.slice("行为探针失败：".length);
+    return tr("行为探针失败：") + translateError(note.slice("行为探针失败：".length), tr);
   }
   if (note.startsWith("目标域名命中已确认针对本站作假规则")) {
     return trAntiCheatSummary(note, tr);
@@ -313,12 +314,14 @@ export default function ResultCards({
   model,
   loading = false,
   showCache = false,
+  probes,
   progress,
 }: {
   verdict: DetectVerdict;
   model?: string;
   loading?: boolean;
   showCache?: boolean;
+  probes?: Probe[];
   progress?: { done: number; total: number };
 }) {
   const { t: tr } = useI18n();
@@ -790,7 +793,7 @@ export default function ResultCards({
           </div>
           <div className="check-rows strict-check-rows">
             {strictChecks.map((c) => (
-              <span key={c.name} className="check-row" title={c.detail || ""}>
+              <span key={c.name} className="check-row" title={c.detail ? translateError(c.detail, tr) : ""}>
                 <i>{tr(c.title || c.name)}</i>
                 <b className={c.skipped ? "skip" : c.pass ? "ok" : "no"}>
                   {c.skipped ? tr("跳过") : c.pass ? tr("已拒绝") : tr("未拒绝") + " " + c.status}
@@ -810,7 +813,7 @@ export default function ResultCards({
           </div>
           <div className="check-list">
             {v.claude_deep.checks.map((c) => (
-              <span key={c.name} className="check-item" title={c.detail || ""}>
+              <span key={c.name} className="check-item" title={c.detail ? translateError(c.detail, tr) : ""}>
                 <i>{tr(c.title || c.name)}</i>
                 <b className={c.skipped ? "skip" : c.pass ? "ok" : "no"}>
                   {c.skipped ? tr("跳过") : c.pass ? tr("通过") : tr("未通过")}
@@ -831,89 +834,130 @@ export default function ResultCards({
             <ScoreShare verdict={scored} part="iq" />
           </span>
         </div>
-        {!q ? (
+        {!q || (loading && q.per_question.length === 0) ? (
           <ResultSkeleton label={loading ? tr("推理测试中…") : tr("暂无结果")} />
         ) : (
-          <>
-            <div className="metric-line">
-              <strong>
-                {q.score == null ? "—" : <AnimatedNumber value={q.score} />}
-              </strong>
-              <span>/ 100</span>
-              <b className="score-chip">
-                {q.complete ? tr("本次测评") : tr("尚未完成")}
-              </b>
-            </div>
-            {v.conversation && <ConversationPanel data={v.conversation} />}
-            <div className="question-list">
-              {q.per_question.map((x, index) => (
-                <details key={x.id} className="question">
-                  <summary>
-                    <span>
-                      Q{index + 1} · {tr(x.title)}
-                    </span>
-                    <b
-                      className={
-                        x.skipped
-                          ? "warn"
-                          : x.error
-                            ? "bad"
-                            : x.earned === x.max
-                              ? "good"
-                              : "warn"
-                      }
-                    >
-                      {x.skipped
-                        ? tr("不适用")
-                        : x.error
-                          ? tr("请求失败")
-                          : x.earned + " / " + x.max + (x.half ? tr("（半分）") : "")}
-                    </b>
-                  </summary>
-                  {x.skipped && <p>{x.error ? tr(x.error) : null}</p>}
-                  {x.error && !x.skipped && <ErrorFold text={x.error} />}
-                  <h4>{tr("题目")}</h4>
-                  <pre>{x.prompt}</pre>
-                  {x.image && <img className="question-image" src={x.image} alt="" />}
-                  <h4>{tr("标准结论")}</h4>
-                  <pre>{x.expected}</pre>
-                  <h4>{tr("模型回答")}</h4>
-                  <pre>{x.answer || tr("正文为空，使用已返回思考文本判分")}</pre>
-                  {claude && (
-                    <Details
-                      label={tr("思维链全文与签名")}
-                      value={{
-                        thinking: x.thinking_text,
-                        signature: x.signature,
-                      }}
-                    />
-                  )}
-                  <Details
-                    label={tr("用量与耗时")}
-                    value={{
-                      [tr("输入")]: x.metrics.InputTokens,
-                      [tr("输出")]: x.metrics.OutputTokens,
-                      [tr("思考程度")]: x.metrics.EffortFallback
-                        ? tr("high 被上游拒绝，回退不指定")
-                        : x.metrics.Effort || tr("不指定"),
-                      [tr("缓存读")]: x.metrics.CacheRead,
-                      [tr("缓存写")]: x.metrics.CacheCreation5m + x.metrics.CacheCreation1h,
-                      [tr("耗时")]: x.ms,
-                    }}
-                  />
-                  {x.tags?.length > 0 && (
-                    <div className="question-tags">
-                      {x.tags.map((tag) => (
-                        <span className="question-tag is-pill" key={tag}>
-                          {trTag(tag, tr)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </details>
-              ))}
-            </div>
-          </>
+          (() => {
+            const iqProbes = (probes || []).filter((p) => /^Q\d+$/i.test(p.id));
+            const doneIds = new Set(q.per_question.map((x) => x.id));
+            const pendingProbes = loading
+              ? iqProbes.filter(
+                  (p) => !doneIds.has(p.id) && (p.status === "running" || p.status === "queued"),
+                )
+              : [];
+            const iqTotal = q.total_questions || iqProbes.length || q.per_question.length;
+            const iqDone = q.done_count ?? q.per_question.length;
+            const iqInProgress = loading && !q.complete && iqTotal > iqDone;
+            return (
+              <>
+                <div className="metric-line">
+                  <strong>
+                    {q.score == null ? "—" : <AnimatedNumber value={q.score} />}
+                  </strong>
+                  <span>/ 100</span>
+                  <b className={"score-chip" + (iqInProgress ? " is-live" : "")}>
+                    {q.complete
+                      ? tr("本次测评")
+                      : iqInProgress
+                        ? tr("已完成 {done} / {total} 题", { done: iqDone, total: iqTotal })
+                        : tr("尚未完成")}
+                  </b>
+                </div>
+                {v.conversation && <ConversationPanel data={v.conversation} />}
+                <div className="question-list">
+                  {q.per_question.map((x, index) => {
+                    const qCode = /^Q\d+$/i.test(x.id) ? x.id.toUpperCase() : `Q${index + 1}`;
+                    return (
+                      <details key={x.id} className="question">
+                        <summary>
+                          <span>
+                            {qCode} · {tr(x.title)}
+                          </span>
+                          <b
+                            className={
+                              x.skipped
+                                ? "warn"
+                                : x.error
+                                  ? "bad"
+                                  : x.earned === x.max
+                                    ? "good"
+                                    : "warn"
+                            }
+                          >
+                            {x.skipped
+                              ? tr("不适用")
+                              : x.error
+                                ? tr("请求失败")
+                                : x.earned + " / " + x.max + (x.half ? tr("（半分）") : "")}
+                          </b>
+                        </summary>
+                        {x.skipped && <p>{x.error ? tr(x.error) : null}</p>}
+                        {x.error && !x.skipped && <ErrorFold text={x.error} />}
+                        <h4>{tr("题目")}</h4>
+                        <pre>{x.prompt}</pre>
+                        {x.image && <img className="question-image" src={x.image} alt="" />}
+                        <h4>{tr("标准结论")}</h4>
+                        <pre>{x.expected}</pre>
+                        <h4>{tr("模型回答")}</h4>
+                        <pre>{x.answer || tr("正文为空，使用已返回思考文本判分")}</pre>
+                        {claude && (
+                          <Details
+                            label={tr("思维链全文与签名")}
+                            value={{
+                              thinking: x.thinking_text,
+                              signature: x.signature,
+                            }}
+                          />
+                        )}
+                        <Details
+                          label={tr("用量与耗时")}
+                          value={{
+                            [tr("输入")]: x.metrics.InputTokens,
+                            [tr("输出")]: x.metrics.OutputTokens,
+                            [tr("思考程度")]: x.metrics.EffortFallback
+                              ? tr("high 被上游拒绝，回退不指定")
+                              : x.metrics.Effort || tr("不指定"),
+                            [tr("缓存读")]: x.metrics.CacheRead,
+                            [tr("缓存写")]: x.metrics.CacheCreation5m + x.metrics.CacheCreation1h,
+                            [tr("耗时")]: x.ms,
+                          }}
+                        />
+                        {x.tags?.length > 0 && (
+                          <div className="question-tags">
+                            {x.tags.map((tag) => (
+                              <span className="question-tag is-pill" key={tag}>
+                                {trTag(tag, tr)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </details>
+                    );
+                  })}
+                  {pendingProbes.length > 0
+                    ? pendingProbes.map((p) => (
+                        <div key={p.id} className="question-pending-row" aria-busy="true">
+                          <span>
+                            {p.id.toUpperCase()} · {tr(p.name)}
+                          </span>
+                          <b className={p.status === "running" ? "is-running" : "is-queued"}>
+                            <i className="q-live-dot is-round" aria-hidden="true" />
+                            {p.status === "running" ? tr("检测中") : tr("等待中")}
+                          </b>
+                        </div>
+                      ))
+                    : iqInProgress && (
+                        <div className="question-pending-row is-summary" aria-busy="true">
+                          <span>
+                            <i className="q-live-dot is-round" aria-hidden="true" />
+                            {tr("其余 {n} 题测试中…", { n: iqTotal - iqDone })}
+                          </span>
+                        </div>
+                      )}
+                </div>
+              </>
+            );
+          })()
         )}
       </section>
       {(vision || loading) && (

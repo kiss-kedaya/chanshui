@@ -4,6 +4,7 @@ import AnimatedNumber from "@/components/AnimatedNumber";
 import Hint from "@/components/Hint";
 import ResultSkeleton from "@/components/ResultSkeleton";
 import { DetectVerdict } from "@/lib/api";
+import { translateError } from "@/lib/error-i18n";
 import { channelChips, FingerprintState, reportVerdict } from "@/lib/report-view";
 import { useI18n } from "@/lib/i18n";
 
@@ -28,7 +29,11 @@ function translateFindingVars(
   if (!vars) return vars;
   const out: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(vars)) {
-    out[key] = typeof value === "string" && key !== "model" ? tr(value) : value;
+    if (typeof value === "string" && key !== "model") {
+      out[key] = key === "detail" ? translateError(value, tr) : tr(value);
+    } else {
+      out[key] = value;
+    }
   }
   return out;
 }

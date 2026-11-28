@@ -47,7 +47,7 @@ test("DocsPage SSR renders loading skeleton with aria-busy and complete tablist/
 
 test("DocsPage translates line 117 vision + DeepSeek note across all non-zh locales", () => {
   const realI18n = appRequire("@/lib/i18n");
-  for (const lang of ["en", "zh-Hant", "ja", "ko"]) {
+  for (const lang of ["en", "zh-Hant", "ja", "ko", "ru"]) {
     const DocsPage = loadComponent("app/docs/page.tsx", {
       "@/lib/i18n": {
         ...realI18n,
@@ -71,7 +71,7 @@ test("DocsPage translates line 117 vision + DeepSeek note across all non-zh loca
   }
 });
 
-test("DocsPage 5-locale i18n coverage is complete with zero missing keys", () => {
+test("DocsPage 6-locale i18n coverage is complete with zero missing keys", () => {
   const { rows } = appRequire("@/lib/i18n-rows");
   const map = new Map();
   for (const row of rows) map.set(row[0], row);
@@ -96,8 +96,8 @@ test("DocsPage 5-locale i18n coverage is complete with zero missing keys", () =>
     if (ASCII_ALLOWLIST.has(key)) continue;
     const row = map.get(key);
     assert.ok(row, `Missing i18n row for "${key}" in docs/page.tsx`);
-    assert.equal(row.length, 5);
-    for (let i = 0; i < 5; i++) {
+    assert.equal(row.length, 6);
+    for (let i = 0; i < 6; i++) {
       assert.ok(typeof row[i] === "string" && row[i].length > 0, `Empty locale column ${i} for "${key}"`);
     }
   }

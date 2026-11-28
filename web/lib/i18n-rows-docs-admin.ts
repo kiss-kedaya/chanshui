@@ -1,20 +1,19 @@
-export const docsAdminRows: [string, string, string, string, string][] = [
-  // ---- /docs line 117 (vision + DeepSeek /v1/tools/search) ----
+export const docsAdminRows: [string, string, string, string, string, string][] = [
   [
     "不传、all，或板块数组。可选 fingerprint、injection、cache、tools、web、knowledge、thinking、iq、vision。DeepSeek 的 web 会直接调用 /v1/tools/search",
     "Omit, all, or a list: fingerprint, injection, cache, tools, web, knowledge, thinking, iq, vision. DeepSeek web calls /v1/tools/search directly",
     "不傳、all，或板塊數組。可選 fingerprint、injection、cache、tools、web、knowledge、thinking、iq、vision。DeepSeek 的 web 會直接調用 /v1/tools/search",
     "省略、all、または配列。fingerprint、injection、cache、tools、web、knowledge、thinking、iq、vision。DeepSeek の web は /v1/tools/search を直接呼ぶ",
     "생략, all, 또는 배열. fingerprint, injection, cache, tools, web, knowledge, thinking, iq, vision. DeepSeek의 web은 /v1/tools/search를 직접 호출한다",
+    "Не указывать, all или массив: fingerprint, injection, cache, tools, web, knowledge, thinking, iq, vision. Для DeepSeek web вызывает /v1/tools/search напрямую",
   ],
-
-  // ---- /admin missing keys from existing page ----
   [
     "本机没有保存过的网关或 Key，请手动填写。",
     "No saved gateway or key on this device. Enter them manually.",
     "本機沒有保存過的網關或 Key，請手動填寫。",
     "この端末に保存されたゲートウェイや Key がありません。手動で入力してください。",
     "이 기기에 저장된 게이트웨이나 Key가 없습니다. 직접 입력하세요.",
+    "На этом устройстве нет сохранённого шлюза или ключа. Введите вручную.",
   ],
   [
     "先填写接口地址和 API Key。",
@@ -22,6 +21,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "先填寫接口地址和 API Key。",
     "先にエンドポイントと API Key を入力してください。",
     "먼저 엔드포인트와 API Key를 입력하세요.",
+    "Сначала укажите адрес эндпоинта и API Key.",
   ],
   [
     "上游没有返回模型，仍可手动填写请求名。",
@@ -29,6 +29,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "上游沒有返回模型，仍可手動填寫請求名。",
     "上流からモデルが返りませんでした。モデル名は手入力できます。",
     "업스트림이 모델을 반환하지 않았습니다. 모델 이름은 직접 입력할 수 있습니다.",
+    "Апстрим не вернул модели; имя запроса можно ввести вручную.",
   ],
   [
     "采集启动失败",
@@ -36,6 +37,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "採集啟動失敗",
     "収集の開始に失敗",
     "수집 시작 실패",
+    "Не удалось запустить сбор",
   ],
   [
     "删除失败",
@@ -43,6 +45,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "刪除失敗",
     "削除に失敗",
     "삭제 실패",
+    "Не удалось удалить",
   ],
   [
     "管理员控制台",
@@ -50,6 +53,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "管理員控制台",
     "管理コンソール",
     "관리자 콘솔",
+    "Панель администратора",
   ],
   [
     "反馈与指纹",
@@ -57,6 +61,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "反饋與指紋",
     "フィードバックと指紋",
     "피드백 및 지문",
+    "Отзывы и отпечатки",
   ],
   [
     "管理员登录",
@@ -64,6 +69,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "管理員登錄",
     "管理者ログイン",
     "관리자 로그인",
+    "Вход администратора",
   ],
   [
     "查看用户反馈，维护自定义模型指纹。",
@@ -71,6 +77,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "查看用戶反饋，維護自訂模型指紋。",
     "ユーザーからのフィードバック確認とカスタムモデル指紋の管理。",
     "사용자 피드백을 확인하고 사용자 지정 모델 지문을 관리합니다.",
+    "Просмотр отзывов пользователей и управление пользовательскими отпечатками моделей.",
   ],
   [
     "正在检查管理员会话…",
@@ -78,6 +85,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "正在檢查管理員會話…",
     "管理者セッションを確認中…",
     "관리자 세션을 확인하는 중…",
+    "Проверка сессии администратора…",
   ],
   [
     "进入反馈后台",
@@ -85,6 +93,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "進入反饋後台",
     "管理画面へ入る",
     "관리 콘솔 들어가기",
+    "Войти в панель",
   ],
   [
     "输入服务端配置的 CHANSHUI_ADMIN_TOKEN。",
@@ -92,6 +101,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "輸入服務端配置的 CHANSHUI_ADMIN_TOKEN。",
     "サーバー設定の CHANSHUI_ADMIN_TOKEN を入力してください。",
     "서버에 설정된 CHANSHUI_ADMIN_TOKEN을 입력하세요.",
+    "Введите настроенный на сервере CHANSHUI_ADMIN_TOKEN.",
   ],
   [
     "通常是 48 位随机字符串。",
@@ -99,6 +109,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "通常是 48 位隨機字符串。",
     "通常は 48 文字のランダム文字列です。",
     "보통 48자리 무작위 문자열입니다.",
+    "Обычно случайная строка из 48 символов.",
   ],
   [
     "后台模块",
@@ -106,6 +117,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "後台模塊",
     "管理セクション",
     "관리 섹션",
+    "Разделы панели",
   ],
   [
     "指纹采集",
@@ -113,6 +125,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "指紋採集",
     "指紋収集",
     "지문 수집",
+    "Сбор отпечатков",
   ],
   [
     "联系方式仅用于反馈处理，不会公开。",
@@ -120,6 +133,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "聯繫方式僅用於反饋處理，不會公開。",
     "連絡先はフィードバック対応のみに使用し、公開されません。",
     "연락처는 피드백 처리에만 사용되며 공개되지 않습니다.",
+    "Контакты используются только для обратной связи и не публикуются.",
   ],
   [
     "刷新中…",
@@ -127,6 +141,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "刷新中…",
     "更新中…",
     "새로 고치는 중…",
+    "Обновление…",
   ],
   [
     "刷新",
@@ -134,6 +149,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "刷新",
     "更新",
     "새로 고침",
+    "Обновить",
   ],
   [
     "导出 JSON",
@@ -141,6 +157,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "導出 JSON",
     "JSON を書き出す",
     "JSON 내보내기",
+    "Экспорт JSON",
   ],
   [
     "用户提交后会出现在这里。",
@@ -148,6 +165,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "用戶提交後會出現在這裡。",
     "ユーザーから送信されるとここに表示されます。",
     "사용자가 제출하면 여기에 표시됩니다.",
+    "Новые обращения пользователей появятся здесь.",
   ],
   [
     "指纹采集与归因",
@@ -155,6 +173,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "指紋採集與歸因",
     "指紋の収集と帰属",
     "지문 수집 및 귀속",
+    "Сбор и атрибуция отпечатков",
   ],
   [
     "采集训练与保留样本，全部通过后写入归因库。",
@@ -162,6 +181,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "採集訓練與保留樣本，全部通過後寫入歸因庫。",
     "学習・検証サンプルを収集し、全件通過後に帰属ライブラリへ保存します。",
     "학습 및 보류 표본을 수집해 모두 통과하면 귀속 라이브러리에 저장합니다.",
+    "Соберите обучающие и контрольные образцы; при 100% прохождении запись добавится в базу.",
   ],
   [
     "读取中…",
@@ -169,6 +189,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "讀取中…",
     "読み込み中…",
     "불러오는 중…",
+    "Загрузка…",
   ],
   [
     "填入上次保存",
@@ -176,6 +197,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "填入上次保存",
     "前回保存分を入力",
     "이전 저장값 채우기",
+    "Подставить сохранённые",
   ],
   [
     "连接上游",
@@ -183,6 +205,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "連接上游",
     "上流へ接続",
     "업스트림 연결",
+    "Подключение к апстриму",
   ],
   [
     "只用于本次采集",
@@ -190,6 +213,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "只用於本次採集",
     "今回の収集のみに使用",
     "이번 수집에만 사용",
+    "Только для этого сбора",
   ],
   [
     "隐藏 Key",
@@ -197,6 +221,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "隱藏 Key",
     "Key を隠す",
     "Key 숨기기",
+    "Скрыть ключ",
   ],
   [
     "显示 Key",
@@ -204,6 +229,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "顯示 Key",
     "Key を表示",
     "Key 보기",
+    "Показать ключ",
   ],
   [
     "请求模型名",
@@ -211,6 +237,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "請求模型名",
     "リクエストモデル名",
     "요청 모델명",
+    "Имя модели в запросе",
   ],
   [
     "拉取中…",
@@ -218,6 +245,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "拉取中…",
     "取得中…",
     "가져오는 중…",
+    "Загрузка…",
   ],
   [
     "拉取模型",
@@ -225,6 +253,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "拉取模型",
     "モデル取得",
     "모델 가져오기",
+    "Загрузить модели",
   ],
   [
     "协议",
@@ -232,6 +261,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "協議",
     "プロトコル",
     "프로토콜",
+    "Протокол",
   ],
   [
     "归因信息",
@@ -239,6 +269,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "歸因信息",
     "帰属情報",
     "귀속 정보",
+    "Метаданные атрибуции",
   ],
   [
     "归因 ID",
@@ -246,6 +277,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "歸因 ID",
     "帰属 ID",
     "귀속 ID",
+    "ID атрибуции",
   ],
   [
     "显示名称",
@@ -253,6 +285,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "顯示名稱",
     "表示名",
     "표시 이름",
+    "Отображаемое имя",
   ],
   [
     "留空则使用归因 ID",
@@ -260,6 +293,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "留空則使用歸因 ID",
     "空欄時は帰属 ID を使用",
     "비워 두면 귀속 ID 사용",
+    "Если пусто — используется ID атрибуции",
   ],
   [
     "别名（逗号分隔）",
@@ -267,6 +301,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "別名（逗號分隔）",
     "別名（カンマ区切り）",
     "별칭(쉼표 구분)",
+    "Псевдонимы (через запятую)",
   ],
   [
     "采样参数",
@@ -274,6 +309,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "採樣參數",
     "サンプリング設定",
     "샘플링 설정",
+    "Параметры выборки",
   ],
   [
     "训练样本",
@@ -281,6 +317,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "訓練樣本",
     "学習サンプル",
     "학습 표본",
+    "Обуч. образцы",
   ],
   [
     "保留样本",
@@ -288,6 +325,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "保留樣本",
     "検証サンプル",
     "보류 표본",
+    "Контр. образцы",
   ],
   [
     "并发",
@@ -295,6 +333,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "並發",
     "並列数",
     "동시성",
+    "Параллельность",
   ],
   [
     "超时 / 秒",
@@ -302,6 +341,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "超時 / 秒",
     "タイムアウト / 秒",
     "시간 제한 / 초",
+    "Таймаут / сек",
   ],
   [
     "正在启动…",
@@ -309,6 +349,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "正在啟動…",
     "開始中…",
     "시작하는 중…",
+    "Запуск…",
   ],
   [
     "开始采集",
@@ -316,6 +357,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "開始採集",
     "収集を開始",
     "수집 시작",
+    "Начать сбор",
   ],
   [
     "取消",
@@ -323,6 +365,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "取消",
     "キャンセル",
     "취소",
+    "Отмена",
   ],
   [
     "保留样本全部命中新 ID 才会写入归因库。",
@@ -330,6 +373,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "保留樣本全部命中新 ID 才會寫入歸因庫。",
     "検証サンプルがすべて新 ID に一致した場合のみ帰属ライブラリへ登録されます。",
     "보류 표본이 모두 새 ID와 일치해야 귀속 라이브러리에 저장됩니다.",
+    "Запись попадёт в базу, только если все контрольные группы совпадут с новым ID.",
   ],
   [
     "训练可用",
@@ -337,6 +381,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "訓練可用",
     "学習有効",
     "학습 유효",
+    "Обуч. валидно",
   ],
   [
     "保留可用",
@@ -344,6 +389,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "保留可用",
     "検証有効",
     "보류 유효",
+    "Контр. валидно",
   ],
   [
     "已加入归因库",
@@ -351,6 +397,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "已加入歸因庫",
     "帰属ライブラリに追加済み",
     "귀속 라이브러리에 추가됨",
+    "Добавлено в базу атрибуции",
   ],
   [
     "自定义指纹",
@@ -358,6 +405,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "自訂指紋",
     "カスタム指紋",
     "사용자 지정 지문",
+    "Пользовательские отпечатки",
   ],
   [
     "还没有自定义指纹。",
@@ -365,6 +413,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "還沒有自訂指紋。",
     "カスタム指紋はまだありません。",
     "사용자 지정 지문이 없습니다.",
+    "Пользовательских отпечатков пока нет.",
   ],
   [
     "删除",
@@ -372,6 +421,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "刪除",
     "削除",
     "삭제",
+    "Удалить",
   ],
   [
     "采集中",
@@ -379,6 +429,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "採集中",
     "収集中",
     "수집 중",
+    "Сбор",
   ],
   [
     "校验归因",
@@ -386,6 +437,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "校驗歸因",
     "帰属を検証中",
     "귀속 검증 중",
+    "Проверка",
   ],
   [
     "已完成",
@@ -393,6 +445,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "已完成",
     "完了",
     "완료됨",
+    "Завершено",
   ],
   [
     "已取消",
@@ -400,15 +453,15 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "已取消",
     "キャンセル済み",
     "취소됨",
+    "Отменено",
   ],
-
-  // ---- New M4 /admin keys ----
   [
     "管理员入口未开启",
     "Admin console disabled",
     "管理員入口未開啟",
     "管理入口は無効です",
     "관리자 콘솔 비활성화됨",
+    "Панель администратора отключена",
   ],
   [
     "服务端未配置 CHANSHUI_ADMIN_TOKEN（至少 24 位），管理控制台已关闭。",
@@ -416,6 +469,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "服務端未配置 CHANSHUI_ADMIN_TOKEN（至少 24 位），管理控制台已關閉。",
     "サーバーに CHANSHUI_ADMIN_TOKEN（24文字以上）が未設定のため、管理コンソールは無効です。",
     "서버에 CHANSHUI_ADMIN_TOKEN(24자 이상)이 설정되지 않아 관리자 콘솔이 닫혀 있습니다.",
+    "На сервере не задан CHANSHUI_ADMIN_TOKEN (минимум 24 символа), поэтому панель администратора отключена.",
   ],
   [
     "请求过于频繁，请十分钟后再试。",
@@ -423,6 +477,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "請求過於頻繁，請十分鐘後再試。",
     "試行回数が多すぎます。10分後に再試行してください。",
     "시도 횟수가 너무 많습니다. 10분 뒤에 다시 시도하세요.",
+    "Слишком много попыток. Повторите через 10 минут.",
   ],
   [
     "管理员会话已失效，请重新登录。",
@@ -430,6 +485,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "管理員會話已失效，請重新登錄。",
     "管理者セッションが切れました。再度ログインしてください。",
     "관리자 세션이 만료되었습니다. 다시 로그인하세요.",
+    "Сессия администратора истекла. Войдите снова.",
   ],
   [
     "退出失败",
@@ -437,6 +493,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "退出失敗",
     "ログアウトに失敗",
     "로그아웃 실패",
+    "Ошибка выхода",
   ],
   [
     "取消采集失败",
@@ -444,6 +501,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "取消採集失敗",
     "収集のキャンセルに失敗",
     "수집 취소 실패",
+    "Не удалось отменить сбор",
   ],
   [
     "取消中…",
@@ -451,6 +509,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "取消中…",
     "キャンセル中…",
     "취소 중…",
+    "Отмена…",
   ],
   [
     "自定义指纹读取失败",
@@ -458,6 +517,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "自訂指紋讀取失敗",
     "カスタム指紋の読み込みに失敗",
     "사용자 지정 지문 불러오기 실패",
+    "Не удалось загрузить пользовательские отпечатки",
   ],
   [
     "请填写请求模型名。",
@@ -465,6 +525,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "請填寫請求模型名。",
     "リクエストモデル名を入力してください。",
     "요청 모델명을 입력하세요.",
+    "Укажите имя модели для запроса.",
   ],
   [
     "确认删除",
@@ -472,6 +533,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "確認刪除",
     "削除を確定",
     "삭제 확인",
+    "Подтвердить удаление",
   ],
   [
     "删除中…",
@@ -479,6 +541,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "刪除中…",
     "削除中…",
     "삭제 중…",
+    "Удаление…",
   ],
   [
     "删除后已有报告不会重算",
@@ -486,6 +549,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "刪除後已有報告不會重算",
     "削除後も既存報告は再計算されません",
     "삭제해도 기존 보고서는 재계산되지 않습니다",
+    "Существующие отчёты не пересчитываются",
   ],
   [
     "上游模型",
@@ -493,6 +557,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "上游模型",
     "上流モデル",
     "업스트림 모델",
+    "Модели апстрима",
   ],
   [
     "{n} 个模型",
@@ -500,6 +565,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "{n} 個模型",
     "{n} 件のモデル",
     "{n}개 모델",
+    "Моделей: {n}",
   ],
   [
     "尚未拉取上游模型",
@@ -507,6 +573,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "尚未拉取上游模型",
     "未取得",
     "아직 불러오지 않음",
+    "Модели ещё не загружены",
   ],
   [
     "点击「拉取模型」获取上游列表，或直接输入请求名",
@@ -514,6 +581,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "點擊「拉取模型」獲取上游列表，或直接輸入請求名",
     "「モデル取得」で一覧を取得するか、モデル名を直接入力してください",
     "\"모델 가져오기\"를 눌러 목록을 불러오거나 이름을 직접 입력하세요",
+    "Нажмите «Загрузить модели» или введите имя вручную",
   ],
   [
     "清空模型名",
@@ -521,6 +589,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "清空模型名",
     "モデル名をクリア",
     "모델명 지우기",
+    "Очистить имя модели",
   ],
   [
     "{n} 个训练样本",
@@ -528,6 +597,7 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "{n} 個訓練樣本",
     "{n} 件の学習サンプル",
     "{n}개 학습 표본",
+    "Обуч. образцов: {n}",
   ],
   [
     "采集任务不存在或已过期",
@@ -535,5 +605,6 @@ export const docsAdminRows: [string, string, string, string, string][] = [
     "採集任務不存在或已過期",
     "収集ジョブが見つからないか期限切れです",
     "수집 작업이 없거나 만료되었습니다",
+    "Задача сбора не найдена или истекла",
   ],
 ];

@@ -46,7 +46,7 @@ export const metadata: Metadata = {
 };
 
 const PRE_PAINT_SCRIPT =
-  "try{var d=document.documentElement,t=JSON.parse(localStorage.getItem('chanshui-theme')||'{}'),a=t.accent==='orange'?'orange':t.accent==='mint'?'mint':'mono',m=t.mode==='dark'?'dark':'light';d.dataset.accent=a;d.dataset.mode=m;d.style.colorScheme=m;var s=localStorage.getItem('chanshui-lang'),l=s==='zh'||s==='zh-Hant'||s==='en'||s==='ja'||s==='ko'?s:'';if(!l){var nav=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||'zh'];for(var i=0;i<nav.length;i++){var n=String(nav[i]).toLowerCase();if(n.indexOf('zh')===0){l=/hant|tw|hk|mo/.test(n)?'zh-Hant':'zh';break}if(n.indexOf('en')===0){l='en';break}if(n.indexOf('ja')===0){l='ja';break}if(n.indexOf('ko')===0){l='ko';break}}if(!l)l='zh'}d.dataset.lang=l;d.lang=l==='zh'?'zh-CN':l}catch{}";
+  "try{var d=document.documentElement,t=JSON.parse(localStorage.getItem('chanshui-theme')||'{}'),a=t.accent==='orange'?'orange':t.accent==='mint'?'mint':'mono',m=t.mode==='dark'?'dark':'light';d.dataset.accent=a;d.dataset.mode=m;d.style.colorScheme=m;var s=localStorage.getItem('chanshui-lang'),l=s==='zh'||s==='zh-Hant'||s==='en'||s==='ja'||s==='ko'||s==='ru'?s:'';if(!l){var nav=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||'zh'];for(var i=0;i<nav.length;i++){var n=String(nav[i]).toLowerCase();if(n.indexOf('zh')===0){l=/hant|tw|hk|mo/.test(n)?'zh-Hant':'zh';break}if(n.indexOf('en')===0){l='en';break}if(n.indexOf('ja')===0){l='ja';break}if(n.indexOf('ko')===0){l='ko';break}if(n.indexOf('ru')===0){l='ru';break}}if(!l)l='zh'}d.dataset.lang=l;d.lang=l==='zh'?'zh-CN':l}catch{}";
 
 export default function RootLayout({
   children,

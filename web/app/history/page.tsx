@@ -275,6 +275,7 @@ function HistoryDetailInner() {
           model={data.model}
           loading={["running", "queued"].includes(data.status)}
           showCache={data.probes?.some((p) => p.id === "cache")}
+          probes={data.probes}
           progress={{
             done: (data.probes || []).filter((p) => !["queued", "running"].includes(p.status)).length,
             total: (data.probes || []).length,

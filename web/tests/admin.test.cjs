@@ -44,7 +44,7 @@ test("AdminPage translates across locales and i18n-rows has zero missing or dupl
   const baseKeys = new Set(baseRows.map((r) => r[0]));
   const docsAdminSeen = new Set();
   for (const row of docsAdminRows) {
-    assert.equal(row.length, 5);
+    assert.equal(row.length, 6);
     assert.equal(docsAdminSeen.has(row[0]), false, `Duplicate key inside docsAdminRows: "${row[0]}"`);
     assert.equal(baseKeys.has(row[0]), false, `docsAdminRows duplicates existing i18n key: "${row[0]}"`);
     docsAdminSeen.add(row[0]);
@@ -61,13 +61,13 @@ test("AdminPage translates across locales and i18n-rows has zero missing or dupl
   for (const key of keys) {
     const row = map.get(key);
     assert.ok(row, `Missing i18n row for "${key}" in admin/page.tsx`);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       assert.ok(typeof row[i] === "string" && row[i].length > 0, `Empty locale column ${i} for "${key}"`);
     }
   }
 
   const realI18n = appRequire("@/lib/i18n");
-  for (const lang of ["en", "zh-Hant", "ja", "ko"]) {
+  for (const lang of ["en", "zh-Hant", "ja", "ko", "ru"]) {
     const AdminPage = loadComponent("app/admin/page.tsx", {
       "@/lib/i18n": {
         ...realI18n,
