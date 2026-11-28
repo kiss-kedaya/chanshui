@@ -14,24 +14,29 @@
     transform: none;
   }
 }
-.opening,
-.opening:has(.custom-select > button[aria-expanded="true"], .model-picker[data-open="true"]) {
+.opening {
   z-index: auto;
+  overflow: visible;
+}
+.opening:has(.custom-select > button[aria-expanded="true"], .model-picker[data-open="true"]) {
+  z-index: 30;
   overflow: visible;
 }
 .opening > .connection-card {
   position: relative;
   z-index: auto;
   animation-name: card-appear;
+  animation-fill-mode: backwards;
 }
 .opening > .connection-card:has(
     .custom-select > button[aria-expanded="true"],
     .model-picker[data-open="true"]
   ) {
-  z-index: auto;
+  z-index: 30;
 }
 .ask-panel:has(.custom-select > button[aria-expanded="true"]) {
-  z-index: auto;
+  position: relative;
+  z-index: 30;
   content-visibility: visible;
   overflow: visible;
 }

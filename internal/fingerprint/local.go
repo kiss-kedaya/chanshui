@@ -183,17 +183,55 @@ func FamilyForModel(model string) (string, string) {
 	}
 }
 
-func (b *Bank) NumericModel(id string) *ModelDef {
+func normNumericModelID(id string) string {
+	id = strings.TrimSpace(id)
 	for _, prefix := range []string{"openai/", "anthropic/", "moonshotai/"} {
 		id = strings.TrimPrefix(id, prefix)
 	}
+	lower := strings.ToLower(id)
+	if strings.HasPrefix(lower, "claude-") {
+		lower = strings.ReplaceAll(lower, ".", "-")
+		if len(lower) > 9 && lower[len(lower)-9] == '-' && lower[len(lower)-8] == '2' && lower[len(lower)-7] == '0' {
+			allDigits := true
+			for _, ch := range lower[len(lower)-8:] {
+				if ch < '0' || ch > '9' {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits {
+				lower = lower[:len(lower)-9]
+			}
+		}
+		return lower
+	}
+	return id
+}
+
+func (b *Bank) NumericModel(id string) *ModelDef {
+	trimmed := id
+	for _, prefix := range []string{"openai/", "anthropic/", "moonshotai/"} {
+		trimmed = strings.TrimPrefix(trimmed, prefix)
+	}
 	for i := range b.Numeric.Models {
 		m := &b.Numeric.Models[i]
-		if m.ID == id {
+		if m.ID == trimmed {
 			return m
 		}
 		for _, alias := range m.Aliases {
-			if alias == id {
+			if alias == trimmed {
+				return m
+			}
+		}
+	}
+	want := normNumericModelID(trimmed)
+	for i := range b.Numeric.Models {
+		m := &b.Numeric.Models[i]
+		if normNumericModelID(m.ID) == want {
+			return m
+		}
+		for _, alias := range m.Aliases {
+			if normNumericModelID(alias) == want {
 				return m
 			}
 		}

@@ -45,6 +45,9 @@ test("fingerprint state separates confirmed swaps from suspicion",()=>{
   // Behavioral attribution is a likeness hint, never a verdict.
   assert.equal(fingerprintState("gemini-4-carbon","gpt","gpt-5.4",{behavioral:true,prob:1}), "match");
   assert.equal(fingerprintState("claude-opus-4-6","claude","claude-opus-4-5"), "suspicious");
+  assert.equal(fingerprintState("claude-opus-5-5","claude","claude-opus-5.5",{prob:1}), "match");
+  assert.equal(fingerprintState("claude-fable-5-2","claude","claude-fable-5.2",{prob:1}), "match");
+  assert.equal(fingerprintState("claude-haiku-4-5-20251001","claude","claude-haiku-4.5",{prob:1}), "match");
   assert.equal(fingerprintState("claude-fable-5-2","claude","claude-opus-5-5"), "suspicious");
   assert.equal(fingerprintState("gpt-6-astra","gpt","gpt-5.6-luna"), "suspicious");
   assert.equal(fingerprintState("gemini-3.1-pro","unknown",""), "match");

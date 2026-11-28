@@ -91,6 +91,18 @@ const (
 	FingerprintFake       = "fake"
 )
 
+func isEightDigitDate(s string) bool {
+	if len(s) != 8 || s[0] != '2' || s[1] != '0' {
+		return false
+	}
+	for i := 0; i < 8; i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func FingerprintState(requested, family, topModel string) string {
 	claimed := CanonModel(requested)
 	actual := CanonModel(topModel)
@@ -109,6 +121,14 @@ func FingerprintState(requested, family, topModel string) string {
 		// same-family name stays suspicious instead of fake.
 		if claimed == "deepseekv41flash" && strings.HasPrefix(actual, "deepseekv41flash") {
 			return FingerprintMatch
+		}
+		if want == "claude" {
+			if strings.HasPrefix(claimed, actual) && isEightDigitDate(claimed[len(actual):]) {
+				return FingerprintMatch
+			}
+			if strings.HasPrefix(actual, claimed) && isEightDigitDate(actual[len(claimed):]) {
+				return FingerprintMatch
+			}
 		}
 		return FingerprintSuspicious
 	}

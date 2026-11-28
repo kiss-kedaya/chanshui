@@ -287,9 +287,9 @@ func cleanModel(id string) string {
 	if i := strings.Index(id, "/"); i >= 0 {
 		id = id[i+1:]
 	}
-	if strings.HasPrefix(id, "claude-") {
+	if strings.HasPrefix(strings.ToLower(id), "claude-") {
 		id = strings.ReplaceAll(id, ".", "-")
-		if id == "claude-haiku-4-5" {
+		if strings.EqualFold(id, "claude-haiku-4-5") {
 			id = "claude-haiku-4-5-20251001"
 		}
 	}
@@ -300,13 +300,14 @@ func (s *Server) supported(id string) bool {
 	if bank.NumericModel(id) != nil {
 		return true
 	}
+	want := cleanModel(id)
 	for _, m := range bank.Numeric.Models {
-		if m.ID == id {
+		if m.ID == id || cleanModel(m.ID) == want {
 			return true
 		}
 	}
 	for _, m := range bank.Behavioral.Models {
-		if cleanModel(m.ModelID) == id {
+		if cleanModel(m.ModelID) == want {
 			return true
 		}
 	}
@@ -317,9 +318,9 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	seen := map[string]bool{}
 	familySet := map[string]bool{}
 	for _, m := range bank.Numeric.Models {
-		seen[m.ID] = true
+		seen[cleanModel(m.ID)] = true
 		for _, alias := range m.Aliases {
-			seen[alias] = true
+			seen[cleanModel(alias)] = true
 		}
 		familySet[m.FamilyName] = true
 	}

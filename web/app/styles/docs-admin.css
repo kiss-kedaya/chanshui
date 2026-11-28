@@ -457,6 +457,11 @@ html[data-mode="dark"] .api-doc .api-detail pre {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
+.admin-shell .admin-card:has(.custom-select > button[aria-expanded="true"], .admin-model-combobox[data-open="true"]) {
+  position: relative;
+  z-index: 30;
+}
+
 .admin-shell .admin-capture-form .field:has(.custom-select > button[aria-expanded="true"], .admin-model-combobox[data-open="true"]) {
   position: relative;
   z-index: var(--z-dropdown);

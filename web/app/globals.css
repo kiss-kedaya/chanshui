@@ -3335,11 +3335,11 @@ tr:hover td {
 }
 
 .ask-panel {
+  position: relative;
+  z-index: 0;
   margin-top: 18px;
   padding: 18px 22px;
   border-radius: 14px;
-  content-visibility: auto;
-  contain-intrinsic-size: 280px;
 }
 .ask-panel:not([open]) {
   margin-top: 2px;

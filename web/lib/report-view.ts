@@ -88,6 +88,10 @@ function claimDiffers(requested: string, family: string, topModel: string): bool
     // A non-dated version claim is compatible with any dated baseline of the
     // same version; the report still shows which date matched.
     if (claimed === "deepseekv41flash" && actual.startsWith("deepseekv41flash")) return false;
+    if (want === "claude") {
+      if (claimed.startsWith(actual) && /^20\d{6}$/.test(claimed.slice(actual.length))) return false;
+      if (actual.startsWith(claimed) && /^20\d{6}$/.test(actual.slice(claimed.length))) return false;
+    }
     return true;
   }
   return false;

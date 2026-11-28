@@ -201,6 +201,40 @@ func TestValidationAndModels(t *testing.T) {
 		t.Fatal("cross origin accepted")
 	}
 }
+
+func TestBankStatsNormalizesClaudeDotsToHyphens(t *testing.T) {
+	s, _, _, _ := testSetup(t)
+	r := httptest.NewRequest("GET", "/api/bank/stats", nil)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("stats status=%d body=%s", w.Code, w.Body.String())
+	}
+	var payload struct {
+		SupportedModels []string `json:"supported_models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, id := range payload.SupportedModels {
+		if seen[id] {
+			t.Fatalf("duplicate model in supported_models: %q", id)
+		}
+		seen[id] = true
+		if strings.HasPrefix(strings.ToLower(id), "claude-") && strings.Contains(id, ".") {
+			t.Fatalf("dotted Claude model leaked into supported_models: %q", id)
+		}
+	}
+	for _, want := range []string{"claude-fable-5-1", "claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-haiku-4-5-20251001"} {
+		if !seen[want] {
+			t.Fatalf("missing normalized Claude model %q in supported_models", want)
+		}
+		if s.currentBank().NumericModel(want) == nil {
+			t.Fatalf("NumericModel(%q) returned nil", want)
+		}
+	}
+}
 func TestRedactionAndCancelledTransport(t *testing.T) {
 	b, _ := json.Marshal(sanitize(map[string]string{"answer": "hello secret"}, "secret"))
 	if strings.Contains(string(b), "secret") {

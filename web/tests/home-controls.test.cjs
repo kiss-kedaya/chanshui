@@ -159,8 +159,9 @@ test("DetectPage wraps 高级设置, decouples Hint from label, and keeps 缓存
 test("home.css establishes non-trapping stacking clearance, wrapped ModelPicker status, calm ErrorFold, wider ModelPicker family, and squircle pill opt-out", () => {
   const css = fs.readFileSync(path.join(__dirname, "../app/styles/home.css"), "utf8");
   assert.match(css, /@keyframes card-appear\s*\{[\s\S]*?transform:\s*none;/);
-  assert.match(css, /\.opening > \.connection-card\s*\{[\s\S]*?z-index:\s*auto;[\s\S]*?animation-name:\s*card-appear;/);
-  assert.match(css, /\.ask-panel:has\(\.custom-select > button\[aria-expanded="true"\]\)\s*\{[\s\S]*?z-index:\s*auto;[\s\S]*?content-visibility:\s*visible;/);
+  assert.match(css, /\.opening:has\(\.custom-select > button\[aria-expanded="true"\], \.model-picker\[data-open="true"\]\)\s*\{[\s\S]*?z-index:\s*30;/);
+  assert.match(css, /\.opening > \.connection-card\s*\{[\s\S]*?z-index:\s*auto;[\s\S]*?animation-name:\s*card-appear;[\s\S]*?animation-fill-mode:\s*backwards;/);
+  assert.match(css, /\.ask-panel:has\(\.custom-select > button\[aria-expanded="true"\]\)\s*\{[\s\S]*?z-index:\s*30;[\s\S]*?content-visibility:\s*visible;/);
   assert.match(css, /\.model-picker\[data-open="true"\]\s*\{[\s\S]*?z-index:\s*var\(--z-dropdown\);/);
   assert.match(css, /\.field:has\(\.custom-select > button\[aria-expanded="true"\]\)\s*\{[\s\S]*?z-index:\s*var\(--z-dropdown\);/);
   assert.match(css, /\.model-status\s*\{[\s\S]*?max-width:\s*100%;/);
